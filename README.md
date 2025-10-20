@@ -18,6 +18,6 @@ func main int {
 
 ```
 <Program>  -> <Function>
-<Function> -> "func" "main" "int" "{" "return" <Int> ":" "}"
+<Function> -> "func" "main" "int" "{" "return" <Int> ";" "}"
 <Int>      -> [0-9]+
 ```
