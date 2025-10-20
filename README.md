@@ -15,3 +15,9 @@ func main int {
     return 0;
 }
 ```
+
+```
+<Program>  -> <Function>
+<Function> -> "func" "main" "int" "{" "return" <Int> ":" "}"
+<Int>      -> [0-9]+
+```
