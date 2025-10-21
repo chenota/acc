@@ -15,7 +15,7 @@
         (list
          (first token)
          (cl-ppcre:create-scanner
-          (concatenate 'string "^" (second token)))
+           (concatenate 'string "^" (second token)))
          (third token)))
       `((:funckw "func" t)
         (:returnkw "return" t)
@@ -52,16 +52,16 @@
                          (return (if match
                                      (prog1
                                          (make-token
-                                          :kind (first matched-rule)
-                                          :value (cond
-                                                  ((functionp (third matched-rule)) (funcall (third matched-rule) match))
-                                                  ((third matched-rule) match))
-                                          :row row
-                                          :col col
-                                          :len (length match))
+                                           :kind (first matched-rule)
+                                           :value (cond
+                                                   ((functionp (third matched-rule)) (funcall (third matched-rule) match))
+                                                   ((third matched-rule) match))
+                                           :row row
+                                           :col col
+                                           :len (length match))
                                        (if
                                         (eq (first matched-rule) :newline)
                                         (progn (setf row 0) (incf col))
-                                        (incf row (length match))))))))
-          unless best-match do (error "bad")
-          when (token-value best-match) collect best-match))
+                                        (incf row (length match))))
+                                     (error "bad")))))
+        collect best-match))
