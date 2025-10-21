@@ -2,9 +2,20 @@
 
 (defstruct token
   (kind nil :type keyword)
-  value
+  (value nil :type t)
   (row nil :type (integer 0 *))
-  (col nil :type (integer 0 *)))
+  (col nil :type (integer 0 *))
+  (len nil :type (integer 0 *)))
+
+(defun true (_)
+  "Include in the token sequence but don't keep string value."
+  (declare (ignore _))
+  t)
+
+(defun false (_)
+  "Throw away from the token sequence."
+  (declare (ignore _))
+  nil)
 
 (defparameter
   compiled-tokens
@@ -14,29 +25,28 @@
         (list
          (first token)
          (cl-ppcre:create-scanner
-           (concatenate 'string "^" (second token)))))
-      '((:funckw "func")
-        (:returnkw "return")
-        (:semikw ";")
-        (:lbrace "{")
-        (:rbrace "}")
-        (:ident "[a-z]+")
-        (:int "[0-9]+")
-        (:white " "))))
-
-(defun token-length (value)
-  "Extract the length of a token."
-  (check-type value (or sequence token))
-  (if (typep value 'token)
-      (length (token-value value))
-      (length value)))
+           (concatenate 'string "^" (second token)))
+         (symbol-function (third token))))
+      `((:funckw "func" true)
+        (:returnkw "return" true)
+        (:semikw ";" true)
+        (:lbrace "\{" true)
+        (:rbrace "\}" true)
+        (:ident "[a-z]+" identity)
+        (:int "[0-9]+" parse-integer)
+        (:whitespace " " false)
+        (:newline "\n" false))))
 
 (defun tokenize (target)
   "Transform a string into a sequence of tokens."
   (check-type target string)
-  (loop with i = 0 while (< i (length target))
+  (loop with row = 0
+        with col = 0
+        with i = 0
+        while (< i (length target))
         for best-match =
           (loop with match = nil
+                with matched-rule = nil
                 for rule in compiled-tokens
                 do
                   (multiple-value-bind
@@ -44,9 +54,22 @@
                       (cl-ppcre:scan-to-strings (second rule) target :start i)
                     (declare (ignore _))
                     (when
-                     (> (token-length new-match) (token-length match))
-                     (setf match (make-token :kind (first rule) :value new-match :row i :col 0))
-                     (incf i (length new-match))))
-                finally (return match))
+                     (> (length new-match) (length match))
+                     (setf match new-match)
+                     (setf matched-rule rule)))
+                finally (progn
+                         (incf i (length match))
+                         (return (if match
+                                     (prog1
+                                         (make-token
+                                           :kind (first matched-rule)
+                                           :value (funcall (third matched-rule) match)
+                                           :row row
+                                           :col col
+                                           :len (length match))
+                                       (if
+                                        (eq (first matched-rule) :newline)
+                                        (progn (setf row 0) (incf col))
+                                        (incf row (length match))))))))
           unless best-match do (error "bad")
-        collect best-match))
+          when (token-value best-match) collect best-match))
