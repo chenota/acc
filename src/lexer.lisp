@@ -7,16 +7,6 @@
   (col nil :type (integer 0 *))
   (len nil :type (integer 0 *)))
 
-(defun true (_)
-  "Include in the token sequence but don't keep string value."
-  (declare (ignore _))
-  t)
-
-(defun false (_)
-  "Throw away from the token sequence."
-  (declare (ignore _))
-  nil)
-
 (defparameter
   compiled-tokens
   (mapcar
@@ -25,17 +15,17 @@
         (list
          (first token)
          (cl-ppcre:create-scanner
-           (concatenate 'string "^" (second token)))
-         (symbol-function (third token))))
-      `((:funckw "func" true)
-        (:returnkw "return" true)
-        (:semikw ";" true)
-        (:lbrace "\{" true)
-        (:rbrace "\}" true)
+          (concatenate 'string "^" (second token)))
+         (third token)))
+      `((:funckw "func" t)
+        (:returnkw "return" t)
+        (:semikw ";" t)
+        (:lbrace "\{" t)
+        (:rbrace "\}" t)
         (:ident "[a-z]+" identity)
         (:int "[0-9]+" parse-integer)
-        (:whitespace " " false)
-        (:newline "\n" false))))
+        (:whitespace " " nil)
+        (:newline "\n" nil))))
 
 (defun tokenize (target)
   "Transform a string into a sequence of tokens."
@@ -62,11 +52,13 @@
                          (return (if match
                                      (prog1
                                          (make-token
-                                           :kind (first matched-rule)
-                                           :value (funcall (third matched-rule) match)
-                                           :row row
-                                           :col col
-                                           :len (length match))
+                                          :kind (first matched-rule)
+                                          :value (cond
+                                                  ((functionp (third matched-rule)) (funcall (third matched-rule) match))
+                                                  ((third matched-rule) match))
+                                          :row row
+                                          :col col
+                                          :len (length match))
                                        (if
                                         (eq (first matched-rule) :newline)
                                         (progn (setf row 0) (incf col))
