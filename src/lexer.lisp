@@ -17,15 +17,15 @@
          (cl-ppcre:create-scanner
            (concatenate 'string "^" (second token)))
          (third token)))
-      `((:funckw "func" t)
-        (:returnkw "return" t)
-        (:semikw ";" t)
+      `((:func "func" t)
+        (:return "return" t)
+        (:semi ";" t)
         (:lbrace "\{" t)
         (:rbrace "\}" t)
         (:ident "[a-z]+" identity)
         (:int "[0-9]+" parse-integer)
         (:whitespace " " nil)
-        (:newline "\n" nil))))
+        (:newline "\\n" nil))))
 
 (defun tokenize (target)
   "Transform a string into a sequence of tokens."
@@ -47,21 +47,25 @@
                      (> (length new-match) (length match))
                      (setf match new-match)
                      (setf matched-rule rule)))
-                finally (progn
-                         (incf i (length match))
-                         (return (if match
-                                     (prog1
-                                         (make-token
-                                           :kind (first matched-rule)
-                                           :value (cond
-                                                   ((functionp (third matched-rule)) (funcall (third matched-rule) match))
-                                                   ((third matched-rule) match))
-                                           :row row
-                                           :col col
-                                           :len (length match))
-                                       (if
-                                        (eq (first matched-rule) :newline)
-                                        (progn (setf row 0) (incf col))
-                                        (incf row (length match))))
-                                     (error "bad")))))
-        collect best-match))
+                finally
+                  (progn
+                   (incf i (length match))
+                   (return
+                     (if match
+                         (prog1
+                             (if
+                              (third matched-rule)
+                              (make-token
+                                :kind (first matched-rule)
+                                :value (handler-case
+                                           (funcall (third matched-rule) match)
+                                         (undefined-function (e) (declare (ignore e)) match))
+                                :row row
+                                :col col
+                                :len (length match)))
+                           (if
+                            (eq (first matched-rule) :newline)
+                            (progn (setf row 0) (incf col))
+                            (incf row (length match))))
+                         (error "bad")))))
+          when best-match collect best-match))
