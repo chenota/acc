@@ -7,6 +7,8 @@
   :depends-on (:cl-ppcre :fiveam)
   :components ((:file "package")
                (:module "test"
-                        :components ((:file "lexer-test")))
+                        :components ((:file "lexer-test")
+                                     (:file "parser-test")))
                (:module "src"
-                        :components ((:file "lexer")))))
+                        :components ((:file "lexer")
+                                     (:file "parser")))))
