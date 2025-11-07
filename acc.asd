@@ -11,4 +11,5 @@
                                      (:file "parser-test")))
                (:module "src"
                         :components ((:file "lexer")
-                                     (:file "parser")))))
+                                     (:file "parser")
+                                     (:file "instruction")))))
