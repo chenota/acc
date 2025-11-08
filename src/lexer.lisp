@@ -8,7 +8,7 @@
   (len nil :type (integer 0 *)))
 
 (defparameter
-  compiled-tokens
+  +compiled-tokens+
   (mapcar
       (lambda
           (token)
@@ -37,7 +37,7 @@
         for best-match =
           (loop with match = nil
                 with matched-rule = nil
-                for rule in compiled-tokens
+                for rule in +compiled-tokens+
                 do
                   (multiple-value-bind
                       (new-match _)
