@@ -3,7 +3,7 @@
 (defclass operand ()
     ())
 
-(defmethod :before print-operand ((o operand) s)
+(defmethod print-operand :before ((o operand) s)
   (check-type s stream))
 
 (defmethod print-operand ((o operand) s)
