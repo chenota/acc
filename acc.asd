@@ -8,7 +8,8 @@
   :components ((:file "package")
                (:module "test"
                         :components ((:file "lexer-test")
-                                     (:file "parser-test")))
+                                     (:file "parser-test")
+                                     (:file "instruction-test")))
                (:module "src"
                         :components ((:file "lexer")
                                      (:file "parser")
