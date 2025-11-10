@@ -8,9 +8,9 @@
   :components ((:file "package")
                (:module "test"
                         :components ((:file "lexer-test")
-                                     (:file "parser-test")
-                                     (:file "instruction-test")))
+                                     (:file "instruction-test")
+                                     (:file "token-sequence-test")))
                (:module "src"
                         :components ((:file "lexer")
-                                     (:file "parser")
-                                     (:file "instruction")))))
+                                     (:file "instruction")
+                                     (:file "token-sequence")))))
