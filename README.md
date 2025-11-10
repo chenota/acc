@@ -19,8 +19,17 @@ func main int {
 }
 ```
 
+#### Statement Grammar (PEG)
+
 ```
-<Program>  -> <Function>
-<Function> -> "func" "main" "int" "{" "return" <Int> ";" "}"
-<Int>      -> [0-9]+
+<Program>  := <Function>
+<Function> := "func" "main" "int" "{" <Stmt> "}"
+<Stmt>     := "return" <Expr> ";"
+```
+
+#### Expression Grammar (CFG)
+
+```
+<Expr> := <Int>
+<Int>  := [0-9]+
 ```
