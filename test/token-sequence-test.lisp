@@ -4,9 +4,10 @@
 
 (def-fixture
     token-sequence-test-env ()
-  (let* ((raw-seq
+  (let* ((raw-seq-len 10)
+         (raw-seq
           (loop
-         for i from 0 below 10
+         for i from 0 below raw-seq-len
          collect (make-token :kind :test-token :value i :row 0 :col 0 :len 0))))
     (&body)))
 
@@ -27,4 +28,5 @@
   (with-fixture token-sequence-test-env ()
     (is (= 0 (token-value (advance (make-token-sequence raw-seq)))))
     (is (= 1 (let ((s (make-token-sequence raw-seq))) (token-value (progn (advance s) (advance s))))))
-    (signals error (let ((s (make-token-sequence raw-seq))) (dotimes (i 11) (advance s))))))
+    (is (let ((s (make-token-sequence raw-seq))) (dotimes (i raw-seq-len) (advance s)) t))
+    (signals error (let ((s (make-token-sequence raw-seq))) (dotimes (i (1+ raw-seq-len)) (advance s))))))
