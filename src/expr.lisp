@@ -9,9 +9,9 @@
      (t (error "bad")))))
 
 (defun left-denotation (seq lhs)
-  "Parse sequence according to left denotation of head. Returns nil if head has no left denotation."
+  "Parse sequence according to left denotation of head."
   (declare (ignore seq) (ignore lhs))
-  nil)
+  (error "bad"))
 
 (defun left-binding-power (seq)
   "Get the left binding power of head. Returns nil if head has no left binding power."
