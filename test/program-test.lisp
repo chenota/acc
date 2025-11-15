@@ -4,3 +4,6 @@
 
 (test test-main-func
   (is (parse-program (make-token-sequence (tokenize "func main int { return 0; }")))))
+
+(test test-err
+  (signals error (parse-program (make-token-sequence (tokenize "return return return")))))
