@@ -9,7 +9,7 @@
  for item in symbols-and-forms
  do (cond
      ((symbolp item) (setq sym item))
-     ((and (consp item) (null sym)) (setf flist (cons item flist)))
+     ((and (consp item) (null sym)) (push item flist))
      ((consp item) (push `(setq ,sym ,item) flist)
                    (setf (gethash sym vlist) t)
                    (setf sym nil))
