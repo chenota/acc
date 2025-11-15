@@ -45,3 +45,8 @@
   "Restore a previously captured position."
   (assert (<= pos (len ts)))
   (setf (location ts) pos))
+
+(defmethod expect ((ts token-sequence) kind)
+  "If a token of KIND is at the current position, advance, otherwise return NIL."
+  (if (eq (token-kind (peek ts)) kind)
+      (advance ts)))

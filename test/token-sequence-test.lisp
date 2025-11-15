@@ -36,3 +36,9 @@
     (is (= 1 (let ((s (make-token-sequence raw-seq))) (advance s) (capture s))))
     (is (= raw-seq-len (let ((s (make-token-sequence raw-seq))) (restore s raw-seq-len) (capture s))))
     (signals error (restore (make-token-sequence raw-seq) (1+ raw-seq-len)))))
+
+(test test-expect
+  (with-fixture token-sequence-test-env ()
+    (is (not (null (expect (make-token-sequence raw-seq) :test-token))))
+    (is (null (expect (make-token-sequence raw-seq) :not-a-real-token)))
+    (is (= 1 (token-value (let ((s (make-token-sequence raw-seq))) (advance s) (expect s :test-token)))))))

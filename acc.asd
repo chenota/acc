@@ -10,9 +10,11 @@
                         :components ((:file "lexer-test")
                                      (:file "instruction-test")
                                      (:file "token-sequence-test")
-                                     (:file "expr-test")))
+                                     (:file "expr-test")
+                                     (:file "program-test")))
                (:module "src"
                         :components ((:file "lexer")
                                      (:file "instruction")
                                      (:file "token-sequence")
-                                     (:file "expr")))))
+                                     (:file "expr")
+                                     (:file "program")))))
