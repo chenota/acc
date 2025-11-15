@@ -32,7 +32,7 @@
               (incf exp-count)
               (when (eq (cdr expr) t) (incf cov-count))))
  finally (progn
-  (format t "~D out of ~D expressions covered" cov-count exp-count)
+  (format t "~D out of ~D expressions covered~%" cov-count exp-count)
   (return (* 100.0 (/ cov-count exp-count))))))
 ;; Save shields URL to file
 (with-open-file (stream "shields.txt"
