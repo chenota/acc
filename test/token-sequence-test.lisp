@@ -22,11 +22,10 @@
 (test test-peek
   (with-fixture token-sequence-test-env ()
     (is (= 0 (token-value (peek (make-token-sequence raw-seq)))))
-    (signals error (peek (make-token-sequence nil)))))
+    (is (eq :ENDMARKER (token-kind (peek (make-token-sequence nil)))))))
 
 (test test-advance
   (with-fixture token-sequence-test-env ()
     (is (= 0 (token-value (advance (make-token-sequence raw-seq)))))
-    (is (= 1 (let ((s (make-token-sequence raw-seq))) (token-value (progn (advance s) (advance s))))))
-    (is (let ((s (make-token-sequence raw-seq))) (dotimes (i raw-seq-len) (advance s)) t))
-    (signals error (let ((s (make-token-sequence raw-seq))) (dotimes (i (1+ raw-seq-len)) (advance s))))))
+    (is (= 1 (token-value (let ((s (make-token-sequence raw-seq))) (advance s) (advance s)))))
+    (is (eq :ENDMARKER (token-kind (let ((s (make-token-sequence raw-seq))) (dotimes (i raw-seq-len) (advance s)) (advance s)))))))
