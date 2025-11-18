@@ -2,11 +2,17 @@
 
 (fiveam:def-suite instruction)
 
-(test operand-test-generic
-  (is (string= "UNDEFINED" (to-string (make-instance 'operand)))))
+(test string-operand-test
+  (is (string= "\"VALUE\"" (to-string (make-string-operand "VALUE")))))
+
+(test ident-operand-test
+  (is (string= "VALUE" (to-string (make-ident-operand "VALUE")))))
+
+(test type-operand-test
+  (is (string= "@VALUE" (to-string (make-type-operand "VALUE")))))
 
 (def-fixture instruction-test-env ()
-  (let ((generic-op (make-instance 'operand)))
+  (let ((generic-op (make-ident-operand "VALUE")))
     (&body)))
 
 (test instruction-test
@@ -15,10 +21,10 @@
           "op"
           (to-string (make-instance 'instruction :op "op" :indent nil))))
     (is (string=
-          "op UNDEFINED"
+          "op VALUE"
           (to-string (make-instance 'instruction :op "op" :oprs (list generic-op) :indent nil))))
     (is (string=
-          "op UNDEFINED, UNDEFINED"
+          "op VALUE, VALUE"
           (to-string (make-instance 'instruction :op "op" :oprs (list generic-op generic-op) :indent nil))))
     (is (string=
           (format nil "~cop" #\Tab)
