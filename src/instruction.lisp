@@ -1,7 +1,15 @@
 (in-package :acc)
 
-(defclass operand ()
-    ())
+(defmacro def-atomic-operand (name control-string value-type)
+  (let* ((pkg (symbol-package name))
+         (ctor (intern (format nil "MAKE-~A" (symbol-name name)) pkg)))
+    `(progn
+      (defclass ,name (atomic-operand) ())
+      (defmethod control-string ((x ,name)) ,control-string)
+      (defmethod value-type ((x ,name)) ',value-type)
+      (defun ,ctor (value) (make-instance ',name :value value)))))
+
+(defclass operand () ())
 
 (defmethod print-operand :before ((o operand) s)
   (check-type s stream))
@@ -13,10 +21,32 @@
   (with-output-to-string (s)
     (print-operand o s)))
 
+(defclass atomic-operand (operand)
+    ((value :initarg :value :accessor operand-value)))
+
+(defmethod initialize-instance :after ((a atomic-operand) &key value &allow-other-keys)
+  (assert (typep value (value-type a))))
+
+(defmethod control-string ((a atomic-operand)) "~a")
+
+(defmethod value-type ((a atomic-operand)) t)
+
+(defmethod print-operand ((a atomic-operand) s)
+  (format s (control-string a) (operand-value a)))
+
+(def-atomic-operand string-operand "~s" string)
+
+(def-atomic-operand ident-operand "~a" string)
+
+(def-atomic-operand type-operand "@~a" string)
+
 (defclass instruction ()
     ((operation :initarg :op :type string :accessor instr-op)
      (operands :initarg :oprs :type sequence :accessor instr-oprs :initform nil)
      (indent :initarg :indent :type boolean :accessor instr-indent :initform t)))
+
+(defun make-instruction (operator &rest operands &key (indent t))
+  (make-instance 'instruction :op operator :indent indent :oprs operands))
 
 (defmethod print-instruction ((i instruction) s)
   (check-type s stream)
