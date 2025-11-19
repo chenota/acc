@@ -3,13 +3,16 @@
 (fiveam:def-suite instruction)
 
 (test string-operand-test
-  (is (string= "\"VALUE\"" (to-string (make-string-operand "VALUE")))))
+  (is (string= "\"VALUE\"" (to-string (make-string-operand "VALUE"))))
+  (signals error (make-string-operand 0)))
 
 (test ident-operand-test
-  (is (string= "VALUE" (to-string (make-ident-operand "VALUE")))))
+  (is (string= "VALUE" (to-string (make-ident-operand "VALUE"))))
+  (signals error (make-ident-operand 0)))
 
 (test type-operand-test
-  (is (string= "@VALUE" (to-string (make-type-operand "VALUE")))))
+  (is (string= "@VALUE" (to-string (make-type-operand "VALUE"))))
+  (signals error (make-type-operand 0)))
 
 (def-fixture instruction-test-env ()
   (let ((generic-op (make-ident-operand "VALUE")))
@@ -18,14 +21,15 @@
 (test instruction-test
   (with-fixture instruction-test-env ()
     (is (string=
-          "op"
-          (to-string (make-instance 'instruction :op "op" :indent nil))))
+          (format nil "~cop" #\tab)
+          (to-string (make-instance 'instruction :op "op"))))
     (is (string=
-          "op VALUE"
-          (to-string (make-instance 'instruction :op "op" :oprs (list generic-op) :indent nil))))
+          (format nil "~cop VALUE" #\tab)
+          (to-string (make-instance 'instruction :op "op" :oprs (list generic-op)))))
     (is (string=
-          "op VALUE, VALUE"
-          (to-string (make-instance 'instruction :op "op" :oprs (list generic-op generic-op) :indent nil))))
-    (is (string=
-          (format nil "~cop" #\Tab)
-          (to-string (make-instance 'instruction :op "op" :indent t))))))
+          (format nil "~cop VALUE, VALUE" #\tab)
+          (to-string (make-instance 'instruction :op "op" :oprs (list generic-op generic-op)))))
+    (signals error (make-instruction "add" "some" :value 15))))
+
+(test label-test
+  (is (string= "main:" (to-string (make-label "main")))))
