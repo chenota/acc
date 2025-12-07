@@ -6,15 +6,17 @@
   :serial t
   :depends-on (:cl-ppcre :fiveam)
   :components ((:file "package")
-               (:module "test"
-                        :components ((:file "lexer-test")
-                                     (:file "instruction-test")
-                                     (:file "token-sequence-test")
-                                     (:file "expr-test")
-                                     (:file "program-test")))
+               (:module "util"
+                        :components ((:file "coverage")))
                (:module "src"
                         :components ((:file "lexer")
                                      (:file "instruction")
                                      (:file "token-sequence")
                                      (:file "expr")
-                                     (:file "program")))))
+                                     (:file "program")))
+               (:module "test"
+                        :components ((:file "lexer-test")
+                                     (:file "instruction-test")
+                                     (:file "token-sequence-test")
+                                     (:file "expr-test")
+                                     (:file "program-test")))))

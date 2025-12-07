@@ -2,50 +2,54 @@
 
 ;; HELPER MACROS
 
-(defmacro def-atomic-operand (name control-string value-type)
-  "Create a new atomic operand."
-  (let* ((pkg (symbol-package name))
-         (make-func (intern (format nil "MAKE-~A" (symbol-name name)) pkg)))
-    `(progn
-      (defclass ,name (atomic-operand) ())
-      (defmethod control-string ((_ ,name)) (declare (ignore _)) ,control-string)
-      (defmethod value-type ((_ ,name)) (declare (ignore _)) ',value-type)
-      (defun ,make-func (value) (make-instance ',name :value value)))))
+(with-ignore-coverage
+  (defmacro def-atomic-operand (name control-string value-type)
+    "Create a new atomic operand."
+    (let* ((pkg (symbol-package name))
+           (make-func (intern (format nil "MAKE-~A" (symbol-name name)) pkg)))
+      `(progn
+        (defclass ,name (atomic-operand) ())
+        (defmethod control-string ((_ ,name)) (declare (ignore _)) ,control-string)
+        (defmethod value-type ((_ ,name)) (declare (ignore _)) ',value-type)
+        (defun ,make-func (value) (make-instance ',name :value value))))))
 
-(defmacro def-register-operand (name register-list)
-  "Create a new register operand."
-  (let* ((pkg (symbol-package name))
-         (make-func (intern (format nil "MAKE-~A" (symbol-name name)) pkg)))
-    `(progn
-      (defclass ,name (register-operand) ())
-      (defmethod register-list ((_ ,name)) (declare (ignore _)) ,register-list)
-      (defun ,make-func (i) (make-instance ',name :i i)))))
+(with-ignore-coverage
+  (defmacro def-register-operand (name register-list)
+    "Create a new register operand."
+    (let* ((pkg (symbol-package name))
+           (make-func (intern (format nil "MAKE-~A" (symbol-name name)) pkg)))
+      `(progn
+        (defclass ,name (register-operand) ())
+        (defmethod register-list ((_ ,name)) (declare (ignore _)) ,register-list)
+        (defun ,make-func (i) (make-instance ',name :i i))))))
 
 ;; REGISTER LISTS
 
-(defparameter
-  +gpreg32-list+
-  #("eax"
-    "ebx"
-    "ecx"
-    "edx"
-    "esi"
-    "edi"
-    "esp"
-    "ebp"
-    "r8d"
-    "r9d"
-    "r10d"
-    "r11d"
-    "r12d"
-    "r13d"
-    "r14d"
-    "r15d"))
+(with-ignore-coverage
+  (defparameter
+    +gpreg32-list+
+    #("eax"
+      "ebx"
+      "ecx"
+      "edx"
+      "esi"
+      "edi"
+      "esp"
+      "ebp"
+      "r8d"
+      "r9d"
+      "r10d"
+      "r11d"
+      "r12d"
+      "r13d"
+      "r14d"
+      "r15d")))
 
 ;; OPERANDS
 
-(defclass operand () ()
-  (:documentation "Operand base class."))
+(with-ignore-coverage
+  (defclass operand () ()
+    (:documentation "Operand base class.")))
 
 (defmethod print-operand :before ((o operand) s)
   "Assert the printer function writes to a stream."
@@ -56,9 +60,10 @@
   (with-output-to-string (s)
     (print-operand o s)))
 
-(defclass atomic-operand (operand)
-    ((value :initarg :value :accessor operand-value))
-  (:documentation "Operand with a single item of structured data."))
+(with-ignore-coverage
+  (defclass atomic-operand (operand)
+      ((value :initarg :value :accessor operand-value))
+    (:documentation "Operand with a single item of structured data.")))
 
 (defmethod initialize-instance :before ((a atomic-operand) &key value &allow-other-keys)
   "Assert the type of the atomic operands value."
@@ -73,9 +78,10 @@
 (def-atomic-operand type-operand "@~a" string)
 (def-atomic-operand immediate-operand "$~D" integer)
 
-(defclass register-operand (operand)
-    ((i :initarg :i :accessor register-operand-i :type (integer 0 *)))
-  (:documentation "Register operand."))
+(with-ignore-coverage
+  (defclass register-operand (operand)
+      ((i :initarg :i :accessor register-operand-i :type (integer 0 *)))
+    (:documentation "Register operand.")))
 
 (defmethod initialize-instance :before ((r register-operand) &key i &allow-other-keys)
   "Assert the bounds of the register index."
@@ -90,7 +96,8 @@
 
 ;; INSTRUCTIONS
 
-(defclass line-item () ())
+(with-ignore-coverage
+  (defclass line-item () ()))
 
 (defmethod to-string ((l line-item))
   "Convert line item to a string."
@@ -101,10 +108,11 @@
   "Assert the line item writes to a stream."
   (assert (typep s 'stream)))
 
-(defclass instruction (line-item)
-    ((operation :initarg :op :type string :accessor instr-op)
-     (operands :initarg :oprs :type sequence :accessor instr-oprs :initform nil))
-  (:documentation "Basic x86 instruction with a type and operands."))
+(with-ignore-coverage
+  (defclass instruction (line-item)
+      ((operation :initarg :op :type string :accessor instr-op)
+       (operands :initarg :oprs :type sequence :accessor instr-oprs :initform nil))
+    (:documentation "Basic x86 instruction with a type and operands.")))
 
 (defun make-instruction (operator &rest operands)
   (make-instance 'instruction :op operator :oprs operands))
@@ -123,9 +131,10 @@
   "Assert that the instruction operands are only of the operand type."
   (assert (every (lambda (x) (typep x 'operand)) oprs)))
 
-(defclass label (line-item)
-    ((value :initarg :value :type string :accessor label-value))
-  (:documentation "x86 label."))
+(with-ignore-coverage
+  (defclass label (line-item)
+      ((value :initarg :value :type string :accessor label-value))
+    (:documentation "x86 label.")))
 
 (defun make-label (value)
   (make-instance 'label :value value))

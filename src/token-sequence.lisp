@@ -1,12 +1,13 @@
 (in-package :acc)
 
-(defclass token-sequence ()
-    ((location :accessor location :initform 0 :type (integer 0 *))
-     (token-list :accessor token-list :initarg :token-list)
-     (end-row :accessor end-row :initform 0 :type (integer 0 *))
-     (end-col :accessor end-col :initform 0 :type (integer 0 *))
-     (length :accessor len :type (integer 0 *)))
-  (:documentation "Token sequence manager."))
+(with-ignore-coverage
+  (defclass token-sequence ()
+      ((location :accessor location :initform 0 :type (integer 0 *))
+       (token-list :accessor token-list :initarg :token-list)
+       (end-row :accessor end-row :initform 0 :type (integer 0 *))
+       (end-col :accessor end-col :initform 0 :type (integer 0 *))
+       (length :accessor len :type (integer 0 *)))
+    (:documentation "Token sequence manager.")))
 
 (defmethod initialize-instance :after ((ts token-sequence) &key token-list &allow-other-keys)
   "Initialization logic for a token-sequence."
