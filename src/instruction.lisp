@@ -12,6 +12,36 @@
       (defmethod value-type ((_ ,name)) (declare (ignore _)) ',value-type)
       (defun ,make-func (value) (make-instance ',name :value value)))))
 
+(defmacro def-register-operand (name register-list)
+  "Create a new register operand."
+  (let* ((pkg (symbol-package name))
+         (make-func (intern (format nil "MAKE-~A" (symbol-name name)) pkg)))
+    `(progn
+      (defclass ,name (register-operand) ())
+      (defmethod register-list ((_ ,name)) (declare (ignore _)) ,register-list)
+      (defun ,make-func (i) (make-instance ',name :i i)))))
+
+;; REGISTER LISTS
+
+(defconstant
+  +gpreg32-list+
+  #("eax"
+    "ebx"
+    "ecx"
+    "edx"
+    "esi"
+    "edi"
+    "esp"
+    "ebp"
+    "r8d"
+    "r9d"
+    "r10d"
+    "r11d"
+    "r12d"
+    "r13d"
+    "r14d"
+    "r15d"))
+
 ;; OPERANDS
 
 (defclass operand () ()
@@ -41,6 +71,22 @@
 (def-atomic-operand string-operand "~s" string)
 (def-atomic-operand ident-operand "~a" string)
 (def-atomic-operand type-operand "@~a" string)
+(def-atomic-operand immediate-operand "$~D" integer)
+
+(defclass register-operand (operand)
+    ((i :initarg :i :accessor register-operand-i :type (integer 0 *)))
+  (:documentation "Register operand."))
+
+(defmethod initialize-instance :before ((r register-operand) &key i &allow-other-keys)
+  "Assert the bounds of the register index."
+  (assert (>= i 0))
+  (assert (< i (length (register-list r)))))
+
+(defmethod print-operand ((r register-operand) s)
+  "Print the register operand."
+  (format s "%~a" (aref (register-list r) (register-operand-i r))))
+
+(def-register-operand gpreg32-operand +gpreg32-list+)
 
 ;; INSTRUCTIONS
 

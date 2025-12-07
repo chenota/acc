@@ -14,6 +14,18 @@
   (is (string= "@VALUE" (to-string (make-type-operand "VALUE"))))
   (signals error (make-type-operand 0)))
 
+(test immediate-operand-test
+  (is (string= "$0" (to-string (make-immediate-operand 0))))
+  (is (string= "$200" (to-string (make-immediate-operand 200))))
+  (signals error (make-immediate-operand "burger")))
+
+(test gpreg32-operand-test
+  (is (string= "%eax" (to-string (make-gpreg32-operand 0))))
+  (is (string= "%r15d" (to-string (make-gpreg32-operand 15))))
+  (signals error (make-gpreg32-operand 1000))
+  (signals error (make-gpreg32-operand -1))
+  (signals error (make-gpreg32-operand "burger")))
+
 (def-fixture instruction-test-env ()
   (let ((generic-op (make-ident-operand "VALUE")))
     (&body)))
