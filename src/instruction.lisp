@@ -23,7 +23,7 @@
 
 ;; REGISTER LISTS
 
-(defconstant
+(defparameter
   +gpreg32-list+
   #("eax"
     "ebx"

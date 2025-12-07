@@ -7,7 +7,7 @@
   (col nil :type (integer 0 *))
   (len nil :type (integer 0 *)))
 
-(defconstant
+(defparameter
   +compiled-tokens+
   (mapcar
       (lambda
