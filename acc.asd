@@ -6,10 +6,9 @@
   :serial t
   :depends-on (:cl-ppcre :fiveam)
   :components ((:file "package")
-               (:module "util"
-                        :components ((:file "coverage")))
                (:module "src"
-                        :components ((:file "lexer")
+                        :components ((:file "util")
+                                     (:file "lexer")
                                      (:file "instruction")
                                      (:file "token-sequence")
                                      (:file "expr")
