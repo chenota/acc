@@ -42,3 +42,10 @@
     (is (not (null (expect (make-token-sequence raw-seq) :test-token))))
     (is (null (expect (make-token-sequence raw-seq) :not-a-real-token)))
     (is (= 1 (token-value (let ((s (make-token-sequence raw-seq))) (advance s) (expect s :test-token)))))))
+
+(test test-expect-with-value
+  (with-fixture token-sequence-test-env ()
+    (is (not (null (expect-with-value (make-token-sequence raw-seq) :test-token 0))))
+    (is (not (null (let ((s (make-token-sequence raw-seq))) (advance s) (expect-with-value s :test-token 1)))))
+    (is (null (expect-with-value (make-token-sequence raw-seq) :not-a-real-token 0)))
+    (is (null (expect-with-value (make-token-sequence raw-seq) :test-token "burger")))))

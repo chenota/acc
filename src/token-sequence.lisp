@@ -49,5 +49,14 @@
 
 (defmethod expect ((ts token-sequence) kind)
   "If a token of KIND is at the current position, advance, otherwise return NIL."
-  (if (eq (token-kind (peek ts)) kind)
-      (advance ts)))
+  (if
+   (eq (token-kind (peek ts)) kind)
+   (advance ts)))
+
+(defmethod expect-with-value ((ts token-sequence) kind value)
+  "If a token of KIND with VALUE is at the current position, advance, otherwise return NIL."
+  (if
+   (and
+    (eq (token-kind (peek ts)) kind)
+    (equal (token-value (peek ts)) value))
+   (advance ts)))

@@ -47,8 +47,8 @@
 (defun function-rule (seq)
   (peg-rules and seq
     (expect seq :func)
-    fname (expect seq :ident)
-    ftype (expect seq :ident)
+    fname (expect-with-value seq :ident "main")
+    ftype (expect-with-value seq :ident "int")
     (expect seq :lbrace)
     expr (stmt-rule seq)
     (expect seq :rbrace)
