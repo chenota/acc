@@ -45,6 +45,26 @@
       "r14d"
       "r15d")))
 
+(with-ignore-coverage
+  (defparameter
+    +gpreg64-list+
+    #("rax"
+      "rbx"
+      "rcx"
+      "rdx"
+      "rsi"
+      "rdi"
+      "rsp"
+      "rbp"
+      "r8"
+      "r9"
+      "r10"
+      "r11"
+      "r12"
+      "r13"
+      "r14"
+      "r15")))
+
 ;; OPERANDS
 
 (with-ignore-coverage
@@ -93,6 +113,7 @@
   (format s "%~a" (aref (register-list r) (register-operand-i r))))
 
 (def-register-operand gpreg32-operand +gpreg32-list+)
+(def-register-operand gpreg64-operand +gpreg64-list+)
 
 ;; INSTRUCTIONS
 

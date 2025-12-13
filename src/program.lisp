@@ -50,9 +50,9 @@
     fname (expect-with-value seq :ident "main")
     ftype (expect-with-value seq :ident "int")
     (expect seq :lbrace)
-    expr (stmt-rule seq)
+    stmt (stmt-rule seq)
     (expect seq :rbrace)
-    (list :func (token-value fname) (token-value ftype) expr)))
+    (list :func (token-value fname) (token-value ftype) stmt)))
 
 (defun stmt-rule (seq)
   (peg-rules and seq

@@ -5,7 +5,7 @@
   (let ((token (advance seq)))
     (cond
      ((eq :int (token-kind token))
-       (cons :int (token-value token)))
+       (list :int (token-value token)))
      (t (error "bad")))))
 
 (defun left-denotation (seq lhs)

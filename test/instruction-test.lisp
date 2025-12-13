@@ -26,6 +26,13 @@
   (signals error (make-gpreg32-operand -1))
   (signals error (make-gpreg32-operand "burger")))
 
+(test gpreg64-operand-test
+  (is (string= "%rax" (to-string (make-gpreg64-operand 0))))
+  (is (string= "%r15" (to-string (make-gpreg64-operand 15))))
+  (signals error (make-gpreg64-operand 1000))
+  (signals error (make-gpreg64-operand -1))
+  (signals error (make-gpreg64-operand "burger")))
+
 (def-fixture instruction-test-env ()
   (let ((generic-op (make-ident-operand "VALUE")))
     (&body)))
