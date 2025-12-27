@@ -1,5 +1,13 @@
 (in-package :acc)
 
+(defun gen-program (ast)
+  (unless (eq :program (car ast)) (error "bad"))
+  (append
+    (list
+     (make-instruction ".text")
+     (make-instruction ".globl" (make-ident-operand "main")))
+    (gen-func (cadr ast))))
+
 (defun gen-func (ast)
   (unless (eq :func (car ast)) (error "bad"))
   (append
