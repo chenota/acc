@@ -4,6 +4,9 @@
   :license "MIT"
   :version "0.1.0"
   :serial t
+  :build-operation "program-op"
+  :build-pathname "acc"
+  :entry-point "acc:main"
   :depends-on (:cl-ppcre :fiveam :unix-opts)
   :components ((:file "package")
                (:module "src"

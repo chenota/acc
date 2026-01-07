@@ -25,15 +25,15 @@
  with exp-count = 0
  with cov-count = 0
  for file in (sb-cover:save-coverage)
-   when (cl-ppcre:scan "src/.*\\.lisp$" (car file))
+   when (cl-ppcre:scan "src/(?!main\\.lisp).*\\.lisp$" (car file))
  do (loop for expr in (cdr file)
             when (typep (first (car expr)) 'integer)
           do (progn
               (incf exp-count)
               (when (eq (cdr expr) t) (incf cov-count))))
  finally (progn
-  (format t "~D out of ~D expressions covered~%" cov-count exp-count)
-  (return (* 100.0 (/ cov-count exp-count))))))
+          (format t "~D out of ~D expressions covered~%" cov-count exp-count)
+          (return (* 100.0 (/ cov-count exp-count))))))
 ;; Save shields URL to file
 (with-open-file (stream "shields.txt"
                         :direction :output
