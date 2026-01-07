@@ -3,6 +3,7 @@
 (require 'sb-cover)
 (ql:quickload :fiveam)
 (ql:quickload :cl-ppcre)
+(ql:quickload :unix-opts)
 ;; Load acc w/ coverage data compiler flag
 (declaim (optimize sb-cover:store-coverage-data))
 (asdf:oos 'asdf:load-op :acc :force t)
