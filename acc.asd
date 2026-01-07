@@ -4,7 +4,7 @@
   :license "MIT"
   :version "0.1.0"
   :serial t
-  :depends-on (:cl-ppcre :fiveam)
+  :depends-on (:cl-ppcre :fiveam :unix-opts)
   :components ((:file "package")
                (:module "src"
                         :components ((:file "util")
@@ -13,7 +13,8 @@
                                      (:file "token-sequence")
                                      (:file "expr")
                                      (:file "program")
-                                     (:file "codegen")))
+                                     (:file "codegen")
+                                     (:file "main")))
                (:module "test"
                         :components ((:file "lexer-test")
                                      (:file "instruction-test")
