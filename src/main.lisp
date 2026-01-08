@@ -33,13 +33,6 @@
           (stream path :if-exists :supersede)
           (do-write stream)))))
 
-(defun compile-string-to-instructions (source)
-  "Compile an input file into an output file"
-  (let* ((token-list (tokenize source))
-         (token-sequence (make-token-sequence token-list))
-         (ast (parse-program token-sequence)))
-    (gen-program ast)))
-
 (defun main ()
   (multiple-value-bind (options free-args)
       ;; Read options
