@@ -49,6 +49,7 @@
     (unless (= 2 (length free-args))
       (format *error-output* "Invalid arguments: Expected two positional arguments~%")
       (opts:exit 1))
+    ;; Compile and output program
     (let* ((source (with-report-error "IO" (slurp-input (first free-args))))
            (token-list (with-report-error "Lexical" (tokenize source)))
            (token-sequence (make-token-sequence token-list))
