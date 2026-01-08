@@ -7,7 +7,7 @@
   :build-operation "program-op"
   :build-pathname "acc"
   :entry-point "acc:main"
-  :depends-on (:cl-ppcre :fiveam :unix-opts)
+  :depends-on (:cl-ppcre :fiveam :unix-opts :uiop)
   :components ((:file "package")
                (:module "src"
                         :components ((:file "util")
