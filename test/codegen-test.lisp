@@ -24,7 +24,7 @@
       ((instrs
         (mapcar
             (lambda (x) (string-downcase (string-trim '(#\Tab) (to-string x))))
-            (gen-func (function-rule (make-token-sequence (tokenize "func main int { return 0; }")))))))
+            (gen-func (function-rule (make-token-sequence (tokenize "func main int { return 0; }"))) 0))))
     (&body)))
 
 (fiveam:test test-gen-func
@@ -33,7 +33,7 @@
     (fiveam:is (member "popq %rbp" instrs :test #'string=))
     (fiveam:is (member "movq %rsp, %rbp" instrs :test #'string=))
     (fiveam:is (member "ret" instrs :test #'string=))
-    (fiveam:signals error (gen-func '(:this-ast-does-not-exist 100 "burger")))))
+    (fiveam:signals error (gen-func '(:this-ast-does-not-exist 100 "burger") 0))))
 
 (fiveam:test test-gen-stmt
   (fiveam:is (string= "movl $0, %eax" (string-trim '(#\Tab) (to-string (car (gen-stmt '(:return (:int 0)))))))))

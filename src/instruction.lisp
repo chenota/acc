@@ -97,6 +97,7 @@
 (def-atomic-operand ident-operand "~a" string)
 (def-atomic-operand type-operand "@~a" string)
 (def-atomic-operand immediate-operand "$~D" integer)
+(def-atomic-operand number-operand "~D" integer)
 
 (with-ignore-coverage
   (defclass register-operand (operand)

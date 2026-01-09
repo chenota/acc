@@ -19,6 +19,11 @@
   (fiveam:is (string= "$200" (to-string (make-immediate-operand 200))))
   (fiveam:signals error (make-immediate-operand "burger")))
 
+(fiveam:test number-operand-test
+  (fiveam:is (string= "0" (to-string (make-number-operand 0))))
+  (fiveam:is (string= "200" (to-string (make-number-operand 200))))
+  (fiveam:signals error (make-number-operand "burger")))
+
 (fiveam:test gpreg32-operand-test
   (fiveam:is (string= "%eax" (to-string (make-gpreg32-operand 0))))
   (fiveam:is (string= "%r15d" (to-string (make-gpreg32-operand 15))))
