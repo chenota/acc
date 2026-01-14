@@ -7,7 +7,7 @@
   :build-operation "program-op"
   :build-pathname "acc"
   :entry-point "acc:main"
-  :depends-on (:cl-ppcre :fiveam :unix-opts :uiop)
+  :depends-on (:cl-ppcre :fiveam :unix-opts :uiop :alexandria)
   :components ((:file "package")
                (:module "src"
                         :components ((:file "util")
@@ -17,11 +17,13 @@
                                      (:file "expr")
                                      (:file "program")
                                      (:file "codegen")
-                                     (:file "main")))
+                                     (:file "main")
+                                     (:file "type")))
                (:module "test"
                         :components ((:file "lexer-test")
                                      (:file "instruction-test")
                                      (:file "token-sequence-test")
                                      (:file "expr-test")
                                      (:file "program-test")
-                                     (:file "codegen-test")))))
+                                     (:file "codegen-test")
+                                     (:file "type-test")))))

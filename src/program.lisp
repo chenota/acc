@@ -21,9 +21,8 @@
           (let ((pos (capture ,seq))
                 (val (,func ,@(reverse flist))))
             (unless val (restore ,seq pos))
-            val))))))
+            val)))))
 
-(with-ignore-coverage
   (defmacro with-nil-error (form)
     "If FORM signals an error, return NIL."
     `(handler-case
