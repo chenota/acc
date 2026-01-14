@@ -7,4 +7,4 @@
   (fiveam:is (= 100 (cadr (expr-bp (make-token-sequence (tokenize "100")) 0)))))
 
 (fiveam:test test-parse-err
-  (fiveam:signals error (expr-bp (make-token-sequence (tokenize "return")))))
+  (fiveam:signals error (expr-bp (make-token-sequence (tokenize "return")) 0)))
