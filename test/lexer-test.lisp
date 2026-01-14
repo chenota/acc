@@ -22,7 +22,7 @@
 
 (fiveam:test ident
   (fiveam:is (equal '("abc" "helloworld" "x") (mapcar #'token-value (tokenize "abc helloworld x"))))
-  (fiveam:is (equal '(:ident :ident :ident) (mapcar #'token-kind (tokenize "abc helloworld x"))))
+  (fiveam:is (every (lambda (x) (eq (token-kind x) :ident)) (tokenize "abc helloworld x int64")))
   (fiveam:is (equal '(3 10 1) (mapcar #'token-len (tokenize "abc helloworld x"))))
   (fiveam:is (equal '("returnreturn" "funcreturn") (mapcar #'token-value (tokenize "returnreturn funcreturn")))))
 
