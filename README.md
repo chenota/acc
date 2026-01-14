@@ -63,3 +63,40 @@ func main int {
 <Expr> := <Int>
 <Int>  := [0-9]+
 ```
+
+### Feature 2: Basic Type System
+
+It seems weird to have a type system when the only possible expression is a single integer, however the `int` from `func main int` is a fake type that's not meaningful in any way which bothers me, and I'd like to have types integrated into this project as early as possible as to avoid needing to hack a type system in later. I'm also introducing a type conversion operator for testing purposes.
+
+```
+func main int {
+    return (int) 0;
+}
+```
+
+#### Statement Grammar (PEG)
+
+```
+<Program>  := <Function>
+<Function> := "func" "main" "int" "{" <Stmt> "}"
+<Stmt>     := "return" <Expr> ";"
+```
+
+#### Expression Grammar (CFG)
+
+```
+<Expr> := <Int>
+        | "(" <Type> ")" <Expr>
+<Int>  := [0-9]+
+```
+
+#### Type Grammar (CFG)
+
+```
+<Type> := <Int>
+<Int>  := "char"
+        | "int16"
+        | "int32"
+        | "int64"
+        | "int"
+```
