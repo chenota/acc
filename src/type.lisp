@@ -1,14 +1,10 @@
 (in-package :acc)
 
+(with-ignore-coverage
+  (define-condition parse-type-error (error) ()))
+
 (defun parse-type (seq)
-  (let
-      ((pos (capture seq)))
-    (handler-bind
-        ((error
-             (lambda (c)
-               (declare (ignore c))
-               (restore seq pos))))
-      `(:type ,(parse-type-atom seq)))))
+  (parse-type-atom seq))
 
 (defun parse-type-atom (seq)
   (let
@@ -21,5 +17,5 @@
        ("int32" '(:int32))
        ("int64" '(:int64))
        ("int" '(:int64)) ;; int is an alias for int64
-       (t (error "bad")))
-     (error "bad"))))
+       (t (error 'parse-type-error)))
+     (error 'parse-type-error))))
