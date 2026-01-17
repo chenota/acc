@@ -23,7 +23,7 @@
       ((instrs
         (mapcar
             (lambda (x) (string-downcase (string-trim '(#\Tab) (to-string x))))
-            (gen-func (function-rule (make-token-sequence (tokenize "func main int { return 0; }")) (list 0 0))))))
+            (gen-func (function-rule (make-token-sequence (tokenize "func main int { return 0; }")))))))
     (&body)))
 
 (fiveam:test test-gen-func

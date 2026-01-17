@@ -32,30 +32,33 @@
         (declare (ignore c))))))
 
 (defun parse-program (seq)
-  (let ((result (program-rule seq (token-loc (peek seq)))))
+  (let ((result (program-rule seq)))
     (if result
         result
         (error "bad"))))
 
-(defun program-rule (seq loc)
-  (peg-rules and seq
-    func (function-rule seq loc)
-    (expect seq :ENDMARKER)
-    (make-program-node :functions (list func) :location loc)))
+(defun program-rule (seq)
+  (let ((base-loc (token-loc (peek seq))))
+    (peg-rules and seq
+      func (function-rule seq)
+      (expect seq :ENDMARKER)
+      (make-program-node :functions (list func) :location base-loc))))
 
-(defun function-rule (seq loc)
-  (peg-rules and seq
-    (expect seq :func)
-    fname (expect-with-value seq :ident "main")
-    return-type (with-nil-error (parse-type seq))
-    (expect seq :lbrace)
-    stmt (stmt-rule seq (token-loc (peek seq)))
-    (expect seq :rbrace)
-    (make-function-node :name (token-value fname) :return-type return-type :body stmt :location loc)))
+(defun function-rule (seq)
+  (let ((base-loc (token-loc (peek seq))))
+    (peg-rules and seq
+      (expect seq :func)
+      fname (expect-with-value seq :ident "main")
+      return-type (with-nil-error (parse-type seq))
+      (expect seq :lbrace)
+      stmt (stmt-rule seq)
+      (expect seq :rbrace)
+      (make-function-node :name (token-value fname) :return-type return-type :body stmt :location base-loc))))
 
-(defun stmt-rule (seq loc)
-  (peg-rules and seq
-    (expect seq :return)
-    expr (with-nil-error (expr-bp seq 0))
-    (expect seq :semi)
-    (make-return-statement-node :expression expr :location loc)))
+(defun stmt-rule (seq)
+  (let ((base-loc (token-loc (peek seq))))
+    (peg-rules and seq
+      (expect seq :return)
+      expr (with-nil-error (expr-bp seq 0))
+      (expect seq :semi)
+      (make-return-statement-node :expression expr :location base-loc))))
