@@ -12,10 +12,15 @@
     (if
      tok
      (alexandria:switch ((token-value tok) :test #'string=)
-       ("char" '(:char))
-       ("int16" '(:int16))
-       ("int32" '(:int32))
-       ("int64" '(:int64))
-       ("int" '(:int64)) ;; int is an alias for int64
+       ("char" (make-primitive-type :kind :char))
+       ("int16" (make-primitive-type :kind :int16))
+       ("int32" (make-primitive-type :kind :int32))
+       ("int64" (make-primitive-type :kind :int64))
+       ("int" (make-primitive-type :kind :int64)) ;; int is an alias for int64
        (t (error 'parse-type-error)))
      (error 'parse-type-error))))
+
+;; AST NODES
+
+(with-ignore-coverage
+  )

@@ -18,7 +18,8 @@
                                      (:file "program")
                                      (:file "codegen")
                                      (:file "main")
-                                     (:file "type")))
+                                     (:file "type")
+                                     (:file "ast")))
                (:module "test"
                         :components ((:file "lexer")
                                      (:file "instruction")

@@ -4,8 +4,7 @@
   (defstruct token
     (kind nil :type keyword)
     (value nil :type t)
-    (row nil :type (integer 0 *))
-    (col nil :type (integer 0 *))
+    (loc nil :type t)
     (len nil :type (integer 0 *)))
 
   (defparameter
@@ -63,8 +62,7 @@
                                 :value (handler-case
                                            (funcall (third matched-rule) match)
                                          (undefined-function (e) (declare (ignore e)) match))
-                                :row row
-                                :col col
+                                :loc (list row col)
                                 :len (length match)))
                            (if
                             (eq (first matched-rule) :newline)

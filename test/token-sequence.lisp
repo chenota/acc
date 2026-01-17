@@ -8,7 +8,7 @@
          (raw-seq
           (loop
          for i from 0 below raw-seq-len
-         collect (make-token :kind :test-token :value i :row 0 :col 0 :len 0))))
+         collect (make-token :kind :test-token :value i :loc (list 0 0) :len 0))))
     (&body)))
 
 (fiveam:test test-initialization

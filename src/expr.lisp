@@ -3,7 +3,7 @@
 (defun expr-bp (seq min-lbp)
   "Parse an expression with respect to minimum binding power."
   (loop
- with lhs = (nud seq)
+ with lhs = (nud seq (token-loc (peek seq)))
  for lbp = (left-binding-power seq)
  while (not (or (null lbp) (< lbp min-lbp)))
  do (setq lhs (led seq lhs))
@@ -23,30 +23,30 @@
 
 ;; NULL DENOTATIONS
 
-(defun nud (seq)
+(defun nud (seq loc)
   "Parse sequence according to null denotation of head."
   (let ((token (advance seq)))
     (alexandria:switch ((token-kind token) :test #'eq)
       (:int
-       (nud-int token))
+       (nud-int token loc))
       (:lparen
-       (nud-lparen seq))
+       (nud-lparen seq loc))
       (t (error "bad")))))
 
-(defun nud-int (token)
-  (list :int (token-value token)))
+(defun nud-int (token loc)
+  (make-int-node :value (token-value token) :location loc))
 
-(defun nud-lparen (seq)
+(defun nud-lparen (seq loc)
   (let
       ((pos (capture seq)))
     (handler-case
         (let ((type-ast (parse-type seq)))
-          (unless (expect seq :rparen) (error "bad"))
+          (unless (expect seq :rparen) (error "expected right paren"))
           (let ((expr-ast (expr-bp seq 99)))
-            (list :cast type-ast expr-ast)))
+            (make-cast-node :cast-type type-ast :expression expr-ast :location loc)))
       (parse-type-error
        ()
        (restore seq pos)
        (let ((expr-ast (expr-bp seq 0)))
-         (unless (expect seq :rparen) (error "bad"))
+         (unless (expect seq :rparen) (error "expected right paren"))
          expr-ast)))))

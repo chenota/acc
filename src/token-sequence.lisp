@@ -19,8 +19,8 @@
         (let ((last-token (aref
                               (token-list ts)
                             (1- (len ts)))))
-          (setf (end-row ts) (+ (token-row last-token) (token-len last-token)))
-          (setf (end-col ts) (token-col last-token)))))
+          (setf (end-row ts) (+ (first (token-loc last-token)) (token-len last-token)))
+          (setf (end-col ts) (second (token-loc last-token))))))
 
 (defmethod make-token-sequence (token-list)
   "Create a token sequence"
@@ -29,7 +29,7 @@
 (defmethod peek ((ts token-sequence))
   "Return the token at the curren position. Returns an ENDMARKER if at the end of the sequence."
   (if (= (location ts) (len ts))
-      (make-token :kind :ENDMARKER :row (end-row ts) :col (end-col ts) :len 0)
+      (make-token :kind :ENDMARKER :loc (list (end-row ts) (end-col ts)) :len 0)
       (aref (token-list ts) (location ts))))
 
 (defmethod advance ((ts token-sequence))

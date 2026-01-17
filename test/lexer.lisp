@@ -27,7 +27,7 @@
   (fiveam:is (equal '("returnreturn" "funcreturn") (mapcar #'token-value (tokenize "returnreturn funcreturn")))))
 
 (fiveam:test location
-  (fiveam:is (equal '(0 2 6) (mapcar #'token-row (tokenize "a bcd efgh"))))
-  (fiveam:is (equal '(0 0 0) (mapcar #'token-col (tokenize "a bcd efgh"))))
-  (fiveam:is (equal '(0 0 4 0) (mapcar #'token-row (tokenize (format nil "a~%bcd efg~%hij")))))
-  (fiveam:is (equal '(0 1 1 2) (mapcar #'token-col (tokenize (format nil "a~%bcd efg~%hij"))))))
+  (fiveam:is (equal '(0 2 6) (mapcar (lambda (x) (first (token-loc x))) (tokenize "a bcd efgh"))))
+  (fiveam:is (equal '(0 0 0) (mapcar (lambda (x) (second (token-loc x))) (tokenize "a bcd efgh"))))
+  (fiveam:is (equal '(0 0 4 0) (mapcar (lambda (x) (first (token-loc x))) (tokenize (format nil "a~%bcd efg~%hij")))))
+  (fiveam:is (equal '(0 1 1 2) (mapcar (lambda (x) (second (token-loc x))) (tokenize (format nil "a~%bcd efg~%hij"))))))
