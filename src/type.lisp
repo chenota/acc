@@ -19,8 +19,3 @@
        ("int" (make-primitive-type :kind :int64)) ;; int is an alias for int64
        (t (error 'parse-type-error)))
      (error 'parse-type-error))))
-
-;; AST NODES
-
-(with-ignore-coverage
-  )
