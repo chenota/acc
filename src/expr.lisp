@@ -42,12 +42,12 @@
        (pos (capture seq)))
     (handler-case
         (let ((type-ast (parse-type seq)))
-          (unless (expect seq :rparen) (error "expected right paren"))
+          (unless (expect seq :rparen) (error 'location-error :location (token-loc (peek seq)) :message "expected RPAREN"))
           (let ((expr-ast (expr-bp seq 99)))
             (make-cast-node :cast-type type-ast :expression expr-ast :location base-loc)))
       (parse-type-error
        ()
        (restore seq pos)
        (let ((expr-ast (expr-bp seq 0)))
-         (unless (expect seq :rparen) (error "expected right paren"))
+         (unless (expect seq :rparen) (error 'location-error :location (token-loc (peek seq)) :message "expected RPAREN"))
          expr-ast)))))

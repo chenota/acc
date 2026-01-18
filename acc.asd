@@ -11,6 +11,8 @@
   :components ((:file "package")
                (:module "src"
                         :components ((:file "util")
+                                     (:file "error")
+                                     (:file "ast")
                                      (:file "lexer")
                                      (:file "instruction")
                                      (:file "token-sequence")
@@ -18,8 +20,7 @@
                                      (:file "program")
                                      (:file "codegen")
                                      (:file "main")
-                                     (:file "type")
-                                     (:file "ast")))
+                                     (:file "type")))
                (:module "test"
                         :components ((:file "lexer")
                                      (:file "instruction")
