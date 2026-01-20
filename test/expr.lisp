@@ -12,7 +12,7 @@
 (fiveam:test test-parse-cast
   (fiveam:is (cast-node-p (expr-bp (make-token-sequence (tokenize "(int) 100")) 0)))
   (fiveam:is (eq :char (primitive-type-kind (cast-node-cast-type (expr-bp (make-token-sequence (tokenize "(char) (int) 100")) 0)))))
-  (fiveam:is (eq :int64 (primitive-type-kind (cast-node-cast-type (cast-node-expression (expr-bp (make-token-sequence (tokenize "(char) (int) 100")) 0))))))
+  (fiveam:is (eq :int32 (primitive-type-kind (cast-node-cast-type (cast-node-expression (expr-bp (make-token-sequence (tokenize "(char) (int) 100")) 0))))))
   (fiveam:signals error (expr-bp (make-token-sequence (tokenize "(int 100")) 0))
   (fiveam:signals error (expr-bp (make-token-sequence (tokenize "int) 100")) 0))
   (fiveam:signals error (expr-bp (make-token-sequence (tokenize "((int)) 100")) 0)))

@@ -9,7 +9,7 @@
 (fiveam:test test-func
   (fiveam:is (function-node-p (function-rule (make-token-sequence (tokenize "func main int { return 0; }")))))
   (fiveam:is (string= "main" (function-node-name (function-rule (make-token-sequence (tokenize "func main int { return 0; }"))))))
-  (fiveam:is (eq :int64 (primitive-type-kind (function-node-return-type (function-rule (make-token-sequence (tokenize "func main int { return 0; }")))))))
+  (fiveam:is (eq :int32 (primitive-type-kind (function-node-return-type (function-rule (make-token-sequence (tokenize "func main int { return 0; }")))))))
   (fiveam:is (not (function-rule (make-token-sequence (tokenize "func { return 0; }"))))))
 
 (fiveam:test test-stmt
