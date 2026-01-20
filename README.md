@@ -87,6 +87,7 @@ func main int {
 ```
 <Expr> := <Int>
         | "(" <Type> ")" <Expr>
+        | "(" <Expr> ")"
 <Int>  := [0-9]+
 ```
 
