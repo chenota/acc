@@ -10,17 +10,21 @@
   :depends-on (:cl-ppcre :fiveam :unix-opts :uiop :alexandria)
   :components ((:file "package")
                (:module "src"
-                        :components ((:file "util")
-                                     (:file "error")
-                                     (:file "ast")
-                                     (:file "lexer")
-                                     (:file "instruction")
-                                     (:file "token-sequence")
-                                     (:file "expr")
-                                     (:file "program")
-                                     (:file "codegen")
-                                     (:file "main")
-                                     (:file "type")))
+                        :components ((:module "shared"
+                                              :components ((:file "util")
+                                                           (:file "ast")
+                                                           (:file "error")))
+                                     (:module "token"
+                                              :components ((:file "lexer")
+                                                           (:file "token-sequence")))
+                                     (:module "parse"
+                                              :components ((:file "expr")
+                                                           (:file "program")
+                                                           (:file "type")))
+                                     (:module "codegen"
+                                              :components ((:file "codegen")
+                                                           (:file "instruction")))
+                                     (:file "main")))
                (:module "test"
                         :components ((:file "lexer")
                                      (:file "instruction")
