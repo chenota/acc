@@ -53,7 +53,7 @@
       (expect seq :lbrace)
       stmt (stmt-rule seq)
       (expect seq :rbrace)
-      (make-function-node :name (token-value fname) :return-type return-type :body stmt :location base-loc))))
+      (make-function-node :name (token-value fname) :return-type return-type :body (list stmt) :location base-loc))))
 
 (defun stmt-rule (seq)
   (let ((base-loc (token-loc (peek seq))))

@@ -10,7 +10,9 @@
   :depends-on (:cl-ppcre :fiveam :unix-opts :uiop :alexandria)
   :components ((:file "package")
                (:module "src"
-                        :components ((:module "shared"
+                        :components ((:module "analysis"
+                                              :components ((:file "static-type")))
+                                     (:module "shared"
                                               :components ((:file "util")
                                                            (:file "ast")
                                                            (:file "error")))
@@ -32,4 +34,5 @@
                                      (:file "expr")
                                      (:file "program")
                                      (:file "codegen")
-                                     (:file "type")))))
+                                     (:file "type")
+                                     (:file "static-type")))))

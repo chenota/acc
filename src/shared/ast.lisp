@@ -23,4 +23,7 @@
   ;;TYPE
   (defstruct (type-base (:constructor nil)))
   (defstruct (primitive-type (:include type-base))
-    (kind nil :type keyword)))
+    (kind nil :type keyword))
+  (defstruct (function-type (:include type-base))
+    (parameters nil)
+    (return-type nil)))

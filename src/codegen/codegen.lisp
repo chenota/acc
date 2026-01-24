@@ -24,7 +24,7 @@
      (make-instruction "endbr64")
      (make-instruction "pushq" (make-gpreg64-operand 7))
      (make-instruction "movq" (make-gpreg64-operand 6) (make-gpreg64-operand 7)))
-    (gen-stmt (function-node-body ast))
+    (loop for stmt in (function-node-body ast) append (gen-stmt stmt))
     (list
      (make-instruction "popq" (make-gpreg64-operand 7))
      (make-instruction "ret")
