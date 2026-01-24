@@ -36,4 +36,5 @@
                                      (:file "program")
                                      (:file "codegen")
                                      (:file "type")
-                                     (:file "static-type")))))
+                                     (:file "static-type")
+                                     (:file "env")))))
