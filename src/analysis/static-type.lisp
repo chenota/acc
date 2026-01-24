@@ -1,31 +1,48 @@
 (in-package :acc)
 
-(defun assign-types (ast function-return-context)
-  (cond
-   ((program-node-p ast)
-     (loop for func in (program-node-functions ast) do (assign-types func function-return-context)))
-   ((function-node-p ast)
-     (loop for stmt in (function-node-body ast) do (assign-types stmt (function-node-return-type ast)))
-     (setf (function-node-type-info ast) (make-function-type :parameters nil :return-type (function-node-return-type ast))))
-   ((return-statement-node-p ast)
-     (assign-types (return-statement-node-expression ast) function-return-context)
-     (unless
-         (valid-cast-p (ast-node-type-info (return-statement-node-expression ast)) function-return-context)
-       (error 'location-error
-         :location (return-statement-node-location ast)
-         :message (format nil "Invalid return type: ~A" (ast-node-type-info (return-statement-node-expression ast))))))
-   ((cast-node-p ast)
-     (assign-types (cast-node-expression ast) function-return-context)
-     (unless (valid-cast-p (ast-node-type-info (cast-node-expression ast)) (cast-node-cast-type ast))
-       (error
-           'location-error
-         :location (cast-node-location ast)
-         :message (format nil "Invalid type cast: ~A to ~A" (ast-node-type-info (cast-node-expression ast)) (cast-node-cast-type ast))))
-     (setf (cast-node-type-info ast) (cast-node-cast-type ast)))
-   ((int-node-p ast)
-     (setf (int-node-type-info ast) (make-primitive-type :kind :untyped-int)))))
+(with-ignore-coverage
+  (defstruct assign-type-environment
+    (function-return-context nil))
+  (defgeneric assign-type (node env)
+    (:documentation "Assigns and returns the type of the node within the given environment")))
+
+(defun set-program-types (ast)
+  (assert (program-node-p ast))
+  (assign-type ast (make-env))
+  ast)
+
+(defmethod assign-type ((node program-node) env)
+  (loop for func in (program-node-functions node) do (assign-type func env))
+  nil)
+
+(defmethod assign-type ((node function-node) env)
+  (let ((inner-env (env-extend env)))
+    (setf (env-return-type inner-env) (function-node-return-type node))
+    (loop for stmt in (function-node-body node) do (assign-type stmt inner-env))
+    (setf
+      (function-node-type-info node)
+      (make-function-type :parameters nil :return-type (function-node-return-type node)))))
+
+(defmethod assign-type ((node return-statement-node) env)
+  (let ((t1 (assign-type (return-statement-node-expression node) env)))
+    (unless
+        (valid-cast-p t1 (find-return-type env))
+      (error 'location-error
+        :location (ast-node-location node)
+        :message (format nil "Invalid return type: ~A" t1)))
+    nil))
+
+(defmethod assign-type ((node cast-node) env)
+  (let ((t1 (assign-type (cast-node-expression node) env)))
+    (unless (valid-cast-p t1 (cast-node-cast-type node))
+      (error
+          'location-error
+        :location (ast-node-location node)
+        :message (format nil "Invalid type cast: ~A to ~A" t1 (cast-node-cast-type node))))
+    (setf (cast-node-type-info node) (cast-node-cast-type node))))
+
+(defmethod assign-type ((node int-node) env)
+  (setf (int-node-type-info node) (make-integer-type :size :generic)))
 
 (defun valid-cast-p (source-type destination-type)
-  (declare (ignore source-type))
-  ;; Only invalid cast is to a nil type
-  (not (null destination-type)))
+  (not (or (null source-type) (null destination-type))))

@@ -10,12 +10,13 @@
   :depends-on (:cl-ppcre :fiveam :unix-opts :uiop :alexandria)
   :components ((:file "package")
                (:module "src"
-                        :components ((:module "analysis"
-                                              :components ((:file "static-type")))
-                                     (:module "shared"
+                        :components ((:module "shared"
                                               :components ((:file "util")
+                                                           (:file "env")
                                                            (:file "ast")
                                                            (:file "error")))
+                                     (:module "analysis"
+                                              :components ((:file "static-type")))
                                      (:module "token"
                                               :components ((:file "lexer")
                                                            (:file "token-sequence")))

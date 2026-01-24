@@ -9,10 +9,10 @@
     (if
      tok
      (alexandria:switch ((token-value tok) :test #'string=)
-       ("char" (make-primitive-type :kind :char))
-       ("int16" (make-primitive-type :kind :int16))
-       ("int32" (make-primitive-type :kind :int32))
-       ("int64" (make-primitive-type :kind :int64))
-       ("int" (make-primitive-type :kind :int32)) ;; int is an alias for int32
+       ("char" (make-integer-type :size :char))
+       ("int16" (make-integer-type :size :int16))
+       ("int32" (make-integer-type :size :int32))
+       ("int64" (make-integer-type :size :int64))
+       ("int" (make-integer-type :size :int32)) ;; int is an alias for int32
        (t (error 'parse-type-error :location (token-loc tok) :message "unknown type")))
      (error 'parse-type-error :location (token-loc (peek seq)) :message "expected IDENT"))))

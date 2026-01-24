@@ -22,8 +22,9 @@
     (expression nil))
   ;;TYPE
   (defstruct (type-base (:constructor nil)))
-  (defstruct (primitive-type (:include type-base))
-    (kind nil :type keyword))
+  (deftype integer-type-size () '(member :generic :char :int16 :int32 :int64))
+  (defstruct (integer-type (:include type-base))
+    (size nil :type integer-type-size))
   (defstruct (function-type (:include type-base))
     (parameters nil)
     (return-type nil)))
