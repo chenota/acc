@@ -95,7 +95,7 @@ func main int {
 
 ```
 <Type> := <Int>
-<Int>  := "char"
+<Int>  := "int8"
         | "int16"
         | "int32"
         | "int64"

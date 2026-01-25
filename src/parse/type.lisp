@@ -9,7 +9,7 @@
     (if
      tok
      (alexandria:switch ((token-value tok) :test #'string=)
-       ("char" (make-integer-type :size :char))
+       ("int8" (make-integer-type :size :int8))
        ("int16" (make-integer-type :size :int16))
        ("int32" (make-integer-type :size :int32))
        ("int64" (make-integer-type :size :int64))
