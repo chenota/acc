@@ -10,7 +10,7 @@
       ((instrs
         (mapcar
             (lambda (x) (string-downcase (string-trim '(#\Tab) (to-string x))))
-            (gen-program (parse-program (make-token-sequence (tokenize "func main int { return 0; }")))))))
+            (gen-program (set-program-types (parse-program (make-token-sequence (tokenize "func main int { return 0; }"))))))))
     (&body)))
 
 (fiveam:test test-gen-prog
@@ -23,7 +23,7 @@
       ((instrs
         (mapcar
             (lambda (x) (string-downcase (string-trim '(#\Tab) (to-string x))))
-            (gen-func (function-rule (make-token-sequence (tokenize "func main int { return 0; }")))))))
+            (gen-func (assign-type (function-rule (make-token-sequence (tokenize "func main int { return 0; }"))) (make-env))))))
     (&body)))
 
 (fiveam:test test-gen-func
@@ -34,7 +34,10 @@
     (fiveam:is (member "ret" instrs :test #'string=))))
 
 (fiveam:test test-gen-stmt
-  (fiveam:is (string= "movl $0, %eax" (string-trim '(#\Tab) (to-string (car (gen-stmt (make-return-statement-node :expression (make-int-node :value 0)))))))))
+  (fiveam:is (string= "movl $0, %eax" (string-trim '(#\Tab) (to-string (car (gen-stmt (make-return-statement-node :expression (make-int-node :value 0 :type-info (make-integer-type :size :int32))))))))))
 
 (fiveam:test test-gen-expr
-  (fiveam:is (string= "movl $0, %eax" (string-trim '(#\Tab) (to-string (car (gen-expr (make-int-node :value 0))))))))
+  (fiveam:is (string= "movb $0, %al" (string-trim '(#\Tab) (to-string (car (gen-expr (make-int-node :value 0 :type-info (make-integer-type :size :int8))))))))
+  (fiveam:is (string= "movw $0, %ax" (string-trim '(#\Tab) (to-string (car (gen-expr (make-int-node :value 0 :type-info (make-integer-type :size :int16))))))))
+  (fiveam:is (string= "movl $0, %eax" (string-trim '(#\Tab) (to-string (car (gen-expr (make-int-node :value 0 :type-info (make-integer-type :size :int32))))))))
+  (fiveam:is (string= "movq $0, %rax" (string-trim '(#\Tab) (to-string (car (gen-expr (make-int-node :value 0 :type-info (make-integer-type :size :int64)))))))))

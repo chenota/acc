@@ -10,7 +10,7 @@
   (fiveam:is (integer-type-p (function-type-return-type (ast-node-type-info (assign-type (function-rule (make-token-sequence (tokenize "func main int { return 0; }"))) (make-env)))))))
 
 (fiveam:test test-return-stmt
-  (fiveam:is (assign-type (stmt-rule (make-token-sequence (tokenize "return 0;"))) (make-env :return-type (make-integer-type :size :int32))))
+  (fiveam:is (eq :int32 (integer-type-size (ast-node-type-info (return-statement-node-expression (assign-type (stmt-rule (make-token-sequence (tokenize "return 0;"))) (make-env :return-type (make-integer-type :size :int32))))))))
   (fiveam:signals error (assign-type (stmt-rule (make-token-sequence (tokenize "return 0;"))) (make-env))))
 
 (fiveam:test test-expr

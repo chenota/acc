@@ -36,4 +36,12 @@
 
 (defun gen-expr (ast)
   (assert (int-node-p ast))
-  (list (make-instruction "movl" (make-immediate-operand (int-node-value ast)) (make-gpreg32-operand 0))))
+  (let ((size (integer-type-size (ast-node-type-info ast))))
+    (assert (member size '(:int8 :int16 :int32 :int64)))
+    (list (case size
+            (:int8 (make-instruction "movb" (make-immediate-operand (int-node-value ast)) (make-gpreg8-operand 0)))
+            (:int16 (make-instruction "movw" (make-immediate-operand (int-node-value ast)) (make-gpreg16-operand 0)))
+            (:int32 (make-instruction "movl" (make-immediate-operand (int-node-value ast)) (make-gpreg32-operand 0)))
+            (:int64 (if (typep (int-node-value ast) '(signed-byte 32))
+                        (make-instruction "movq" (make-immediate-operand (int-node-value ast)) (make-gpreg64-operand 0))
+                        (make-instruction "movabs" (make-immediate-operand (int-node-value ast)) (make-gpreg64-operand 0))))))))

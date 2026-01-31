@@ -78,7 +78,7 @@ func main int {
 
 ```
 <Program>  := <Function>
-<Function> := "func" "main" "int" "{" <Stmt> "}"
+<Function> := "func" "main" <Type:Int> "{" <Stmt> "}"
 <Stmt>     := "return" <Expr> ";"
 ```
 

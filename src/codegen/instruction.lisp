@@ -27,6 +27,44 @@
 
 (with-ignore-coverage
   (defparameter
+    +gpreg8-list+
+    #("al"
+      "bl"
+      "cl"
+      "dl"
+      "sil"
+      "dil"
+      "bpl"
+      "spl"
+      "r8b"
+      "r9b"
+      "r10b"
+      "r11b"
+      "r12b"
+      "r13b"
+      "r14b"
+      "r15b"))
+
+  (defparameter
+    +gpreg16-list+
+    #("ax"
+      "bx"
+      "cx"
+      "dx"
+      "si"
+      "di"
+      "bp"
+      "sp"
+      "r8w"
+      "r9w"
+      "r10w"
+      "r11w"
+      "r12w"
+      "r13w"
+      "r14w"
+      "r15w"))
+
+  (defparameter
     +gpreg32-list+
     #("eax"
       "ebx"
@@ -43,9 +81,8 @@
       "r12d"
       "r13d"
       "r14d"
-      "r15d")))
+      "r15d"))
 
-(with-ignore-coverage
   (defparameter
     +gpreg64-list+
     #("rax"
@@ -113,8 +150,11 @@
   "Print the register operand."
   (format s "%~a" (aref (register-list r) (register-operand-i r))))
 
-(def-register-operand gpreg32-operand +gpreg32-list+)
-(def-register-operand gpreg64-operand +gpreg64-list+)
+(with-ignore-coverage
+  (def-register-operand gpreg8-operand +gpreg8-list+)
+  (def-register-operand gpreg16-operand +gpreg16-list+)
+  (def-register-operand gpreg32-operand +gpreg32-list+)
+  (def-register-operand gpreg64-operand +gpreg64-list+))
 
 ;; INSTRUCTIONS
 

@@ -28,12 +28,14 @@
     node))
 
 (defmethod assign-type ((node return-statement-node) env)
-  (let ((e1 (assign-type (return-statement-node-expression node) env)))
+  (let ((e1 (assign-type (return-statement-node-expression node) env))
+        (return-type (find-return-type env)))
     (unless
-        (valid-cast-p e1 (find-return-type env))
+        (valid-cast-p e1 return-type)
       (error 'location-error
         :location (ast-node-location node)
         :message (format nil "Invalid return type: ~A" e1)))
+    (setf (ast-node-type-info e1) return-type)
     (setf (return-statement-node-expression node) e1)
     node))
 
