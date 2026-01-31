@@ -20,6 +20,6 @@
 
 (fiveam:test cast-overflow-err
   (fiveam:signals error (assign-type (expr-bp (make-token-sequence (tokenize "(int8) 256")) 0) (make-env)))
-  (fiveam:signals error (assign-type (expr-bp (make-token-sequence (tokenize (format nil ("(int16) ~A" (ash 1 16))))) 0) (make-env)))
-  (fiveam:signals error (assign-type (expr-bp (make-token-sequence (tokenize (format nil ("(int32) ~A" (ash 1 32))))) 0) (make-env)))
-  (fiveam:signals error (assign-type (expr-bp (make-token-sequence (tokenize (format nil ("(int64) ~A" (ash 1 64))))) 0) (make-env))))
+  (fiveam:signals error (assign-type (expr-bp (make-token-sequence (tokenize (format nil "(int16) ~A" (ash 1 16)))) 0) (make-env)))
+  (fiveam:signals error (assign-type (expr-bp (make-token-sequence (tokenize (format nil "(int32) ~A" (ash 1 32)))) 0) (make-env)))
+  (fiveam:signals error (assign-type (expr-bp (make-token-sequence (tokenize (format nil "(int64) ~A" (ash 1 64)))) 0) (make-env))))
