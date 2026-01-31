@@ -1,0 +1,3 @@
+func main int {
+    return (int16) (int8) 1;
+}
