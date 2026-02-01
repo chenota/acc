@@ -8,13 +8,13 @@
      (make-instruction ".globl" (make-ident-operand "main")))
     (let ((functions (program-node-functions ast)))
       (unless (and (= (length functions) 1)) (error "must have exactly one function"))
-      (gen-func (first functions)))
+      (gen-fun (first functions)))
     (list
      (make-instruction ".section" (make-ident-operand ".note.GNU-stack") (make-string-operand "") (make-type-operand "progbits"))
      (make-instruction ".section" (make-ident-operand ".note.gnu.property") (make-string-operand "a"))
      (make-instruction ".align" (make-number-operand 8)))))
 
-(defun gen-func (ast)
+(defun gen-fun (ast)
   (assert (function-node-p ast))
   (unless (string= "main" (function-node-name ast)) (error "function must be named main"))
   (append

@@ -17,7 +17,7 @@
            (cl-ppcre:create-scanner
              (concatenate 'string "^" (second token)))
            (third token)))
-        `((:func "func" t)
+        `((:fun "fun" t)
           (:return "return" t)
           (:semi ";" t)
           (:lbrace "\\{" t)

@@ -10,7 +10,7 @@
       ((instrs
         (mapcar
             (lambda (x) (string-downcase (string-trim '(#\Tab) (to-string x))))
-            (gen-program (set-program-types (parse-program (make-token-sequence (tokenize "func main int { return 0; }"))))))))
+            (gen-program (set-program-types (parse-program (make-token-sequence (tokenize "fun main int { return 0; }"))))))))
     (&body)))
 
 (fiveam:test test-gen-prog
@@ -18,16 +18,16 @@
     (fiveam:is (member ".text" instrs :test #'string=))
     (fiveam:is (member ".globl main" instrs :test #'string=))))
 
-(fiveam:def-fixture gen-func-test-env ()
+(fiveam:def-fixture gen-fun-test-env ()
   (let
       ((instrs
         (mapcar
             (lambda (x) (string-downcase (string-trim '(#\Tab) (to-string x))))
-            (gen-func (assign-type (function-rule (make-token-sequence (tokenize "func main int { return 0; }"))) (make-env))))))
+            (gen-fun (assign-type (function-rule (make-token-sequence (tokenize "fun main int { return 0; }"))) (make-env))))))
     (&body)))
 
-(fiveam:test test-gen-func
-  (fiveam:with-fixture gen-func-test-env ()
+(fiveam:test test-gen-fun
+  (fiveam:with-fixture gen-fun-test-env ()
     (fiveam:is (member "pushq %rbp" instrs :test #'string=))
     (fiveam:is (member "popq %rbp" instrs :test #'string=))
     (fiveam:is (member "movq %rsp, %rbp" instrs :test #'string=))

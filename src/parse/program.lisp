@@ -1,8 +1,8 @@
 (in-package :acc)
 
 (with-ignore-coverage
-  (defmacro peg-rules (func seq &body symbols-and-forms)
-    "Evaluate FUNC with arguments symbols-and-forms. If FUNC returns NIL, stop execution and restore the state of SEQ."
+  (defmacro peg-rules (fun seq &body symbols-and-forms)
+    "Evaluate fun with arguments symbols-and-forms. If fun returns NIL, stop execution and restore the state of SEQ."
     (loop
    with sym = nil
    with flist = nil
@@ -19,7 +19,7 @@
      (return
        `(let (,@(loop for sym being the hash-keys of vlist collect (list sym nil)))
           (let ((pos (capture ,seq))
-                (val (,func ,@(reverse flist))))
+                (val (,fun ,@(reverse flist))))
             (unless val (restore ,seq pos))
             val)))))
 
@@ -40,14 +40,14 @@
 (defun program-rule (seq)
   (let ((base-loc (token-loc (peek seq))))
     (peg-rules and seq
-      func (function-rule seq)
+      fun (function-rule seq)
       (expect seq :ENDMARKER)
-      (make-program-node :functions (list func) :location base-loc))))
+      (make-program-node :functions (list fun) :location base-loc))))
 
 (defun function-rule (seq)
   (let ((base-loc (token-loc (peek seq))))
     (peg-rules and seq
-      (expect seq :func)
+      (expect seq :fun)
       fname (expect-with-value seq :ident "main")
       return-type (with-nil-error (parse-type seq))
       (expect seq :lbrace)

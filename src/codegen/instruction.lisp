@@ -6,22 +6,22 @@
   (defmacro def-atomic-operand (name control-string value-type)
     "Create a new atomic operand."
     (let* ((pkg (symbol-package name))
-           (make-func (intern (format nil "MAKE-~A" (symbol-name name)) pkg)))
+           (make-fun (intern (format nil "MAKE-~A" (symbol-name name)) pkg)))
       `(progn
         (defclass ,name (atomic-operand) ())
         (defmethod control-string ((_ ,name)) (declare (ignore _)) ,control-string)
         (defmethod value-type ((_ ,name)) (declare (ignore _)) ',value-type)
-        (defun ,make-func (value) (make-instance ',name :value value))))))
+        (defun ,make-fun (value) (make-instance ',name :value value))))))
 
 (with-ignore-coverage
   (defmacro def-register-operand (name register-list)
     "Create a new register operand."
     (let* ((pkg (symbol-package name))
-           (make-func (intern (format nil "MAKE-~A" (symbol-name name)) pkg)))
+           (make-fun (intern (format nil "MAKE-~A" (symbol-name name)) pkg)))
       `(progn
         (defclass ,name (register-operand) ())
         (defmethod register-list ((_ ,name)) (declare (ignore _)) ,register-list)
-        (defun ,make-func (i) (make-instance ',name :i i))))))
+        (defun ,make-fun (i) (make-instance ',name :i i))))))
 
 ;; REGISTER LISTS
 

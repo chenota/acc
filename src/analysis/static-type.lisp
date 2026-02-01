@@ -15,7 +15,7 @@
   ast)
 
 (defmethod assign-type ((node program-node) env)
-  (loop for func in (program-node-functions node) do (assign-type func env))
+  (loop for fun in (program-node-functions node) do (assign-type fun env))
   node)
 
 (defmethod assign-type ((node function-node) env)

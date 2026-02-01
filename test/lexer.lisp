@@ -3,17 +3,17 @@
 (fiveam:def-suite lexer)
 
 (fiveam:test kw-test-single
-  (fiveam:is (eq :func (token-kind (first (tokenize "func")))))
+  (fiveam:is (eq :fun (token-kind (first (tokenize "fun")))))
   (fiveam:is (eq :semi (token-kind (first (tokenize ";")))))
   (fiveam:is (eq :return (token-kind (first (tokenize "return"))))))
 
 (fiveam:test kw-test-multi
-  (fiveam:is (equal '(:func :lbrace :return :rbrace) (mapcar #'token-kind (tokenize "func{return}"))))
+  (fiveam:is (equal '(:fun :lbrace :return :rbrace) (mapcar #'token-kind (tokenize "fun{return}"))))
   (fiveam:is (equal '(:lbrace :rbrace :lbrace :rbrace) (mapcar #'token-kind (tokenize "{}{}"))))
-  (fiveam:is (equal '(:return :lbrace :func :rbrace) (mapcar #'token-kind (tokenize "return{func}")))))
+  (fiveam:is (equal '(:return :lbrace :fun :rbrace) (mapcar #'token-kind (tokenize "return{fun}")))))
 
 (fiveam:test ignore-whitespace
-  (fiveam:is (equal '(:return :func :return :func) (mapcar #'token-kind (tokenize "return func return func")))))
+  (fiveam:is (equal '(:return :fun :return :fun) (mapcar #'token-kind (tokenize "return fun return fun")))))
 
 (fiveam:test int
   (fiveam:is (equal '(100 10 45 3) (mapcar #'token-value (tokenize "100 10 45 3"))))
