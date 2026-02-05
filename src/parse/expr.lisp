@@ -31,7 +31,12 @@
        (nud-int token))
       (:lparen
        (nud-lparen seq))
+      (:ident
+       (nud-ident token))
       (t (error "bad")))))
+
+(defun nud-ident (token)
+  (make-ident-node :name (token-value token) :location (token-loc token)))
 
 (defun nud-int (token)
   (make-int-node :value (token-value token) :location (token-loc token)))
