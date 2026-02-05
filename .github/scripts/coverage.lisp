@@ -10,10 +10,7 @@
 ;; Run all tests
 (unless (fiveam:run-all-tests)
   (with-open-file
-      (stream "shields.txt"
-              :direction :output
-              :if-exists :supersede
-              :if-does-not-exist :create)
+      (stream "shields.txt" :direction :output :if-does-not-exist :create)
     (format stream "https://img.shields.io/badge/coverage-fail-red"))
   (sb-ext:quit :unix-status 1))
 ;; Calculate expression coverage
@@ -25,7 +22,7 @@
  for file in (sb-cover:save-coverage)
    when (cl-ppcre:scan "src/.+/.*\\.lisp$" (car file))
  do (loop for expr in (cdr file)
-            when (typep (first (car expr)) 'integer)
+            when (typep (caar expr) 'integer)
           do (progn
               (incf exp-count)
               (when (eq (cdr expr) t) (incf cov-count))))
@@ -40,5 +37,3 @@
      ((>= coverage-value 90.0) "green")
      ((>= coverage-value 70.0) "yellow")
      (t "red"))))
-;; Done
-(sb-ext:quit)
