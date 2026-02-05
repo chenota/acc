@@ -1,33 +1,36 @@
 (in-package :acc)
 
 (with-ignore-coverage
-  (defstruct token
-    (kind nil :type keyword)
-    (value nil :type t)
-    (loc nil :type t)
-    (len nil :type (integer 0 *)))
+ (defstruct token
+   (kind nil :type keyword)
+   (value nil :type t)
+   (loc nil :type t)
+   (len nil :type (integer 0 *)))
 
-  (defparameter
-    +compiled-tokens+
-    (mapcar
-        (lambda
-            (token)
-          (list
-           (first token)
-           (cl-ppcre:create-scanner
-             (concatenate 'string "^" (second token)))
-           (third token)))
-        `((:fun "fun" t)
-          (:return "return" t)
-          (:semi ";" t)
-          (:lbrace "\\{" t)
-          (:rbrace "\\}" t)
-          (:lparen "\\(" t)
-          (:rparen "\\)" t)
-          (:ident "[a-z][a-z0-9]*" identity)
-          (:int "[0-9]+" parse-integer)
-          (:whitespace " " nil)
-          (:newline "\\n" nil)))))
+ (defparameter
+   +compiled-tokens+
+   (mapcar
+       (lambda
+           (token)
+         (list
+          (first token)
+          (cl-ppcre:create-scanner
+           (concatenate 'string "^" (second token)))
+          (third token)))
+       `((:fun "fun" t)
+         (:return "return" t)
+         (:semi ";" t)
+         (:lbrace "\\{" t)
+         (:rbrace "\\}" t)
+         (:lparen "\\(" t)
+         (:rparen "\\)" t)
+         (:let "let" t)
+         (:colon ":" t)
+         (:equal "=" t)
+         (:ident "[a-z][a-z0-9]*" identity)
+         (:int "[0-9]+" parse-integer)
+         (:whitespace " " nil)
+         (:newline "\\n" nil)))))
 
 (defun tokenize (target)
   "Transform a string into a sequence of tokens."
@@ -58,12 +61,12 @@
                              (if
                               (third matched-rule)
                               (make-token
-                                :kind (first matched-rule)
-                                :value (handler-case
-                                           (funcall (third matched-rule) match)
-                                         (undefined-function (e) (declare (ignore e)) match))
-                                :loc (list row col)
-                                :len (length match)))
+                               :kind (first matched-rule)
+                               :value (handler-case
+                                          (funcall (third matched-rule) match)
+                                        (undefined-function (e) (declare (ignore e)) match))
+                               :loc (list row col)
+                               :len (length match)))
                            (if
                             (eq (first matched-rule) :newline)
                             (progn (setf row 0) (incf col))
