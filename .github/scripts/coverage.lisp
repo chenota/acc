@@ -8,6 +8,7 @@
 (declaim (optimize sb-cover:store-coverage-data))
 (asdf:oos 'asdf:load-op :acc :force t)
 (declaim (optimize (sb-cover:store-coverage-data 0)))
+(ql:quickload :acc/test)
 ;; Run all tests
 (handler-case (fiveam:run-all-tests)
   (condition (c)

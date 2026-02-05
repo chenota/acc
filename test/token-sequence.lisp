@@ -1,6 +1,7 @@
-(in-package :acc)
+(in-package :acc/test)
 
 (fiveam:def-suite token-sequence)
+(fiveam:in-suite token-sequence)
 
 (fiveam:def-fixture
     token-sequence-test-env ()
@@ -8,44 +9,44 @@
          (raw-seq
           (loop
          for i from 0 below raw-seq-len
-         collect (make-token :kind :test-token :value i :loc (list 0 0) :len 0))))
+         collect (acc::make-token :kind :test-token :value i :loc (list 0 0) :len 0))))
     (&body)))
 
 (fiveam:test test-initialization
   (fiveam:with-fixture token-sequence-test-env ()
-    (fiveam:is (make-token-sequence raw-seq))
-    (fiveam:is (make-token-sequence (coerce raw-seq 'vector)))
-    (fiveam:is (make-token-sequence nil))
-    (fiveam:signals error (make-token-sequence '("cat" "dog")))
-    (fiveam:signals error (make-token-sequence 100))))
+    (fiveam:is (acc::make-token-sequence raw-seq))
+    (fiveam:is (acc::make-token-sequence (coerce raw-seq 'vector)))
+    (fiveam:is (acc::make-token-sequence nil))
+    (fiveam:signals error (acc::make-token-sequence '("cat" "dog")))
+    (fiveam:signals error (acc::make-token-sequence 100))))
 
 (fiveam:test test-peek
   (fiveam:with-fixture token-sequence-test-env ()
-    (fiveam:is (= 0 (token-value (peek (make-token-sequence raw-seq)))))
-    (fiveam:is (eq :ENDMARKER (token-kind (peek (make-token-sequence nil)))))))
+    (fiveam:is (= 0 (acc::token-value (acc::peek (acc::make-token-sequence raw-seq)))))
+    (fiveam:is (eq :ENDMARKER (acc::token-kind (acc::peek (acc::make-token-sequence nil)))))))
 
 (fiveam:test test-advance
   (fiveam:with-fixture token-sequence-test-env ()
-    (fiveam:is (= 0 (token-value (advance (make-token-sequence raw-seq)))))
-    (fiveam:is (= 1 (token-value (let ((s (make-token-sequence raw-seq))) (advance s) (advance s)))))
-    (fiveam:is (eq :ENDMARKER (token-kind (let ((s (make-token-sequence raw-seq))) (dotimes (i raw-seq-len) (advance s)) (advance s)))))))
+    (fiveam:is (= 0 (acc::token-value (acc::advance (acc::make-token-sequence raw-seq)))))
+    (fiveam:is (= 1 (acc::token-value (let ((s (acc::make-token-sequence raw-seq))) (acc::advance s) (acc::advance s)))))
+    (fiveam:is (eq :ENDMARKER (acc::token-kind (let ((s (acc::make-token-sequence raw-seq))) (dotimes (i raw-seq-len) (acc::advance s)) (acc::advance s)))))))
 
 (fiveam:test test-capture-restore
   (fiveam:with-fixture token-sequence-test-env ()
-    (fiveam:is (= 0 (capture (make-token-sequence raw-seq))))
-    (fiveam:is (= 1 (let ((s (make-token-sequence raw-seq))) (advance s) (capture s))))
-    (fiveam:is (= raw-seq-len (let ((s (make-token-sequence raw-seq))) (restore s raw-seq-len) (capture s))))
-    (fiveam:signals error (restore (make-token-sequence raw-seq) (1+ raw-seq-len)))))
+    (fiveam:is (= 0 (acc::capture (acc::make-token-sequence raw-seq))))
+    (fiveam:is (= 1 (let ((s (acc::make-token-sequence raw-seq))) (acc::advance s) (acc::capture s))))
+    (fiveam:is (= raw-seq-len (let ((s (acc::make-token-sequence raw-seq))) (acc::restore s raw-seq-len) (acc::capture s))))
+    (fiveam:signals error (acc::restore (acc::make-token-sequence raw-seq) (1+ raw-seq-len)))))
 
 (fiveam:test test-expect
   (fiveam:with-fixture token-sequence-test-env ()
-    (fiveam:is (not (null (expect (make-token-sequence raw-seq) :test-token))))
-    (fiveam:is (null (expect (make-token-sequence raw-seq) :not-a-real-token)))
-    (fiveam:is (= 1 (token-value (let ((s (make-token-sequence raw-seq))) (advance s) (expect s :test-token)))))))
+    (fiveam:is (not (null (acc::expect (acc::make-token-sequence raw-seq) :test-token))))
+    (fiveam:is (null (acc::expect (acc::make-token-sequence raw-seq) :not-a-real-token)))
+    (fiveam:is (= 1 (acc::token-value (let ((s (acc::make-token-sequence raw-seq))) (acc::advance s) (acc::expect s :test-token)))))))
 
 (fiveam:test test-expect-with-value
   (fiveam:with-fixture token-sequence-test-env ()
-    (fiveam:is (not (null (expect-with-value (make-token-sequence raw-seq) :test-token 0))))
-    (fiveam:is (not (null (let ((s (make-token-sequence raw-seq))) (advance s) (expect-with-value s :test-token 1)))))
-    (fiveam:is (null (expect-with-value (make-token-sequence raw-seq) :not-a-real-token 0)))
-    (fiveam:is (null (expect-with-value (make-token-sequence raw-seq) :test-token "burger")))))
+    (fiveam:is (not (null (acc::expect-with-value (acc::make-token-sequence raw-seq) :test-token 0))))
+    (fiveam:is (not (null (let ((s (acc::make-token-sequence raw-seq))) (acc::advance s) (acc::expect-with-value s :test-token 1)))))
+    (fiveam:is (null (acc::expect-with-value (acc::make-token-sequence raw-seq) :not-a-real-token 0)))
+    (fiveam:is (null (acc::expect-with-value (acc::make-token-sequence raw-seq) :test-token "burger")))))

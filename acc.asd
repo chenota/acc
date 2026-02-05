@@ -7,8 +7,8 @@
   :build-operation "program-op"
   :build-pathname "acc"
   :entry-point "acc:main"
-  :depends-on (:cl-ppcre :fiveam :unix-opts :uiop :alexandria)
-  :components ((:file "package")
+  :depends-on (:cl-ppcre :unix-opts :uiop :alexandria)
+  :components ((:file "package/main")
                (:module "src"
                         :components ((:module "shared"
                                               :components ((:file "util")
@@ -27,7 +27,14 @@
                                      (:module "codegen"
                                               :components ((:file "codegen")
                                                            (:file "instruction")))
-                                     (:file "main")))
+                                     (:file "main")))))
+(asdf:defsystem :acc/test
+  :description "Tests for the acc language"
+  :author "Alex Chenot"
+  :license "MIT"
+  :serial t
+  :depends-on (:fiveam :acc)
+  :components ((:file "package/test")
                (:module "test"
                         :components ((:file "lexer")
                                      (:file "instruction")

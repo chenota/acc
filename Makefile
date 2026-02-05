@@ -16,7 +16,7 @@ $(BIN_DIR):
 build: $(BIN_PATH)
 
 test:
-	$(SBCL) --eval '(ql:quickload :acc)' --eval '(fiveam:run-all-tests)' --quit
+	$(SBCL) --eval '(ql:quickload :acc/test)' --eval '(fiveam:run-all-tests)' --quit
 
 clean:
 	rm -rf $(BIN_DIR)

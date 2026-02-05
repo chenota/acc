@@ -24,7 +24,7 @@ jobs:
           sbcl --noinform \
                --load quicklisp/setup.lisp \
                --eval "(push #p\"$GITHUB_WORKSPACE/\" asdf:*central-registry*)" \
-               --eval "(ql:quickload :acc)" \
+               --eval "(ql:quickload :acc/test)" \
                --eval "(fiveam:run-all-tests)" \
                --quit
   coverage:
