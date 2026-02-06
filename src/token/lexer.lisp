@@ -69,7 +69,7 @@
                                :len (length match)))
                            (if
                             (eq (first matched-rule) :newline)
-                            (progn (setf row 0) (incf col))
-                            (incf row (length match))))
+                            (progn (setf col 0) (incf row))
+                            (incf col (length match))))
                          (error "bad")))))
           when best-match collect best-match))

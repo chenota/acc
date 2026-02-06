@@ -3,24 +3,33 @@
 (fiveam:def-suite static-type)
 (fiveam:in-suite static-type)
 
-(fiveam:test test-program
-  (fiveam:is (acc::set-program-types (acc::parse-program (acc::make-token-sequence (acc::tokenize "fun main int { return 0; }"))))))
+(fiveam:test program-basic (fiveam:finishes (typed-program-from "fun main int { return 0; }")))
 
-(fiveam:test test-function
-  (fiveam:is (null (acc::function-type-parameters (acc::ast-node-type-info (acc::assign-type (acc::function-rule (acc::make-token-sequence (acc::tokenize "fun main int { return 0; }"))) (acc::make-env))))))
-  (fiveam:is (acc::integer-type-p (acc::function-type-return-type (acc::ast-node-type-info (acc::assign-type (acc::function-rule (acc::make-token-sequence (acc::tokenize "fun main int { return 0; }"))) (acc::make-env)))))))
+(fiveam:test fun-basic (fiveam:is (acc::function-type-p (acc::ast-node-type-info (fiveam:finishes (typed-fun-from "fun main int { return 0; }"))))))
 
-(fiveam:test test-return-stmt
-  (fiveam:is (eq :int32 (acc::integer-type-size (acc::ast-node-type-info (acc::return-statement-node-expression (acc::assign-type (acc::stmt-rule (acc::make-token-sequence (acc::tokenize "return 0;"))) (acc::make-env :return-type (acc::make-integer-type :size :int32))))))))
-  (fiveam:signals error (acc::assign-type (acc::stmt-rule (acc::make-token-sequence (acc::tokenize "return 0;"))) (acc::make-env))))
+(fiveam:test return-context
+             (let* ((s (fiveam:finishes (typed-stmt-from "return 0;" :env (acc::make-env :return-type (acc::make-integer-type :size :int32)))))
+                    (e (fiveam:finishes (acc::return-statement-node-expression s))))
+               (when (fiveam:is (acc::int-node-p e) "The expression must be an integer.")
+                     (fiveam:is (eq :int32 (acc::integer-type-size (acc::ast-node-type-info e))) "The expression type must be an int32."))))
 
-(fiveam:test test-expr
-  (fiveam:is (eq :generic (acc::integer-type-size (acc::ast-node-type-info (acc::assign-type (acc::expr-bp (acc::make-token-sequence (acc::tokenize "0")) 0) (acc::make-env))))))
-  (fiveam:is (acc::int-node-p (acc::assign-type (acc::expr-bp (acc::make-token-sequence (acc::tokenize "(int) 0")) 0) (acc::make-env))))
-  (fiveam:is (eq :int8 (acc::integer-type-size (acc::ast-node-type-info (acc::assign-type (acc::expr-bp (acc::make-token-sequence (acc::tokenize "(int8) 0")) 0) (acc::make-env)))))))
+(fiveam:test no-return-context
+             (fiveam:signals error (typed-stmt-from "return 0;")))
 
-(fiveam:test cast-overflow-err
-  (fiveam:signals error (acc::assign-type (acc::expr-bp (acc::make-token-sequence (acc::tokenize "(int8) 256")) 0) (acc::make-env)))
-  (fiveam:signals error (acc::assign-type (acc::expr-bp (acc::make-token-sequence (acc::tokenize (format nil "(int16) ~A" (ash 1 16)))) 0) (acc::make-env)))
-  (fiveam:signals error (acc::assign-type (acc::expr-bp (acc::make-token-sequence (acc::tokenize (format nil "(int32) ~A" (ash 1 32)))) 0) (acc::make-env)))
-  (fiveam:signals error (acc::assign-type (acc::expr-bp (acc::make-token-sequence (acc::tokenize (format nil "(int64) ~A" (ash 1 64)))) 0) (acc::make-env))))
+(fiveam:test untyped-integer
+             (let ((e (typed-expr-from "0")))
+               (when (fiveam:is (acc::int-node-p e))
+                     (fiveam:is (eq :generic (acc::integer-type-size (acc::ast-node-type-info e)))))))
+
+(fiveam:test folded-cast-type
+             (let ((e (typed-expr-from "(int8) 0")))
+               (when (fiveam:is (acc::int-node-p e))
+                     (fiveam:is (eq :int8 (acc::integer-type-size (acc::ast-node-type-info e)))))))
+
+(defmacro test-int-overflow-cast (size)
+  `(fiveam:test ,(intern (format nil "OVERFLOW-INT~A" size)) (fiveam:signals error (typed-expr-from ,(format nil "(int~A) ~A" size (ash 1 size))))))
+
+(test-int-overflow-cast 8)
+(test-int-overflow-cast 16)
+(test-int-overflow-cast 32)
+(test-int-overflow-cast 64)

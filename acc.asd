@@ -36,7 +36,8 @@
   :depends-on (:fiveam :acc)
   :components ((:file "package/test")
                (:module "test"
-                        :components ((:file "lexer")
+                        :components ((:file "helper")
+                                     (:file "lexer")
                                      (:file "instruction")
                                      (:file "token-sequence")
                                      (:file "expr")
