@@ -121,7 +121,7 @@ fun main int {
 <Program>  := <Function>
 <Function> := "fun" "main" <Type> "{" <Stmt> "}"
 <Stmt>     := <Stmt'> ";"
-<Stmt'>    := "let" <Ident> ":" <Type>
+<Stmt'>    := "let" <Ident> ":" <Type> "=" <Expr>
             | <Ident> "=" <Expr>
             | "return" <Expr>
 ```
