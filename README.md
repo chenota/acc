@@ -52,16 +52,16 @@ fun main int {
 #### Statement Grammar (PEG)
 
 ```
-<Program>  := <Function>
-<Function> := "fun" "main" "int" "{" <Stmt> "}"
-<Stmt>     := "return" <Expr> ";"
+Program  := Function
+Function := "fun" "main" "int" "{" Stmt "}"
+Stmt     := "return" Expr ";"
 ```
 
 #### Expression Grammar (CFG)
 
 ```
-<Expr> := <Int>
-<Int>  := [0-9]+
+Expr := Int
+Int  := [0-9]+
 ```
 
 ### Feature 2: Basic Type System
@@ -77,29 +77,29 @@ fun main int {
 #### Statement Grammar (PEG)
 
 ```
-<Program>  := <Function>
-<Function> := "fun" "main" <Type> "{" <Stmt> "}"
-<Stmt>     := "return" <Expr> ";"
+Program  := Function
+Function := "fun" "main" Type "{" Stmt "}"
+Stmt     := "return" Expr ";"
 ```
 
 #### Expression Grammar (CFG)
 
 ```
-<Expr> := <Int>
-        | "(" <Type> ")" <Expr>
-        | "(" <Expr> ")"
-<Int>  := [0-9]+
+Expr := Int
+      | "(" Type ")" Expr
+      | "(" Expr ")"
+Int  := [0-9]+
 ```
 
 #### Type Grammar (CFG)
 
 ```
-<Type> := <Int>
-<Int>  := "int8"
-        | "int16"
-        | "int32"
-        | "int64"
-        | "int"
+Type := Int
+Int  := "int8"
+      | "int16"
+      | "int32"
+      | "int64"
+      | "int"
 ```
 
 ### Feature 3: Variables
@@ -118,31 +118,32 @@ fun main int {
 #### Statement Grammar (PEG)
 
 ```
-<Program>  := <Function>
-<Function> := "fun" "main" <Type> "{" <Stmt> "}"
-<Stmt>     := <Stmt'> ";"
-<Stmt'>    := "let" <Ident> ":" <Type> "=" <Expr>
-            | <Ident> "=" <Expr>
-            | "return" <Expr>
+Program  := Function
+Function := "fun" "main" Type "{" Stmt+ "}"
+Stmt     := Stmt' ";"
+Stmt'    := "let" Ident ":" Type "=" Expr
+          | Ident "=" Expr
+          | "return" Expr
 ```
 
 #### Expression Grammar (CFG)
 
 ```
-<Expr> := "(" <Type> ")" <Expr>
-        | "(" <Expr> ")"
-        | <Int>
-        | <Ident>
-<Int>  := [0-9]+
+Expr := "(" Type ")" Expr
+      | "(" Expr ")"
+      | Int
+      | Ident
+Int  := [0-9]+
+Ident := [a-zA-Z][a-zA-Z0-9]*
 ```
 
 #### Type Grammar (CFG)
 
 ```
-<Type> := <Int>
-<Int>  := "int8"
-        | "int16"
-        | "int32"
-        | "int64"
-        | "int"
+Type := Int
+Int  := "int8"
+      | "int16"
+      | "int32"
+      | "int64"
+      | "int"
 ```
