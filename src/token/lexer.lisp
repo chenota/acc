@@ -27,7 +27,7 @@
          (:let "let" t)
          (:colon ":" t)
          (:equal "=" t)
-         (:ident "[a-z][a-z0-9]*" identity)
+         (:ident "[a-zA-Z][a-zA-Z0-9]*" identity)
          (:int "[0-9]+" parse-integer)
          (:whitespace " " nil)
          (:newline "\\n" nil)))))
