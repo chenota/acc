@@ -17,9 +17,20 @@
 
 (fiveam:test ret (fiveam:is (acc::return-statement-node-p (stmt-from "return 0;"))))
 
-(fiveam:test decl (fiveam:is (acc::declaration-node-p (stmt-from "let x : int = 0;"))))
+(fiveam:test
+  decl
+  (let ((s (fiveam:finishes (stmt-from "let x : int = 0;"))))
+    (when (fiveam:is (acc::declaration-node-p s) "Must be a declaration node")
+          (fiveam:is (string= "x" (acc::declaration-node-name s)) "Must have name 'x'")
+          (fiveam:is (acc::integer-type-p (acc::declaration-node-var-type s)) "Must have an int type")
+          (fiveam:is (acc::int-node-p (acc::declaration-node-expression s)) "Must contain an int expression"))))
 
-(fiveam:test assign (fiveam:is (acc::assignment-node-p (stmt-from "x = 1;"))))
+(fiveam:test
+  assign
+  (let ((s (fiveam:finishes (stmt-from "x = 0;"))))
+    (when (fiveam:is (acc::assignment-node-p s) "Must be an assignment node")
+          (fiveam:is (string= "x" (acc::assignment-node-name s)) "Must have name 'x'")
+          (fiveam:is (acc::int-node-p (acc::assignment-node-expression s)) "Must contain an int expression"))))
 
 (fiveam:test stmt-failure (fiveam:is (null (stmt-from "return return return"))))
 

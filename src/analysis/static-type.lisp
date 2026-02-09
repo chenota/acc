@@ -6,7 +6,11 @@
   (defgeneric assign-type (node env)
     (:documentation "Assigns and returns the type of the node within the given environment."))
   (defgeneric in-bounds-p (node size)
-    (:documentation "Checks if a node is in bounds with respect to type.")))
+    (:documentation "Checks if a node is in bounds with respect to type."))
+  (defmacro with-location-error (node &body forms)
+    `(handler-case
+         (progn ,@forms)
+       (t (c) (error 'location-error :location (ast-node-location ,node) :message (format nil "~A" c))))))
 
 (defun set-program-types (ast)
   "Perform type analysis on ast."
@@ -28,42 +32,69 @@
     node))
 
 (defmethod assign-type ((node return-statement-node) env)
-  (let ((e1 (assign-type (return-statement-node-expression node) env))
-        (return-type (find-return-type env)))
-    (unless
-        (valid-cast-p e1 return-type)
-      (error 'location-error
-        :location (ast-node-location node)
-        :message (format nil "Invalid return type: ~A" e1)))
-    (setf (ast-node-type-info e1) return-type)
-    (setf (return-statement-node-expression node) e1)
+  (let* ((e1 (assign-type (return-statement-node-expression node) env))
+         (return-type (with-location-error node (find-return-type env)))
+         (e1-cast (make-cast e1 return-type (ast-node-location node))))
+    (setf (return-statement-node-expression node) e1-cast)
     node))
 
 (defmethod assign-type ((node cast-node) env)
   (let ((e1 (assign-type (cast-node-expression node) env)))
-    (unless (valid-cast-p e1 (cast-node-cast-type node))
-      (error
-          'location-error
-        :location (ast-node-location node)
-        :message (format nil "Invalid type cast: ~A to ~A" (ast-node-type-info e1) (cast-node-cast-type node))))
-    (cond
-     ;; Fold direct integer casts
-     ((int-node-p e1)
-       (setf (ast-node-type-info e1) (cast-node-cast-type node))
-       e1)
-     ;; Everything else must stay a cast node
-     (t
-       (setf (ast-node-type-info node) (cast-node-cast-type node))
-       node))))
+    (make-cast e1 (cast-node-cast-type node) (ast-node-location node))))
+
+(defmethod assign-type ((node declaration-node) env)
+  (let* ((e1 (assign-type (declaration-node-expression node) env))
+         (e1-cast (make-cast e1 (declaration-node-var-type node) (ast-node-location node))))
+    (setf (declaration-node-expression node) e1-cast)
+    (with-location-error
+        (ast-node-location node)
+      (register-symbol env (declaration-node-name node) (declaration-node-var-type node)))
+    node))
+
+(defmethod assign-type ((node assignment-node) env)
+  (let* ((e1 (assign-type (assignment-node-expression node) env))
+         (sym (with-location-error node (find-env-symbol env (assignment-node-name node))))
+         (e1-cast (make-cast e1 (env-symbol-sym-type sym) (ast-node-location node))))
+    (setf (assignment-node-expression node) e1-cast)
+    node))
 
 (defmethod assign-type ((node int-node) env)
   (setf (int-node-type-info node) (make-integer-type :size :generic))
   node)
 
+(defmethod assign-type ((node ident-node) env)
+  (setf
+    (ast-node-type-info node)
+    (env-symbol-sym-type (with-location-error node (find-env-symbol env (ident-node-name node)))))
+  node)
+
+(defun make-cast (source-node destination-type location)
+  "Generate logic and AST modifications to cast SOURCE-NODE as DESTINATION-TYPE"
+  (unless (valid-cast-p source-node destination-type)
+    (error
+        'location-error
+      :location location
+      :message (format
+                   nil
+                   "Invalid type cast: ~A as ~A"
+                 (ast-node-type-info source-node)
+                 destination-type)))
+  (cond
+   ;; Fold direct integer casts
+   ((int-node-p source-node)
+     (setf (ast-node-type-info source-node) destination-type)
+     source-node)
+   ;; Create an explicit cast for later codegen
+   (t (make-cast-node :location location :expression source-node))))
+
 (defun valid-cast-p (source-node destination-type)
   "Check if source can be type cast as destination."
   (cond
    ((int-node-p source-node) (in-bounds-p source-node destination-type))
+   ((and
+     (integer-type-p (ast-node-type-info source-node))
+     (integer-type-p destination-type))
+     t)
    (t (error 'location-error :location (ast-node-location source-node) :message "Unknown type cast"))))
 
 (defmethod in-bounds-p ((node int-node) size)

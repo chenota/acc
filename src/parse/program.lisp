@@ -84,11 +84,11 @@
                           (expect seq :equal)
                           expr (with-nil-error (expr-bp seq 0))
                           (expect seq :semi)
-                          (make-declaration-node :name name :var-type var-type :expression expr :location base-loc))
+                          (make-declaration-node :name (token-value name) :var-type var-type :expression expr :location base-loc))
                ;; Assignment
                (peg-rules and seq
                           name (expect seq :ident)
                           (expect seq :equal)
                           expr (with-nil-error (expr-bp seq 0))
                           (expect seq :semi)
-                          (make-assignment-node :name name :expression expr :location base-loc)))))
+                          (make-assignment-node :name (token-value name) :expression expr :location base-loc)))))
