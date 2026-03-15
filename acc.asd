@@ -25,7 +25,7 @@
                                                            (:file "program")
                                                            (:file "type")))
                                      (:module "codegen"
-                                              :components ((:file "codegen")
+                                              :components ((:file "vcodegen")
                                                            (:file "instruction")))
                                      (:file "main")))))
 (asdf:defsystem :acc/test
@@ -42,7 +42,7 @@
                                      (:file "token-sequence")
                                      (:file "expr")
                                      (:file "program")
-                                     (:file "codegen")
+                                     (:file "vcodegen")
                                      (:file "type")
                                      (:file "static-type")
                                      (:file "env")))))
