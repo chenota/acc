@@ -2,11 +2,12 @@
 
 (with-ignore-coverage
   (defstruct env
-    (parent nil)
-    (return-type nil)
+    parent
+    return-type
     (symbols (make-hash-table :test 'equal)))
   (defstruct env-symbol
-    (sym-type nil)))
+    sym-type
+    (ssa-version 0 :type (integer 0 *))))
 
 (defmethod env-extend ((env env))
   "Add a new scope to an environment."
@@ -38,3 +39,7 @@
      (if ok
          value
          (find-env-symbol (env-parent env) name)))))
+
+(defmethod increment-ssa ((e env-symbol))
+  "Increment SSA counter and return previous value"
+  (1- (setf (env-symbol-ssa-version e) (1+ (env-symbol-ssa-version e)))))

@@ -18,6 +18,8 @@
 (fiveam:test number-operand-success (fiveam:is (string= "10" (acc::to-string (acc::make-number-operand 10)))))
 (fiveam:test number-operand-failure (fiveam:signals error (acc::make-number-operand "burger")))
 
+(fiveam:test ssa-variable-success (fiveam:is (string= "SSA(test,2)" (acc::to-string (acc::make-ssa-variable "test" 2 nil)))))
+
 (defmacro test-reg-operands (size name0 name15)
   (let ((constructor (intern (format nil "MAKE-GPREG~A-OPERAND" size) :acc)))
     `(progn

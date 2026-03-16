@@ -14,3 +14,9 @@
    (fiveam:is (eq :int (acc::env-symbol-sym-type (acc::find-env-symbol (acc::env-extend env) "test"))))))
 
 (fiveam:test env-find-symbol-missing (fiveam:signals error (acc::find-env-symbol (acc::make-env) "test")))
+
+(fiveam:test
+ env-symbol-increment-ssa
+ (let ((s (make-instance 'acc::env-symbol)))
+   (fiveam:is (eq 0 (acc::increment-ssa s)) "First SSA version update must return 0")
+   (fiveam:is (eq 1 (acc::increment-ssa s)) "Second SSA version update must return 1")))
