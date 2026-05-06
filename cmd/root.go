@@ -12,6 +12,7 @@ type app struct {
 	outputPath string
 }
 
+// NewRootCommand creates a self-contained Cobra command to run the app
 func NewRootCommand() *cobra.Command {
 	app := &app{}
 
