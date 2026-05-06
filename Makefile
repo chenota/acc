@@ -1,16 +1,11 @@
-BIN := bin
-ACC := $(BIN)/acc
-SRC := main.go $(wildcard cmd/*) $(wildcard internal/*)
-
-$(ACC): $(SRC)
-	go build -o $(ACC)
-
-$(BIN):
-	mkdir -p $(BIN)
+ACC=acc
+BIN=bin
 
 .PHONY: build clean
 
-build: $(ACC)
+build:
+	go build -o $(BIN)/$(ACC) main.go
 
 clean:
+	go clean
 	rm -rf $(BIN)
