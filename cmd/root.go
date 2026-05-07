@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,27 +34,35 @@ func NewRootCommand() *cobra.Command {
 func (a *app) run(cmd *cobra.Command, args []string) error {
 	inputPath := args[0]
 
-	if a.outputPath == "" {
-		a.outputPath = fmt.Sprintf("%s.asm", strings.TrimSuffix(inputPath, filepath.Ext(inputPath)))
+	var input io.ReadCloser
+	if inputPath == "-" {
+		input = os.Stdin
+	} else {
+		f, err := os.Open(inputPath)
+		if err != nil {
+			return err
+		}
+		input = f
 	}
+	defer input.Close()
 
-	inputBytes, err := os.ReadFile(inputPath)
-	if err != nil {
-		return err
-	}
-
-	outputBytes, err := compiler.Compile(inputBytes)
-	if err != nil {
-		return err
-	}
-
-	// Write to stdout if "-" is the output file
+	var output io.WriteCloser
 	if a.outputPath == "-" {
-		_, err := fmt.Fprintln(os.Stdout, string(outputBytes))
-		return err
+		output = os.Stdout
+	} else {
+		// ensure defaults if empty
+		if a.outputPath == "" {
+			a.outputPath = fmt.Sprintf("%s.asm", strings.TrimSuffix(inputPath, filepath.Ext(inputPath)))
+		}
+		f, err := os.Create(a.outputPath)
+		if err != nil {
+			return err
+		}
+		output = f
 	}
+	defer output.Close()
 
-	return os.WriteFile(a.outputPath, outputBytes, 0777)
+	return compiler.Compile(input, output)
 }
 
 func validatePositionalArgs(cmd *cobra.Command, args []string) error {
