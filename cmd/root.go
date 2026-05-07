@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/chenota/acc/internal/compiler"
 	"github.com/spf13/cobra"
 )
 
@@ -35,11 +37,23 @@ func (a *app) run(cmd *cobra.Command, args []string) error {
 		a.outputPath = fmt.Sprintf("%s.asm", strings.TrimSuffix(inputPath, filepath.Ext(inputPath)))
 	}
 
-	// TODO: Temporary prints hand off to compiler here.
-	fmt.Fprintln(cmd.OutOrStdout(), inputPath)
-	fmt.Fprintln(cmd.OutOrStdout(), a.outputPath)
+	inputBytes, err := os.ReadFile(inputPath)
+	if err != nil {
+		return err
+	}
 
-	return nil
+	outputBytes, err := compiler.Compile(inputBytes)
+	if err != nil {
+		return err
+	}
+
+	// Write to stdout if "-" is the output file
+	if a.outputPath == "-" {
+		_, err := fmt.Fprintln(os.Stdout, string(outputBytes))
+		return err
+	}
+
+	return os.WriteFile(a.outputPath, outputBytes, 0777)
 }
 
 func validatePositionalArgs(cmd *cobra.Command, args []string) error {
