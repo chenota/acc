@@ -2,17 +2,10 @@ package lexer
 
 import "regexp"
 
-type TokenKind int
-
 const (
 	KindSkip TokenKind = iota
 	KindFunKw
 )
-
-type Token struct {
-	Kind TokenKind
-	Text string
-}
 
 type tokenRule struct {
 	kind    TokenKind

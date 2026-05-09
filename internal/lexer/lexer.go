@@ -5,6 +5,16 @@ import (
 	"io"
 )
 
+// TokenKind represents a specific kind of token
+type TokenKind int
+
+// Token represents a single token in the acc language
+type Token struct {
+	Kind TokenKind
+	Text string
+}
+
+// Tokenize processes an input into a list of tokens
 func Tokenize(r io.Reader) ([]Token, error) {
 	bytes, err := io.ReadAll(r)
 	if err != nil {
