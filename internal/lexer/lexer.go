@@ -15,7 +15,7 @@ type Token struct {
 }
 
 // Tokenize processes an input into a list of tokens
-func Tokenize(r io.Reader) ([]Token, error) {
+func Tokenize(r io.Reader) (*TokenList, error) {
 	bytes, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
@@ -45,5 +45,5 @@ func Tokenize(r io.Reader) ([]Token, error) {
 		i += bestLen
 	}
 
-	return tokens, nil
+	return NewTokenList(tokens), nil
 }

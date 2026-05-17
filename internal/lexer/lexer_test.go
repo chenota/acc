@@ -14,9 +14,11 @@ func TestLexer_Keyword(t *testing.T) {
 	tokens, err := Tokenize(input)
 	require.NoError(t, err)
 
-	require.Len(t, tokens, 2)
-	assert.Equal(t, KindFunKw, tokens[0].Kind)
-	assert.Equal(t, "fun", tokens[0].Text)
+	token, ok := tokens.Expect(KindFunKw)
+	require.True(t, ok)
+
+	assert.Equal(t, KindFunKw, token.Kind)
+	assert.Equal(t, "fun", token.Text)
 }
 
 func TestLexer_Identifier(t *testing.T) {
@@ -31,9 +33,11 @@ func TestLexer_Identifier(t *testing.T) {
 			tokens, err := Tokenize(strings.NewReader(test))
 			require.NoError(t, err)
 
-			require.Len(t, tokens, 1)
-			assert.Equal(t, KindIdentifier, tokens[0].Kind)
-			assert.Equal(t, test, tokens[0].Text)
+			token, ok := tokens.Expect(KindIdentifier)
+			require.True(t, ok)
+
+			assert.Equal(t, KindIdentifier, token.Kind)
+			assert.Equal(t, test, token.Text)
 		})
 	}
 }
@@ -50,9 +54,11 @@ func TestLexer_Integer(t *testing.T) {
 			tokens, err := Tokenize(strings.NewReader(test))
 			require.NoError(t, err)
 
-			require.Len(t, tokens, 1)
-			assert.Equal(t, KindInteger, tokens[0].Kind)
-			assert.Equal(t, test, tokens[0].Text)
+			token, ok := tokens.Expect(KindInteger)
+			require.True(t, ok)
+
+			assert.Equal(t, KindInteger, token.Kind)
+			assert.Equal(t, test, token.Text)
 		})
 	}
 }
