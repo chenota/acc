@@ -33,11 +33,9 @@ func TestLexer_Identifier(t *testing.T) {
 			tokens, err := Tokenize(strings.NewReader(test))
 			require.NoError(t, err)
 
-			token, ok := tokens.Expect(KindIdentifier)
+			id, ok := tokens.ExpectIdentifier()
 			require.True(t, ok)
-
-			assert.Equal(t, KindIdentifier, token.Kind)
-			assert.Equal(t, test, token.Text)
+			assert.Equal(t, test, id)
 		})
 	}
 }
