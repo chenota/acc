@@ -7,9 +7,9 @@ type Program struct {
 }
 
 type Function struct {
-	Name   string
-	Output Type
-	Body   Block
+	Name string
+	Type TypeFunction
+	Body Block
 }
 
 type Block struct {
@@ -52,3 +52,14 @@ type TypeAtom struct {
 }
 
 func (t TypeAtom) isType() {}
+
+type TypeFunction struct {
+	Inputs []Type
+	Output Type
+}
+
+func (t TypeFunction) isType() {}
+
+type TypeUnit struct{}
+
+func (t TypeUnit) isType() {}

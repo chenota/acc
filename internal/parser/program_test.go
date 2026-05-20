@@ -12,19 +12,19 @@ import (
 
 func TestProgram_MainFunc(t *testing.T) {
 	// we're cheating a little bit by using the lexer here but it makes writing tests much easier
-	inputStr := `fun main int { return 0; }`
+	inputStr := `fun main () -> int { return 0; }`
 	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
 	require.NoError(t, err)
 
-	program, err := ParseProgram(tokens)
+	funcs, err := ParseProgram(tokens)
 	require.NoError(t, err)
 
-	require.Len(t, program.Functions, 1)
+	require.Len(t, funcs, 1)
 
-	fun := program.Functions[0]
+	fun := funcs[0]
 	assert.Equal(t, fun.Name, "main")
 
-	atom, ok := fun.Output.(TypeAtom)
+	atom, ok := fun.Type.Output.(TypeAtom)
 	require.True(t, ok)
 	assert.Equal(t, AtomKindInt, atom.Kind)
 
@@ -38,14 +38,13 @@ func TestProgram_MainFunc(t *testing.T) {
 }
 
 func TestProgram_MultipleReturns(t *testing.T) {
-	// we're cheating a little bit by using the lexer here but it makes writing tests much easier
-	inputStr := `fun main int { return 0; return 1; return 2; }`
+	inputStr := `fun main () -> int { return 0; return 1; return 2; }`
 	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
 	require.NoError(t, err)
 
-	program, err := ParseProgram(tokens)
+	funcs, err := ParseProgram(tokens)
 	require.NoError(t, err)
 
-	require.Len(t, program.Functions, 1)
-	assert.Len(t, program.Functions[0].Body.Statements, 1)
+	require.Len(t, funcs, 1)
+	assert.Len(t, funcs[0].Body.Statements, 1)
 }

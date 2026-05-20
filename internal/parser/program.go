@@ -6,17 +6,15 @@ import (
 	"github.com/chenota/acc/internal/lexer"
 )
 
-func ParseProgram(t *lexer.TokenList) (Program, error) {
+func ParseProgram(t *lexer.TokenList) ([]Function, error) {
 	fun, ok := parseFunction(t)
 	if !ok {
-		return Program{}, errors.New("could not parse function")
+		return nil, errors.New("could not parse function")
 	}
 	if fun.Name != "main" {
-		return Program{}, errors.New("expected function name to be 'main'")
+		return nil, errors.New("expected function name to be 'main'")
 	}
-	return Program{
-		Functions: []Function{fun},
-	}, nil
+	return []Function{fun}, nil
 }
 
 func parseFunction(t *lexer.TokenList) (Function, bool) {
@@ -40,6 +38,13 @@ func parseFunction(t *lexer.TokenList) (Function, bool) {
 		return Function{}, false
 	}
 
+	// parseType returns a generic type and we need this to be a function type so cast it
+	funTypeCast, ok := funType.(TypeFunction)
+	if !ok {
+		t.Restore(loc)
+		return Function{}, false
+	}
+
 	body, ok := parseBlock(t)
 	if !ok {
 		t.Restore(loc)
@@ -47,9 +52,9 @@ func parseFunction(t *lexer.TokenList) (Function, bool) {
 	}
 
 	return Function{
-		Name:   name,
-		Output: funType,
-		Body:   body,
+		Name: name,
+		Type: funTypeCast,
+		Body: body,
 	}, true
 }
 
