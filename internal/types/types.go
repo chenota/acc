@@ -1,32 +1,19 @@
 package types
 
-type Type interface {
-	isType()
-}
-
-type IntSize int
+type Kind int
 
 const (
-	IntSizeUnknown IntSize = iota
-	IntSize8
-	IntSize16
-	IntSize32
-	IntSize64
+	KUnknown Kind = iota // important that unknown is the zero value
+	KUnit
+	KUntypedInt
+	KInt32
+	KFunction
 )
 
-type Int struct {
-	Size IntSize
+type Type struct {
+	Kind Kind
+
+	// for KFunction
+	Inputs []*Type
+	Output *Type
 }
-
-func (i Int) isType() {}
-
-type Function struct {
-	Inputs []Type
-	Output Type
-}
-
-func (f Function) isType() {}
-
-type Unit struct{}
-
-func (u Unit) isType() {}

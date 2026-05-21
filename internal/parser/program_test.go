@@ -29,10 +29,8 @@ func TestProgram_MainFunc(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, funName, "main")
 
-	funType, ok := fun.Type.(types.Function)
-	assert.True(t, ok)
-	_, ok = funType.Output.(types.Int)
-	assert.True(t, ok)
+	assert.Equal(t, types.KFunction, fun.Type.Kind)
+	assert.Equal(t, types.KInt32, fun.Type.Output.Kind)
 
 	require.Len(t, fun.List, 1)
 	ret := fun.List[0]

@@ -41,7 +41,7 @@ func parseFunction(t *lexer.TokenList) (*ast.Node, bool) {
 	}
 
 	// make sure this is a function type
-	if _, ok := funType.(types.Function); !ok {
+	if funType.Kind != types.KFunction {
 		t.Restore(loc)
 		return nil, false
 	}

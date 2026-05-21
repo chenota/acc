@@ -18,7 +18,7 @@ const (
 
 type Node struct {
 	Op   Op
-	Type types.Type
+	Type *types.Type
 	Pos  src.Pos
 
 	List  []*Node
