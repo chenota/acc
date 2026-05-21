@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"math/big"
 	"strings"
 	"testing"
 
@@ -24,28 +25,21 @@ func TestProgram_MainFunc(t *testing.T) {
 	require.Len(t, funcs, 1)
 
 	fun := funcs[0]
-	assert.Equal(t, fun.Name, "main")
+	funName, ok := fun.Val.(string)
+	assert.True(t, ok)
+	assert.Equal(t, funName, "main")
 
-	_, ok := fun.Type.Output.(types.Int)
+	funType, ok := fun.Type.(types.Function)
+	assert.True(t, ok)
+	_, ok = funType.Output.(types.Int)
 	assert.True(t, ok)
 
-	require.Len(t, fun.Body.Statements, 1)
-	ret, ok := fun.Body.Statements[0].(*ast.StmtReturn)
-	require.True(t, ok)
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+	assert.Equal(t, ast.OpReturn, ret.Op)
 
-	e, ok := ret.Expr.(*ast.ExprInt)
-	require.True(t, ok)
-	assert.NotNil(t, e.Value)
-}
-
-func TestProgram_MultipleReturns(t *testing.T) {
-	inputStr := `fun main () -> int { return 0; return 1; return 2; }`
-	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
-	require.NoError(t, err)
-
-	funcs, err := ParseProgram(tokens)
-	require.NoError(t, err)
-
-	require.Len(t, funcs, 1)
-	assert.Len(t, funcs[0].Body.Statements, 1)
+	require.Len(t, ret.List, 1)
+	e := ret.List[0]
+	assert.Equal(t, ast.OpInt, e.Op)
+	assert.NotNil(t, e.Val.(*big.Int))
 }

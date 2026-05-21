@@ -5,7 +5,7 @@ import (
 	"github.com/chenota/acc/internal/lexer"
 )
 
-func parseExpr(t *lexer.TokenList) (ast.Expr, bool) {
+func parseExpr(t *lexer.TokenList) (*ast.Node, bool) {
 	loc := t.Mark()
 
 	intVal, ok := t.ExpectInteger()
@@ -14,6 +14,9 @@ func parseExpr(t *lexer.TokenList) (ast.Expr, bool) {
 		return nil, false
 	}
 
-	// Don't try to size constants in initial parsing phase
-	return &ast.ExprInt{Value: intVal}, true
+	// We're purposely leaving this untyped
+	return &ast.Node{
+		Op:  ast.OpInt,
+		Val: intVal,
+	}, true
 }

@@ -1,55 +1,29 @@
 package ast
 
 import (
-	"math/big"
-
+	"github.com/chenota/acc/internal/src"
 	"github.com/chenota/acc/internal/types"
 )
 
-type Program struct {
-	Functions []*Function
-}
+type Op int
 
-type Function struct {
-	Name string
-	Type types.Function
-	Body *Block
-}
+const (
+	OpFunction Op = iota
+	OpBlock
+	OpStmt
+	OpExpr
+	OpInt
+	OpReturn
+)
 
-type Block struct {
-	Statements []Stmt
-}
+type Node struct {
+	Op   Op
+	Type types.Type
+	Pos  src.Pos
 
-type Stmt interface {
-	isStmt()
-}
+	List  []*Node
+	Left  *Node
+	Right *Node
 
-type StmtReturn struct {
-	Expr Expr
-}
-
-func (s *StmtReturn) isStmt() {}
-
-type Expr interface {
-	isExpr()
-	Type() types.Type
-	SetType(types.Type)
-}
-
-type ExprInt struct {
-	Value *big.Int
-	Size  types.IntSize
-}
-
-func (e *ExprInt) isExpr() {}
-
-func (e *ExprInt) Type() types.Type {
-	return types.Int{Size: e.Size}
-}
-
-func (e *ExprInt) SetType(t types.Type) {
-	v, ok := t.(types.Int)
-	if ok {
-		e.Size = v.Size
-	}
+	Val any
 }
