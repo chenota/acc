@@ -16,6 +16,7 @@ const (
 	OpInt
 	OpReturn
 	OpType
+	OpParam
 )
 
 type Node struct {
@@ -27,16 +28,13 @@ type Node struct {
 	Left  *Node
 	Right *Node
 
+	Name      string
+	Signature *Signature
+
 	Val any
 }
 
-type FunctionData struct {
-	Name   string
-	Params []Param
-	Return *types.Type
-}
-
-type Param struct {
-	Name string
-	Type *types.Type
+type Signature struct {
+	Params []*Node
+	Result *Node
 }

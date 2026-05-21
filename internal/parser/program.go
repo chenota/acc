@@ -25,9 +25,9 @@ func ParseProgram(t *lexer.TokenList) ([]*ast.Node, error) {
 		return nil, errors.New("token list not empty")
 	}
 
-	// vertial slice check: for now we should have a single "main" function and nothing else
+	// vertial slice check: for now we should have a single function
 	// eventually we'll separate statments into types, configure global vars, create a shadow function, etc.
-	if len(globalStmts) != 1 || globalStmts[0].Op != ast.OpFunction || globalStmts[0].Val.(ast.FunctionData).Name != "main" {
+	if len(globalStmts) != 1 || globalStmts[0].Op != ast.OpFunction {
 		return nil, errors.New("should have a single function named 'main'")
 	}
 
@@ -142,11 +142,19 @@ func parseFunction(t *lexer.TokenList) (*ast.Node, bool) {
 	return &ast.Node{
 		Op:   ast.OpFunction,
 		List: body.List, // flatten the parsed block into the function body
-		Val: ast.FunctionData{
-			Name: name,
+		Name: name,
+		Signature: &ast.Signature{
 			// function declared with no parameters inherently has an anonymous unit parameter; we'll formalize this later
-			Params: []ast.Param{{Type: &types.Type{Kind: types.KUnit}}},
-			Return: returnType.Type,
+			Params: []*ast.Node{anonParam(types.Unit)},
+			Result: returnType,
 		},
 	}, true
+}
+
+func anonParam(t *types.Type) *ast.Node {
+	return &ast.Node{
+		Op:   ast.OpParam,
+		Name: "",
+		Type: t,
+	}
 }

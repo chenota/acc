@@ -23,11 +23,13 @@ func TestProgram_MainFunc(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, funcs, 1)
-
 	fun := funcs[0]
-	funData := fun.Val.(ast.FunctionData)
-	assert.Equal(t, funData.Name, "main")
-	assert.Equal(t, types.KInt32, funData.Return.Kind)
+
+	assert.Equal(t, fun.Name, "main")
+
+	require.NotNil(t, fun.Signature)
+	require.NotNil(t, fun.Signature.Result)
+	assert.Equal(t, fun.Signature.Result.Type, types.Int32)
 
 	require.Len(t, fun.List, 1)
 	ret := fun.List[0]
