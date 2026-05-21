@@ -8,7 +8,7 @@ import (
 	"github.com/chenota/acc/internal/types"
 )
 
-func ParseProgram(t *lexer.TokenList) ([]ast.Function, error) {
+func ParseProgram(t *lexer.TokenList) ([]*ast.Function, error) {
 	fun, ok := parseFunction(t)
 	if !ok {
 		return nil, errors.New("could not parse function")
@@ -16,57 +16,57 @@ func ParseProgram(t *lexer.TokenList) ([]ast.Function, error) {
 	if fun.Name != "main" {
 		return nil, errors.New("expected function name to be 'main'")
 	}
-	return []ast.Function{fun}, nil
+	return []*ast.Function{fun}, nil
 }
 
-func parseFunction(t *lexer.TokenList) (ast.Function, bool) {
+func parseFunction(t *lexer.TokenList) (*ast.Function, bool) {
 	loc := t.Mark()
 
 	_, ok := t.Expect(lexer.KindFunKw)
 	if !ok {
 		t.Restore(loc)
-		return ast.Function{}, false
+		return nil, false
 	}
 
 	name, ok := t.ExpectIdentifier()
 	if !ok {
 		t.Restore(loc)
-		return ast.Function{}, false
+		return nil, false
 	}
 
 	funType, ok := parseType(t)
 	if !ok {
 		t.Restore(loc)
-		return ast.Function{}, false
+		return nil, false
 	}
 
 	// parseType returns a generic type and we need this to be a function type so cast it
 	funTypeCast, ok := funType.(types.Function)
 	if !ok {
 		t.Restore(loc)
-		return ast.Function{}, false
+		return nil, false
 	}
 
 	body, ok := parseBlock(t)
 	if !ok {
 		t.Restore(loc)
-		return ast.Function{}, false
+		return nil, false
 	}
 
-	return ast.Function{
+	return &ast.Function{
 		Name: name,
 		Type: funTypeCast,
 		Body: body,
 	}, true
 }
 
-func parseBlock(t *lexer.TokenList) (ast.Block, bool) {
+func parseBlock(t *lexer.TokenList) (*ast.Block, bool) {
 	loc := t.Mark()
 
 	_, ok := t.Expect(lexer.KindLBracket)
 	if !ok {
 		t.Restore(loc)
-		return ast.Block{}, false
+		return nil, false
 	}
 
 	var stmts []ast.Stmt
@@ -80,7 +80,7 @@ func parseBlock(t *lexer.TokenList) (ast.Block, bool) {
 			stmts = append(stmts, s)
 		}
 
-		if _, ok = s.(ast.StmtReturn); ok {
+		if _, ok = s.(*ast.StmtReturn); ok {
 			seenReturn = true
 		}
 	}
@@ -88,10 +88,10 @@ func parseBlock(t *lexer.TokenList) (ast.Block, bool) {
 	_, ok = t.Expect(lexer.KindRBracket)
 	if !ok {
 		t.Restore(loc)
-		return ast.Block{}, false
+		return nil, false
 	}
 
-	return ast.Block{Statements: stmts}, true
+	return &ast.Block{Statements: stmts}, true
 }
 
 func parseStmt(t *lexer.TokenList) (ast.Stmt, bool) {
@@ -115,5 +115,5 @@ func parseStmt(t *lexer.TokenList) (ast.Stmt, bool) {
 		return nil, false
 	}
 
-	return ast.StmtReturn{Expr: e}, true
+	return &ast.StmtReturn{Expr: e}, true
 }

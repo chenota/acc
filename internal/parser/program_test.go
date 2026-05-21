@@ -30,10 +30,10 @@ func TestProgram_MainFunc(t *testing.T) {
 	assert.True(t, ok)
 
 	require.Len(t, fun.Body.Statements, 1)
-	ret, ok := fun.Body.Statements[0].(ast.StmtReturn)
+	ret, ok := fun.Body.Statements[0].(*ast.StmtReturn)
 	require.True(t, ok)
 
-	e, ok := ret.Expr.(ast.ExprInt)
+	e, ok := ret.Expr.(*ast.ExprInt)
 	require.True(t, ok)
 	assert.NotNil(t, e.Value)
 }

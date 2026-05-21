@@ -3,7 +3,6 @@ package parser
 import (
 	"github.com/chenota/acc/internal/ast"
 	"github.com/chenota/acc/internal/lexer"
-	"github.com/chenota/acc/internal/types"
 )
 
 func parseExpr(t *lexer.TokenList) (ast.Expr, bool) {
@@ -16,5 +15,5 @@ func parseExpr(t *lexer.TokenList) (ast.Expr, bool) {
 	}
 
 	// Don't try to size constants in initial parsing phase
-	return ast.ExprInt{Value: intVal, Size: types.IntSizeUnknown}, true
+	return &ast.ExprInt{Value: intVal}, true
 }

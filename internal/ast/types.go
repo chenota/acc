@@ -7,13 +7,13 @@ import (
 )
 
 type Program struct {
-	Functions []Function
+	Functions []*Function
 }
 
 type Function struct {
 	Name string
 	Type types.Function
-	Body Block
+	Body *Block
 }
 
 type Block struct {
@@ -28,11 +28,12 @@ type StmtReturn struct {
 	Expr Expr
 }
 
-func (s StmtReturn) isStmt() {}
+func (s *StmtReturn) isStmt() {}
 
 type Expr interface {
 	isExpr()
 	Type() types.Type
+	SetType(types.Type)
 }
 
 type ExprInt struct {
@@ -40,8 +41,15 @@ type ExprInt struct {
 	Size  types.IntSize
 }
 
-func (e ExprInt) isExpr() {}
+func (e *ExprInt) isExpr() {}
 
-func (e ExprInt) Type() types.Type {
+func (e *ExprInt) Type() types.Type {
 	return types.Int{Size: e.Size}
+}
+
+func (e *ExprInt) SetType(t types.Type) {
+	v, ok := t.(types.Int)
+	if ok {
+		e.Size = v.Size
+	}
 }
