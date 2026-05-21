@@ -7,7 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/chenota/acc/internal/ast"
 	"github.com/chenota/acc/internal/lexer"
+	"github.com/chenota/acc/internal/types"
 )
 
 func TestProgram_MainFunc(t *testing.T) {
@@ -24,15 +26,14 @@ func TestProgram_MainFunc(t *testing.T) {
 	fun := funcs[0]
 	assert.Equal(t, fun.Name, "main")
 
-	atom, ok := fun.Type.Output.(TypeAtom)
-	require.True(t, ok)
-	assert.Equal(t, AtomKindInt, atom.Kind)
+	_, ok := fun.Type.Output.(types.Int)
+	assert.True(t, ok)
 
 	require.Len(t, fun.Body.Statements, 1)
-	ret, ok := fun.Body.Statements[0].(StmtReturn)
+	ret, ok := fun.Body.Statements[0].(ast.StmtReturn)
 	require.True(t, ok)
 
-	e, ok := ret.Expr.(ExprInt)
+	e, ok := ret.Expr.(ast.ExprInt)
 	require.True(t, ok)
 	assert.NotNil(t, e.Value)
 }

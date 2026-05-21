@@ -3,10 +3,12 @@ package parser
 import (
 	"errors"
 
+	"github.com/chenota/acc/internal/ast"
 	"github.com/chenota/acc/internal/lexer"
+	"github.com/chenota/acc/internal/types"
 )
 
-func ParseProgram(t *lexer.TokenList) ([]Function, error) {
+func ParseProgram(t *lexer.TokenList) ([]ast.Function, error) {
 	fun, ok := parseFunction(t)
 	if !ok {
 		return nil, errors.New("could not parse function")
@@ -14,60 +16,60 @@ func ParseProgram(t *lexer.TokenList) ([]Function, error) {
 	if fun.Name != "main" {
 		return nil, errors.New("expected function name to be 'main'")
 	}
-	return []Function{fun}, nil
+	return []ast.Function{fun}, nil
 }
 
-func parseFunction(t *lexer.TokenList) (Function, bool) {
+func parseFunction(t *lexer.TokenList) (ast.Function, bool) {
 	loc := t.Mark()
 
 	_, ok := t.Expect(lexer.KindFunKw)
 	if !ok {
 		t.Restore(loc)
-		return Function{}, false
+		return ast.Function{}, false
 	}
 
 	name, ok := t.ExpectIdentifier()
 	if !ok {
 		t.Restore(loc)
-		return Function{}, false
+		return ast.Function{}, false
 	}
 
 	funType, ok := parseType(t)
 	if !ok {
 		t.Restore(loc)
-		return Function{}, false
+		return ast.Function{}, false
 	}
 
 	// parseType returns a generic type and we need this to be a function type so cast it
-	funTypeCast, ok := funType.(TypeFunction)
+	funTypeCast, ok := funType.(types.Function)
 	if !ok {
 		t.Restore(loc)
-		return Function{}, false
+		return ast.Function{}, false
 	}
 
 	body, ok := parseBlock(t)
 	if !ok {
 		t.Restore(loc)
-		return Function{}, false
+		return ast.Function{}, false
 	}
 
-	return Function{
+	return ast.Function{
 		Name: name,
 		Type: funTypeCast,
 		Body: body,
 	}, true
 }
 
-func parseBlock(t *lexer.TokenList) (Block, bool) {
+func parseBlock(t *lexer.TokenList) (ast.Block, bool) {
 	loc := t.Mark()
 
 	_, ok := t.Expect(lexer.KindLBracket)
 	if !ok {
 		t.Restore(loc)
-		return Block{}, false
+		return ast.Block{}, false
 	}
 
-	var stmts []Stmt
+	var stmts []ast.Stmt
 	var seenReturn bool // don't add more statements to the block if we've seen a return
 	for {
 		s, ok := parseStmt(t)
@@ -78,7 +80,7 @@ func parseBlock(t *lexer.TokenList) (Block, bool) {
 			stmts = append(stmts, s)
 		}
 
-		if _, ok = s.(StmtReturn); ok {
+		if _, ok = s.(ast.StmtReturn); ok {
 			seenReturn = true
 		}
 	}
@@ -86,13 +88,13 @@ func parseBlock(t *lexer.TokenList) (Block, bool) {
 	_, ok = t.Expect(lexer.KindRBracket)
 	if !ok {
 		t.Restore(loc)
-		return Block{}, false
+		return ast.Block{}, false
 	}
 
-	return Block{Statements: stmts}, true
+	return ast.Block{Statements: stmts}, true
 }
 
-func parseStmt(t *lexer.TokenList) (Stmt, bool) {
+func parseStmt(t *lexer.TokenList) (ast.Stmt, bool) {
 	loc := t.Mark()
 
 	_, ok := t.Expect(lexer.KindReturnKw)
@@ -113,5 +115,5 @@ func parseStmt(t *lexer.TokenList) (Stmt, bool) {
 		return nil, false
 	}
 
-	return StmtReturn{Expr: e}, true
+	return ast.StmtReturn{Expr: e}, true
 }

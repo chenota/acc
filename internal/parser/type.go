@@ -2,9 +2,10 @@ package parser
 
 import (
 	"github.com/chenota/acc/internal/lexer"
+	"github.com/chenota/acc/internal/types"
 )
 
-func parseType(t *lexer.TokenList) (Type, bool) {
+func parseType(t *lexer.TokenList) (types.Type, bool) {
 	loc := t.Mark()
 
 	if _, ok := t.Expect(lexer.KindLParen); ok {
@@ -16,19 +17,20 @@ func parseType(t *lexer.TokenList) (Type, bool) {
 		// Seeing an arrow indicates that this is a function type
 		if _, ok := t.Expect(lexer.KindArrow); ok {
 			if returnType, ok := parseType(t); ok {
-				return TypeFunction{Output: returnType}, true
+				return types.Function{Output: returnType}, true
 			} else {
 				t.Restore(loc)
 				return nil, false
 			}
 		}
 
-		return TypeUnit{}, true
+		return types.Unit{}, true
 	}
 
 	// Try to parse an int
 	if _, ok := t.Expect(lexer.KindIntKw); ok {
-		return TypeAtom{Kind: AtomKindInt}, true
+		// "int" aliases to "int32"
+		return types.Int{Size: types.IntSize32}, true
 	}
 
 	return nil, false
