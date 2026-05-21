@@ -14,6 +14,7 @@ const (
 	OpExpr
 	OpInt
 	OpReturn
+	OpType
 )
 
 type Node struct {

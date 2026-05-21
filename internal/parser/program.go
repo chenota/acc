@@ -41,7 +41,7 @@ func parseFunction(t *lexer.TokenList) (*ast.Node, bool) {
 	}
 
 	// make sure this is a function type
-	if funType.Kind != types.KFunction {
+	if funType.Type.Kind != types.KFunction {
 		t.Restore(loc)
 		return nil, false
 	}
@@ -54,7 +54,7 @@ func parseFunction(t *lexer.TokenList) (*ast.Node, bool) {
 
 	return &ast.Node{
 		Op:   ast.OpFunction,
-		Type: funType,
+		Type: funType.Type,
 		List: body.List, // flatten the parsed block into the function body
 		Val:  name,      // store just the name for now we might need more info later
 	}, true
