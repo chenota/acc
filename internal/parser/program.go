@@ -9,55 +9,29 @@ import (
 )
 
 func ParseProgram(t *lexer.TokenList) ([]*ast.Node, error) {
-	fun, ok := parseFunction(t)
-	if !ok {
-		return nil, errors.New("could not parse function")
-	}
-	if fun.Val.(string) != "main" {
-		return nil, errors.New("expected function name to be 'main'")
-	}
-	return []*ast.Node{fun}, nil
-}
+	var globalStmts []*ast.Node
 
-func parseFunction(t *lexer.TokenList) (*ast.Node, bool) {
-	loc := t.Mark()
-
-	_, ok := t.Expect(lexer.KindFunKw)
-	if !ok {
-		t.Restore(loc)
-		return nil, false
+	// consume statements until we can't
+	for {
+		if s, ok := parseStmt(t); ok {
+			globalStmts = append(globalStmts, s)
+		} else {
+			break
+		}
 	}
 
-	name, ok := t.ExpectIdentifier()
-	if !ok {
-		t.Restore(loc)
-		return nil, false
+	// assert no leftover tokens
+	if !t.Empty() {
+		return nil, errors.New("token list not empty")
 	}
 
-	funType, ok := parseType(t)
-	if !ok {
-		t.Restore(loc)
-		return nil, false
+	// vertial slice check: for now we should have a single "main" function and nothing else
+	// eventually we'll separate statments into types, configure global vars, create a shadow function, etc.
+	if len(globalStmts) != 1 || globalStmts[0].Op != ast.OpFunction || globalStmts[0].Val.(ast.FunctionData).Name != "main" {
+		return nil, errors.New("should have a single function named 'main'")
 	}
 
-	// make sure this is a function type
-	if funType.Type.Kind != types.KFunction {
-		t.Restore(loc)
-		return nil, false
-	}
-
-	body, ok := parseBlock(t)
-	if !ok {
-		t.Restore(loc)
-		return nil, false
-	}
-
-	return &ast.Node{
-		Op:   ast.OpFunction,
-		Type: funType.Type,
-		List: body.List, // flatten the parsed block into the function body
-		Val:  name,      // store just the name for now we might need more info later
-	}, true
+	return globalStmts, nil
 }
 
 func parseBlock(t *lexer.TokenList) (*ast.Node, bool) {
@@ -91,10 +65,17 @@ func parseBlock(t *lexer.TokenList) (*ast.Node, bool) {
 }
 
 func parseStmt(t *lexer.TokenList) (*ast.Node, bool) {
+	if f, ok := parseFunction(t); ok {
+		return f, true
+	}
+
+	return parseReturn(t)
+}
+
+func parseReturn(t *lexer.TokenList) (*ast.Node, bool) {
 	loc := t.Mark()
 
-	_, ok := t.Expect(lexer.KindReturnKw)
-	if !ok {
+	if _, ok := t.Expect(lexer.KindReturnKw); !ok {
 		t.Restore(loc)
 		return nil, false
 	}
@@ -105,8 +86,7 @@ func parseStmt(t *lexer.TokenList) (*ast.Node, bool) {
 		return nil, false
 	}
 
-	_, ok = t.Expect(lexer.KindSemicolon)
-	if !ok {
+	if _, ok = t.Expect(lexer.KindSemicolon); !ok {
 		t.Restore(loc)
 		return nil, false
 	}
@@ -114,5 +94,59 @@ func parseStmt(t *lexer.TokenList) (*ast.Node, bool) {
 	return &ast.Node{
 		Op:   ast.OpReturn,
 		List: []*ast.Node{e},
+	}, true
+}
+
+func parseFunction(t *lexer.TokenList) (*ast.Node, bool) {
+	loc := t.Mark()
+
+	_, ok := t.Expect(lexer.KindFunKw)
+	if !ok {
+		t.Restore(loc)
+		return nil, false
+	}
+
+	name, ok := t.ExpectIdentifier()
+	if !ok {
+		t.Restore(loc)
+		return nil, false
+	}
+
+	// expect zero arguments for now
+	if _, ok := t.Expect(lexer.KindLParen); !ok {
+		t.Restore(loc)
+		return nil, false
+	}
+	if _, ok := t.Expect(lexer.KindRParen); !ok {
+		t.Restore(loc)
+		return nil, false
+	}
+
+	if _, ok := t.Expect(lexer.KindArrow); !ok {
+		t.Restore(loc)
+		return nil, false
+	}
+
+	returnType, ok := parseType(t)
+	if !ok {
+		t.Restore(loc)
+		return nil, false
+	}
+
+	body, ok := parseBlock(t)
+	if !ok {
+		t.Restore(loc)
+		return nil, false
+	}
+
+	return &ast.Node{
+		Op:   ast.OpFunction,
+		List: body.List, // flatten the parsed block into the function body
+		Val: ast.FunctionData{
+			Name: name,
+			// function declared with no parameters inherently has an anonymous unit parameter; we'll formalize this later
+			Params: []ast.Param{{Type: &types.Type{Kind: types.KUnit}}},
+			Return: returnType.Type,
+		},
 	}, true
 }

@@ -49,3 +49,7 @@ func (t *TokenList) ExpectInteger() (*big.Int, bool) {
 
 	return new(big.Int).SetString(token.Text, 10)
 }
+
+func (t *TokenList) Empty() bool {
+	return t.i >= len(t.tokens)
+}

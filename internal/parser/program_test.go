@@ -25,12 +25,9 @@ func TestProgram_MainFunc(t *testing.T) {
 	require.Len(t, funcs, 1)
 
 	fun := funcs[0]
-	funName, ok := fun.Val.(string)
-	assert.True(t, ok)
-	assert.Equal(t, funName, "main")
-
-	assert.Equal(t, types.KFunction, fun.Type.Kind)
-	assert.Equal(t, types.KInt32, fun.Type.Output.Kind)
+	funData := fun.Val.(ast.FunctionData)
+	assert.Equal(t, funData.Name, "main")
+	assert.Equal(t, types.KInt32, funData.Return.Kind)
 
 	require.Len(t, fun.List, 1)
 	ret := fun.List[0]

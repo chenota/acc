@@ -18,7 +18,7 @@ The first goal of this language is to have a main function that can return an ex
 
 ```
 <Program>   := <Function>
-<Function>  := "fun" "main" <Type> <Block>
+<Function>  := "fun" "main" "(" ")" "->" <Type> <Block>
 <Block>     := "{" <Statement> "}"
 <Statement> := "return" <Expression> ";"
 ```

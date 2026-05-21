@@ -8,7 +8,8 @@ import (
 type Op int
 
 const (
-	OpFunction Op = iota
+	OpUnknown Op = iota
+	OpFunction
 	OpBlock
 	OpStmt
 	OpExpr
@@ -27,4 +28,15 @@ type Node struct {
 	Right *Node
 
 	Val any
+}
+
+type FunctionData struct {
+	Name   string
+	Params []Param
+	Return *types.Type
+}
+
+type Param struct {
+	Name string
+	Type *types.Type
 }
