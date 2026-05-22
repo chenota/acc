@@ -1,7 +1,7 @@
 package ast
 
 import (
-	"github.com/chenota/acc/internal/src"
+	"github.com/chenota/acc/internal/lexer"
 	"github.com/chenota/acc/internal/types"
 )
 
@@ -22,7 +22,7 @@ const (
 type Node struct {
 	Op   Op
 	Type *types.Type
-	Pos  src.Pos
+	Pos  lexer.Pos
 
 	List  []*Node
 	Left  *Node

@@ -36,6 +36,7 @@ func ParseProgram(t *lexer.TokenList) ([]*ast.Node, error) {
 
 func parseBlock(t *lexer.TokenList) (*ast.Node, bool) {
 	loc := t.Mark()
+	pos := t.Pos()
 
 	_, ok := t.Expect(lexer.KindLBracket)
 	if !ok {
@@ -60,6 +61,7 @@ func parseBlock(t *lexer.TokenList) (*ast.Node, bool) {
 
 	return &ast.Node{
 		Op:   ast.OpBlock,
+		Pos:  pos,
 		List: stmts,
 	}, true
 }
@@ -74,6 +76,7 @@ func parseStmt(t *lexer.TokenList) (*ast.Node, bool) {
 
 func parseReturn(t *lexer.TokenList) (*ast.Node, bool) {
 	loc := t.Mark()
+	pos := t.Pos()
 
 	if _, ok := t.Expect(lexer.KindReturnKw); !ok {
 		t.Restore(loc)
@@ -93,12 +96,14 @@ func parseReturn(t *lexer.TokenList) (*ast.Node, bool) {
 
 	return &ast.Node{
 		Op:   ast.OpReturn,
+		Pos:  pos,
 		List: []*ast.Node{e},
 	}, true
 }
 
 func parseFunction(t *lexer.TokenList) (*ast.Node, bool) {
 	loc := t.Mark()
+	pos := t.Pos()
 
 	_, ok := t.Expect(lexer.KindFunKw)
 	if !ok {
@@ -141,6 +146,7 @@ func parseFunction(t *lexer.TokenList) (*ast.Node, bool) {
 
 	return &ast.Node{
 		Op:   ast.OpFunction,
+		Pos:  pos,
 		List: body.List, // flatten the parsed block into the function body
 		Name: name,
 		Signature: &ast.Signature{

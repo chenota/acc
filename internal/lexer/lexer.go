@@ -2,6 +2,7 @@ package lexer
 
 import (
 	"errors"
+	"fmt"
 	"io"
 )
 
@@ -12,6 +13,7 @@ type TokenKind int
 type Token struct {
 	Kind TokenKind
 	Text string
+	Pos  Pos
 }
 
 // Tokenize processes an input into a list of tokens
@@ -20,6 +22,9 @@ func Tokenize(r io.Reader) (*TokenList, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	var line int
+	var col int
 
 	var tokens []Token
 
@@ -39,10 +44,27 @@ func Tokenize(r io.Reader) (*TokenList, error) {
 			return nil, errors.New("invalid token")
 		}
 
-		if bestKind != KindSkip {
-			tokens = append(tokens, Token{bestKind, string(bytes[i : i+bestLen])})
+		if !(bestKind == KindWhitespace || bestKind == KindNewlines) {
+			tokens = append(tokens, Token{
+				Kind: bestKind,
+				Text: string(bytes[i : i+bestLen]),
+				Pos:  Pos{Line: line, Col: col},
+			})
 		}
+
 		i += bestLen
+
+		fmt.Println("Poop")
+
+		fmt.Println(bestKind == KindNewlines)
+
+		if bestKind == KindNewlines {
+			line += bestLen
+			col = 0
+			fmt.Println("RAHHHH")
+		} else {
+			col += bestLen
+		}
 	}
 
 	return NewTokenList(tokens), nil

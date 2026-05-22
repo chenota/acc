@@ -67,3 +67,27 @@ func TestLexer_Invalid(t *testing.T) {
 	_, err := Tokenize(input)
 	assert.Error(t, err)
 }
+
+func TestLexer_Pos(t *testing.T) {
+	t.Run("couple of identifiers", func(t *testing.T) {
+		tokens, err := Tokenize(strings.NewReader("hello world"))
+		require.NoError(t, err)
+
+		tokens.Expect(KindIdentifier)
+		token, ok := tokens.Expect(KindIdentifier)
+		require.True(t, ok)
+
+		assert.Equal(t, 6, token.Pos.Col)
+		assert.Equal(t, 0, token.Pos.Line)
+	})
+	t.Run("newlines", func(t *testing.T) {
+		tokens, err := Tokenize(strings.NewReader("\n\n\n hello"))
+		require.NoError(t, err)
+
+		token, ok := tokens.Expect(KindIdentifier)
+		require.True(t, ok)
+
+		assert.Equal(t, 1, token.Pos.Col)
+		assert.Equal(t, 3, token.Pos.Line)
+	})
+}

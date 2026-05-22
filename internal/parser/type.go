@@ -7,17 +7,18 @@ import (
 )
 
 func parseType(t *lexer.TokenList) (*ast.Node, bool) {
+	loc := t.Mark()
+	pos := t.Pos()
+
 	if _, ok := t.Expect(lexer.KindIntKw); ok {
 		// "int" aliases to "int32"
-		return typeNode(types.Int32), true
+		return &ast.Node{
+			Op:   ast.OpType,
+			Pos:  pos,
+			Type: types.Int32,
+		}, true
 	}
 
+	t.Restore(loc)
 	return nil, false
-}
-
-func typeNode(t *types.Type) *ast.Node {
-	return &ast.Node{
-		Op:   ast.OpType,
-		Type: t,
-	}
 }

@@ -53,3 +53,11 @@ func (t *TokenList) ExpectInteger() (*big.Int, bool) {
 func (t *TokenList) Empty() bool {
 	return t.i >= len(t.tokens)
 }
+
+func (t *TokenList) Pos() Pos {
+	if t == nil || t.i >= len(t.tokens) {
+		return Pos{}
+	}
+
+	return t.tokens[t.i].Pos
+}

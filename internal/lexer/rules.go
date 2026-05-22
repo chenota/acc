@@ -3,7 +3,8 @@ package lexer
 import "regexp"
 
 const (
-	KindSkip TokenKind = iota
+	KindWhitespace TokenKind = iota
+	KindNewlines
 	KindFunKw
 	KindLBracket
 	KindRBracket
@@ -36,9 +37,10 @@ var rules = []tokenRule{
 	{KindSemicolon, mustAnchor(`;`)},
 	{KindInteger, mustAnchor(`-?[0-9][0-9_]*`)},
 	{KindIdentifier, mustAnchor(`[a-zA-Z_][a-zA-Z0-9_]*`)},
-	{KindSkip, mustAnchor(`[[:blank:]]+`)},
+	{KindNewlines, mustAnchor(`\n+`)},
+	{KindWhitespace, mustAnchor(`[[:blank:]]+`)},
 }
 
 func mustAnchor(pattern string) *regexp.Regexp {
-	return regexp.MustCompilePOSIX("^" + pattern)
+	return regexp.MustCompile("^" + pattern)
 }
