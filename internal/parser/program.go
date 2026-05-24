@@ -5,7 +5,6 @@ import (
 
 	"github.com/chenota/acc/internal/ast"
 	"github.com/chenota/acc/internal/lexer"
-	"github.com/chenota/acc/internal/types"
 )
 
 func ParseProgram(t *lexer.TokenList) ([]*ast.Node, error) {
@@ -150,17 +149,7 @@ func parseFunction(t *lexer.TokenList) (*ast.Node, bool) {
 		List: body.List, // flatten the parsed block into the function body
 		Name: name,
 		Signature: &ast.Signature{
-			// function declared with no parameters inherently has an anonymous unit parameter; we'll formalize this later
-			Params: []*ast.Node{anonParam(types.Unit)},
 			Result: returnType,
 		},
 	}, true
-}
-
-func anonParam(t *types.Type) *ast.Node {
-	return &ast.Node{
-		Op:   ast.OpParam,
-		Name: "",
-		Type: t,
-	}
 }

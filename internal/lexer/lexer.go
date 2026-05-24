@@ -2,7 +2,6 @@ package lexer
 
 import (
 	"errors"
-	"fmt"
 	"io"
 )
 
@@ -54,14 +53,9 @@ func Tokenize(r io.Reader) (*TokenList, error) {
 
 		i += bestLen
 
-		fmt.Println("Poop")
-
-		fmt.Println(bestKind == KindNewlines)
-
 		if bestKind == KindNewlines {
 			line += bestLen
 			col = 0
-			fmt.Println("RAHHHH")
 		} else {
 			col += bestLen
 		}
