@@ -17,6 +17,7 @@ const (
 	OpReturn
 	OpType
 	OpParam
+	OpConv
 )
 
 type Node struct {
