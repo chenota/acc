@@ -1,11 +1,11 @@
 package parser
 
 import (
-	"github.com/chenota/acc/internal/ast"
+	"github.com/chenota/acc/internal/ir"
 	"github.com/chenota/acc/internal/lexer"
 )
 
-func parseExpr(t *lexer.TokenList) (*ast.Node, bool) {
+func parseExpr(t *lexer.TokenList) (*ir.Node, bool) {
 	loc := t.Mark()
 	pos := t.Pos()
 
@@ -16,8 +16,8 @@ func parseExpr(t *lexer.TokenList) (*ast.Node, bool) {
 	}
 
 	// We're purposely leaving this untyped
-	return &ast.Node{
-		Op:  ast.OpInt,
+	return &ir.Node{
+		Op:  ir.OpInt,
 		Pos: pos,
 		Val: intVal,
 	}, true

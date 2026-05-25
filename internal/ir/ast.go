@@ -1,4 +1,4 @@
-package ast
+package ir
 
 import (
 	"github.com/chenota/acc/internal/lexer"

@@ -3,12 +3,12 @@ package parser
 import (
 	"errors"
 
-	"github.com/chenota/acc/internal/ast"
+	"github.com/chenota/acc/internal/ir"
 	"github.com/chenota/acc/internal/lexer"
 )
 
-func ParseProgram(t *lexer.TokenList) ([]*ast.Node, error) {
-	var globalStmts []*ast.Node
+func ParseProgram(t *lexer.TokenList) ([]*ir.Node, error) {
+	var globalStmts []*ir.Node
 
 	// consume statements until we can't
 	for {
@@ -26,14 +26,14 @@ func ParseProgram(t *lexer.TokenList) ([]*ast.Node, error) {
 
 	// vertial slice check: for now we should have a single function
 	// eventually we'll separate statments into types, configure global vars, create a shadow function, etc.
-	if len(globalStmts) != 1 || globalStmts[0].Op != ast.OpFunction {
+	if len(globalStmts) != 1 || globalStmts[0].Op != ir.OpFunction {
 		return nil, errors.New("should have a single function named 'main'")
 	}
 
 	return globalStmts, nil
 }
 
-func parseBlock(t *lexer.TokenList) (*ast.Node, bool) {
+func parseBlock(t *lexer.TokenList) (*ir.Node, bool) {
 	loc := t.Mark()
 	pos := t.Pos()
 
@@ -43,7 +43,7 @@ func parseBlock(t *lexer.TokenList) (*ast.Node, bool) {
 		return nil, false
 	}
 
-	var stmts []*ast.Node
+	var stmts []*ir.Node
 	for {
 		s, ok := parseStmt(t)
 		if !ok {
@@ -58,14 +58,14 @@ func parseBlock(t *lexer.TokenList) (*ast.Node, bool) {
 		return nil, false
 	}
 
-	return &ast.Node{
-		Op:   ast.OpBlock,
+	return &ir.Node{
+		Op:   ir.OpBlock,
 		Pos:  pos,
 		List: stmts,
 	}, true
 }
 
-func parseStmt(t *lexer.TokenList) (*ast.Node, bool) {
+func parseStmt(t *lexer.TokenList) (*ir.Node, bool) {
 	if f, ok := parseFunction(t); ok {
 		return f, true
 	}
@@ -73,7 +73,7 @@ func parseStmt(t *lexer.TokenList) (*ast.Node, bool) {
 	return parseReturn(t)
 }
 
-func parseReturn(t *lexer.TokenList) (*ast.Node, bool) {
+func parseReturn(t *lexer.TokenList) (*ir.Node, bool) {
 	loc := t.Mark()
 	pos := t.Pos()
 
@@ -93,14 +93,14 @@ func parseReturn(t *lexer.TokenList) (*ast.Node, bool) {
 		return nil, false
 	}
 
-	return &ast.Node{
-		Op:   ast.OpReturn,
+	return &ir.Node{
+		Op:   ir.OpReturn,
 		Pos:  pos,
-		List: []*ast.Node{e},
+		List: []*ir.Node{e},
 	}, true
 }
 
-func parseFunction(t *lexer.TokenList) (*ast.Node, bool) {
+func parseFunction(t *lexer.TokenList) (*ir.Node, bool) {
 	loc := t.Mark()
 	pos := t.Pos()
 
@@ -143,12 +143,12 @@ func parseFunction(t *lexer.TokenList) (*ast.Node, bool) {
 		return nil, false
 	}
 
-	return &ast.Node{
-		Op:   ast.OpFunction,
+	return &ir.Node{
+		Op:   ir.OpFunction,
 		Pos:  pos,
 		List: body.List, // flatten the parsed block into the function body
 		Name: name,
-		Signature: &ast.Signature{
+		Signature: &ir.Signature{
 			Result: returnType,
 		},
 	}, true

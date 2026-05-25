@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chenota/acc/internal/ast"
+	"github.com/chenota/acc/internal/ir"
 	"github.com/chenota/acc/internal/lexer"
 	"github.com/chenota/acc/internal/types"
 )
@@ -33,10 +33,10 @@ func TestProgram_MainFunc(t *testing.T) {
 
 	require.Len(t, fun.List, 1)
 	ret := fun.List[0]
-	assert.Equal(t, ast.OpReturn, ret.Op)
+	assert.Equal(t, ir.OpReturn, ret.Op)
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
-	assert.Equal(t, ast.OpInt, e.Op)
+	assert.Equal(t, ir.OpInt, e.Op)
 	assert.NotNil(t, e.Val.(*big.Int))
 }
