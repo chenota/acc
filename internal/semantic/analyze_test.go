@@ -1,4 +1,4 @@
-package analyze
+package semantic
 
 import (
 	"strings"
@@ -20,10 +20,10 @@ func TestAnalyze_Basic(t *testing.T) {
 	funcs, err := parser.ParseProgram(tokens)
 	require.NoError(t, err)
 
+	require.NoError(t, Check(funcs))
+
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
-
-	require.NoError(t, AnalyzeNode(fun))
 
 	require.NotNil(t, fun.Type)
 	assert.Equal(t, types.KFunction, fun.Type.Kind)

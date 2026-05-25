@@ -1,4 +1,4 @@
-package analyze
+package semantic
 
 import (
 	"errors"
@@ -7,9 +7,16 @@ import (
 	"github.com/chenota/acc/internal/types"
 )
 
-func AnalyzeNode(n *ir.Node) error {
+func Check(functions []*ir.Node) error {
 	c := &checker{}
-	return c.analyzeNode(n)
+
+	for _, f := range functions {
+		if err := c.analyzeNode(f); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 type checker struct {
