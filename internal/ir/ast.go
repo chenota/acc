@@ -20,6 +20,8 @@ const (
 )
 
 type Node struct {
+	Parent *Node
+
 	Op   Op
 	Type *types.Type
 	Pos  lexer.Pos
@@ -31,10 +33,25 @@ type Node struct {
 	Name      string
 	Signature *Signature
 
+	Sym *Sym
+
 	Val any
 }
 
 type Signature struct {
 	Params []*Node
 	Result *Node
+}
+
+func (n *Node) FindPredecessor(op Op) *Node {
+	curr := n.Parent
+
+	for curr != nil {
+		if curr.Op == op {
+			return curr
+		}
+		curr = curr.Parent
+	}
+
+	return nil
 }

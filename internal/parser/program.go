@@ -35,7 +35,11 @@ func ParseProgram(t *lexer.TokenList) ([]*ir.Node, error) {
 
 func parseBlock(t *lexer.TokenList) (*ir.Node, bool) {
 	loc := t.Mark()
-	pos := t.Pos()
+
+	n := &ir.Node{
+		Op:  ir.OpBlock,
+		Pos: t.Pos(),
+	}
 
 	_, ok := t.Expect(lexer.KindLBracket)
 	if !ok {
@@ -49,8 +53,10 @@ func parseBlock(t *lexer.TokenList) (*ir.Node, bool) {
 		if !ok {
 			break
 		}
+		s.Parent = n
 		stmts = append(stmts, s)
 	}
+	n.List = stmts
 
 	_, ok = t.Expect(lexer.KindRBracket)
 	if !ok {
@@ -58,11 +64,7 @@ func parseBlock(t *lexer.TokenList) (*ir.Node, bool) {
 		return nil, false
 	}
 
-	return &ir.Node{
-		Op:   ir.OpBlock,
-		Pos:  pos,
-		List: stmts,
-	}, true
+	return n, true
 }
 
 func parseStmt(t *lexer.TokenList) (*ir.Node, bool) {
@@ -75,7 +77,11 @@ func parseStmt(t *lexer.TokenList) (*ir.Node, bool) {
 
 func parseReturn(t *lexer.TokenList) (*ir.Node, bool) {
 	loc := t.Mark()
-	pos := t.Pos()
+
+	n := &ir.Node{
+		Op:  ir.OpReturn,
+		Pos: t.Pos(),
+	}
 
 	if _, ok := t.Expect(lexer.KindReturnKw); !ok {
 		t.Restore(loc)
@@ -87,22 +93,26 @@ func parseReturn(t *lexer.TokenList) (*ir.Node, bool) {
 		t.Restore(loc)
 		return nil, false
 	}
+	e.Parent = n
+	n.List = []*ir.Node{e}
 
 	if _, ok = t.Expect(lexer.KindSemicolon); !ok {
 		t.Restore(loc)
 		return nil, false
 	}
 
-	return &ir.Node{
-		Op:   ir.OpReturn,
-		Pos:  pos,
-		List: []*ir.Node{e},
-	}, true
+	return n, true
 }
 
 func parseFunction(t *lexer.TokenList) (*ir.Node, bool) {
 	loc := t.Mark()
 	pos := t.Pos()
+
+	n := &ir.Node{
+		Op:        ir.OpFunction,
+		Pos:       pos,
+		Signature: &ir.Signature{},
+	}
 
 	_, ok := t.Expect(lexer.KindFunKw)
 	if !ok {
@@ -115,6 +125,7 @@ func parseFunction(t *lexer.TokenList) (*ir.Node, bool) {
 		t.Restore(loc)
 		return nil, false
 	}
+	n.Name = name
 
 	// expect zero arguments for now
 	if _, ok := t.Expect(lexer.KindLParen); !ok {
@@ -136,6 +147,8 @@ func parseFunction(t *lexer.TokenList) (*ir.Node, bool) {
 		t.Restore(loc)
 		return nil, false
 	}
+	returnType.Parent = n
+	n.Signature.Result = returnType
 
 	body, ok := parseBlock(t)
 	if !ok {
@@ -143,13 +156,11 @@ func parseFunction(t *lexer.TokenList) (*ir.Node, bool) {
 		return nil, false
 	}
 
-	return &ir.Node{
-		Op:   ir.OpFunction,
-		Pos:  pos,
-		List: body.List, // flatten the parsed block into the function body
-		Name: name,
-		Signature: &ir.Signature{
-			Result: returnType,
-		},
-	}, true
+	// flatten the parsed block into the function body
+	n.List = body.List
+	for _, child := range n.List {
+		child.Parent = n
+	}
+
+	return n, true
 }
