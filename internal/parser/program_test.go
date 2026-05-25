@@ -29,7 +29,7 @@ func TestProgram_MainFunc(t *testing.T) {
 
 	require.NotNil(t, fun.Signature)
 	require.NotNil(t, fun.Signature.Result)
-	assert.Equal(t, fun.Signature.Result.Type, types.Int32)
+	assert.Equal(t, types.KInt32, fun.Signature.Result.Type.Kind)
 
 	require.Len(t, fun.List, 1)
 	ret := fun.List[0]

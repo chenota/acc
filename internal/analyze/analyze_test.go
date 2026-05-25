@@ -35,12 +35,12 @@ func TestAnalyze_Basic(t *testing.T) {
 	conv := fun.List[0].List[0]
 
 	assert.Equal(t, ir.OpConv, conv.Op)
-	assert.Equal(t, types.Int32, conv.Type)
+	assert.Equal(t, types.KInt32, conv.Type.Kind)
 	assert.Equal(t, fun.List[0], conv.Parent)
 
 	require.Len(t, conv.List, 1)
 	e := conv.List[0]
 
-	assert.Equal(t, types.UntypedInt, e.Type)
+	assert.Equal(t, types.KUntypedInt, e.Type.Kind)
 	assert.Equal(t, conv, e.Parent)
 }

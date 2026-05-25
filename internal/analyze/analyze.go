@@ -39,11 +39,7 @@ func (c *checker) analyzeFunction(f *ir.Node) error {
 	for _, p := range f.Signature.Params {
 		paramTypes = append(paramTypes, p.Type)
 	}
-	f.Type = &types.Type{
-		Kind:   types.KFunction,
-		Inputs: paramTypes,
-		Output: f.Signature.Result.Type,
-	}
+	f.Type = types.Function(paramTypes, f.Signature.Result.Type)
 
 	// register own symbol
 	f.Sym = &ir.Sym{
@@ -102,8 +98,7 @@ func (c *checker) analyzeReturn(r *ir.Node) error {
 
 func (c *checker) analyzeInt(i *ir.Node) error {
 	// int nodes always start out as untyped
-	i.Type = types.UntypedInt
-
+	i.Type = types.UntypedInt()
 	return nil
 }
 
@@ -111,7 +106,7 @@ func (c *checker) canCast(n *ir.Node, t *types.Type) bool {
 	if types.Equal(n.Type, t) {
 		return true
 	}
-	if n.Type == types.UntypedInt && t == types.Int32 {
+	if n.Type.Kind == types.KUntypedInt && t.Kind == types.KInt32 {
 		return true
 	}
 	return false

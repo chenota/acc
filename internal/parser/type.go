@@ -15,7 +15,7 @@ func parseType(t *lexer.TokenList) (*ir.Node, bool) {
 		return &ir.Node{
 			Op:   ir.OpType,
 			Pos:  pos,
-			Type: types.Int32,
+			Type: types.Int32(),
 		}, true
 	}
 

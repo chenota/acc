@@ -36,5 +36,21 @@ func Equal(a *Type, b *Type) bool {
 	}
 
 	// atom comparison: use direct pointer comparison
-	return a == b
+	return a.Kind == b.Kind
+}
+
+func Int32() *Type {
+	return &Type{Kind: KInt32}
+}
+
+func UntypedInt() *Type {
+	return &Type{Kind: KUntypedInt}
+}
+
+func Function(inputs []*Type, output *Type) *Type {
+	return &Type{
+		Kind:   KFunction,
+		Inputs: inputs,
+		Output: output,
+	}
 }
