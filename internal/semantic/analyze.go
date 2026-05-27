@@ -7,11 +7,9 @@ import (
 	"github.com/chenota/acc/internal/types"
 )
 
-func Check(functions []*ir.Node) error {
-	c := &checker{}
-
+func Analyze(functions []*ir.Node) error {
 	for _, f := range functions {
-		if err := c.analyzeNode(f); err != nil {
+		if err := analyzeNode(f); err != nil {
 			return err
 		}
 	}
@@ -19,28 +17,24 @@ func Check(functions []*ir.Node) error {
 	return nil
 }
 
-type checker struct {
-	currentFunc *ir.Node
-}
-
-func (c *checker) analyzeNode(n *ir.Node) error {
+func analyzeNode(n *ir.Node) error {
 	if n == nil {
 		return errors.New("nil node")
 	}
 
 	switch n.Op {
 	case ir.OpFunction:
-		return c.analyzeFunction(n)
+		return analyzeFunction(n)
 	case ir.OpReturn:
-		return c.analyzeReturn(n)
+		return analyzeReturn(n)
 	case ir.OpInt:
-		return c.analyzeInt(n)
+		return analyzeInt(n)
 	default:
 		return errors.New("unknown operation")
 	}
 }
 
-func (c *checker) analyzeFunction(f *ir.Node) error {
+func analyzeFunction(f *ir.Node) error {
 	// set own type
 	var paramTypes []*types.Type
 	for _, p := range f.Signature.Params {
@@ -55,14 +49,9 @@ func (c *checker) analyzeFunction(f *ir.Node) error {
 		Type: f.Type,
 	}
 
-	// cache the previous function context
-	oldFunc := c.currentFunc
-	c.currentFunc = f
-	defer func() { c.currentFunc = oldFunc }()
-
 	// analyze types of body statements
 	for _, s := range f.List {
-		if err := c.analyzeNode(s); err != nil {
+		if err := analyzeNode(s); err != nil {
 			return err
 		}
 	}
@@ -70,21 +59,24 @@ func (c *checker) analyzeFunction(f *ir.Node) error {
 	return nil
 }
 
-func (c *checker) analyzeReturn(r *ir.Node) error {
+func analyzeReturn(r *ir.Node) error {
+	// grab first function we can find in the AST
+	currentFunc := r.Predecessor(ir.OpFunction)
+
 	// we expect a return to appear in a function
-	if c.currentFunc == nil {
+	if currentFunc == nil {
 		return errors.New("return outside of function definition")
 	}
-	expectedOut := c.currentFunc.Type.Output
+	expectedOut := currentFunc.Type.Output
 
 	// determine type of sub-expression
 	e := r.List[0]
-	if err := c.analyzeNode(e); err != nil {
+	if err := analyzeNode(e); err != nil {
 		return err
 	}
 
 	// is e cast-able to return type we want?
-	if !c.canCast(e, expectedOut) {
+	if !canCast(e, expectedOut) {
 		return errors.New("cannot cast expression to function return type")
 	}
 
@@ -103,13 +95,13 @@ func (c *checker) analyzeReturn(r *ir.Node) error {
 	return nil
 }
 
-func (c *checker) analyzeInt(i *ir.Node) error {
+func analyzeInt(i *ir.Node) error {
 	// int nodes always start out as untyped
 	i.Type = types.UntypedInt()
 	return nil
 }
 
-func (c *checker) canCast(n *ir.Node, t *types.Type) bool {
+func canCast(n *ir.Node, t *types.Type) bool {
 	if types.Equal(n.Type, t) {
 		return true
 	}

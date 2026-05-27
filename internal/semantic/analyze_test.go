@@ -20,7 +20,7 @@ func TestAnalyze_Basic(t *testing.T) {
 	funcs, err := parser.ParseProgram(tokens)
 	require.NoError(t, err)
 
-	require.NoError(t, Check(funcs))
+	require.NoError(t, Analyze(funcs))
 
 	require.Len(t, funcs, 1)
 	fun := funcs[0]

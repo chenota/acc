@@ -44,9 +44,13 @@ type Signature struct {
 	Result *Node
 }
 
-func (n *Node) FindPredecessor(op Op) *Node {
-	curr := n.Parent
+// Predecessor finds the node's closest predecessor with the given op type
+func (n *Node) Predecessor(op Op) *Node {
+	if n == nil {
+		return nil
+	}
 
+	curr := n.Parent
 	for curr != nil {
 		if curr.Op == op {
 			return curr
