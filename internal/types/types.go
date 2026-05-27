@@ -19,6 +19,10 @@ type Type struct {
 }
 
 func Equal(a *Type, b *Type) bool {
+	if a == nil || b == nil {
+		return false
+	}
+
 	// function comparison
 	if a.Kind == KFunction && b.Kind == KFunction {
 		if !Equal(a.Output, b.Output) {
@@ -35,7 +39,7 @@ func Equal(a *Type, b *Type) bool {
 		return true
 	}
 
-	// atom comparison: use direct pointer comparison
+	// atom comparison: just use the kinds
 	return a.Kind == b.Kind
 }
 
