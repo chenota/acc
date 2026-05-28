@@ -5,8 +5,8 @@ import "github.com/chenota/acc/internal/types"
 type Op int
 
 const (
-	OpConstInt32 Op = iota
-	OpConstIntUntyped
+	OpUnknown Op = iota
+	OpConstInt32
 )
 
 type Value struct {
@@ -17,7 +17,7 @@ type Value struct {
 
 	Args []*Value
 
-	Aux any
+	AuxInt int64
 }
 
 type BlockKind int

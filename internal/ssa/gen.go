@@ -2,6 +2,7 @@ package ssa
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 
 	"github.com/chenota/acc/internal/ir"
@@ -35,10 +36,6 @@ func GenSsa(program []*ir.Node) ([]*Func, error) {
 }
 
 func (s *state) genStatement(stmt *ir.Node) error {
-	if s == nil {
-		return errors.New("nil node")
-	}
-
 	switch stmt.Op {
 	case ir.OpReturn:
 		retVal, err := s.genExpr(stmt.List[0])
@@ -54,30 +51,16 @@ func (s *state) genStatement(stmt *ir.Node) error {
 }
 
 func (s *state) genExpr(e *ir.Node) (*Value, error) {
-	if e == nil {
-		return nil, errors.New("nil node")
-	}
-
 	switch e.Op {
 	case ir.OpInt:
-		v := s.newValue(OpConstIntUntyped, types.UntypedInt())
-		v.Aux = e.Val // e.Val stores a big.Int for this kind of node
-		return v, nil
-	case ir.OpConv:
-		argVal, err := s.genExpr(e.List[0])
-		if err != nil {
-			return nil, err
-		}
-		if e.Type.Kind == types.KInt32 && argVal.Op == OpConstIntUntyped {
+		switch e.Type.Kind {
+		case types.KInt32:
 			v := s.newValue(OpConstInt32, types.Int32())
-			rawBig, ok := argVal.Aux.(*big.Int)
-			if !ok {
-				return nil, errors.New("untyped int op missing correct aux type")
-			}
-			v.Aux = int32(rawBig.Int64())
+			v.AuxInt = e.Val.(*big.Int).Int64()
 			return v, nil
+		default:
+			return nil, fmt.Errorf("unknown integer type: %v", e.Type)
 		}
-		return nil, errors.New("unsupported type conversion")
 	default:
 		return nil, errors.New("unsupported expression op")
 	}
@@ -106,7 +89,7 @@ func (s *state) newBlock() *Block {
 }
 
 func (s *state) setControlReturn(control *Value) {
-	if s == nil || s.currBlock == nil || s.currBlock.Kind != BlockUnset {
+	if s.currBlock == nil || s.currBlock.Kind != BlockUnset {
 		return
 	}
 	s.currBlock.Kind = BlockRet
