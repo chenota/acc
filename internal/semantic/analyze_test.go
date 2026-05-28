@@ -36,7 +36,7 @@ func TestAnalyze_Basic(t *testing.T) {
 }
 
 func TestAnalyze_Overflow(t *testing.T) {
-	inputStr := `fun main () -> int { return 2147483648; }`
+	inputStr := `fun main () -> int { return 2_147_483_648; }`
 	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
 	require.NoError(t, err)
 

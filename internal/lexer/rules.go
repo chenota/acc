@@ -35,7 +35,7 @@ var rules = []tokenRule{
 	{KindLParen, mustAnchor(`\(`)},
 	{KindRParen, mustAnchor(`\)`)},
 	{KindSemicolon, mustAnchor(`;`)},
-	{KindInteger, mustAnchor(`-?[0-9][0-9_]*`)},
+	{KindInteger, mustAnchor(`-?[0-9]+(_[0-9]+)*`)},
 	{KindIdentifier, mustAnchor(`[a-zA-Z_][a-zA-Z0-9_]*`)},
 	{KindNewlines, mustAnchor(`\n+`)},
 	{KindWhitespace, mustAnchor(`[[:blank:]]+`)},

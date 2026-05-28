@@ -1,6 +1,9 @@
 package lexer
 
-import "math/big"
+import (
+	"math/big"
+	"strings"
+)
 
 type TokenList struct {
 	i      int
@@ -41,13 +44,14 @@ func (t *TokenList) ExpectIdentifier() (string, bool) {
 	return ident.Text, true
 }
 
+// ExpectInteger returns a parsed integer value from the token list
 func (t *TokenList) ExpectInteger() (*big.Int, bool) {
 	token, ok := t.Expect(KindInteger)
 	if !ok {
-		return big.NewInt(0), false
+		return nil, false
 	}
 
-	return new(big.Int).SetString(token.Text, 10)
+	return token.ParseInteger()
 }
 
 func (t *TokenList) Empty() bool {
@@ -60,4 +64,9 @@ func (t *TokenList) Pos() Pos {
 	}
 
 	return t.tokens[t.i].Pos
+}
+
+func (t Token) ParseInteger() (*big.Int, bool) {
+	reducedText := strings.ReplaceAll(t.Text, `_`, ``)
+	return new(big.Int).SetString(reducedText, 10)
 }

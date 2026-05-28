@@ -41,22 +41,26 @@ func TestLexer_Identifier(t *testing.T) {
 }
 
 func TestLexer_Integer(t *testing.T) {
-	tests := []string{
-		"1",
-		"-123",
-		"1_000_000",
+	tests := []struct {
+		test     string
+		expected int64
+	}{
+		{"1", 1},
+		{"-123", -123},
+		{"1_000_000", 1000000},
 	}
 
 	for _, test := range tests {
-		t.Run(test, func(t *testing.T) {
-			tokens, err := Tokenize(strings.NewReader(test))
+		t.Run(test.test, func(t *testing.T) {
+			tokens, err := Tokenize(strings.NewReader(test.test))
 			require.NoError(t, err)
 
-			token, ok := tokens.Expect(KindInteger)
+			token, ok := tokens.ExpectInteger()
 			require.True(t, ok)
+			assert.Equal(t, test.expected, token.Int64())
 
-			assert.Equal(t, KindInteger, token.Kind)
-			assert.Equal(t, test, token.Text)
+			// these all should be the last token in the list
+			assert.True(t, tokens.Empty())
 		})
 	}
 }
