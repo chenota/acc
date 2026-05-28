@@ -34,3 +34,14 @@ func TestAnalyze_Basic(t *testing.T) {
 	e := fun.List[0].List[0]
 	assert.Equal(t, types.KInt32, e.Type.Kind)
 }
+
+func TestAnalyze_Overflow(t *testing.T) {
+	inputStr := `fun main () -> int { return 2147483648; }`
+	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
+	require.NoError(t, err)
+
+	funcs, err := parser.ParseProgram(tokens)
+	require.NoError(t, err)
+
+	assert.Error(t, Analyze(funcs))
+}
