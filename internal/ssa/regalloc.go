@@ -24,8 +24,18 @@ func regalloc(f *Func) {
 	for _, curr := range intervals {
 		file.expireOldIntervals(curr)
 
-		if !file.takeFree(curr) {
-			file.spillInterval(f, curr)
+		if reg := file.free(); reg != "" {
+			curr.Value.Register = reg
+			file.addActive(curr)
+		} else {
+			spill := file.lastActive()
+			if curr.End > spill.End {
+				injectSpill(f, curr.Value)
+				continue
+			}
+			curr.Value.Register = spill.Value.Register
+			injectSpill(f, spill.Value)
+			file.setLastActive(curr)
 		}
 	}
 
@@ -81,20 +91,28 @@ func (r *registerFile) sortActive() {
 	slices.SortFunc(r.active, func(a, b *liveInterval) int { return a.End - b.End })
 }
 
-func (r *registerFile) spillInterval(f *Func, i *liveInterval) {
-	spill := r.active[len(r.active)-1]
+func (r *registerFile) lastActive() *liveInterval {
+	return r.active[len(r.active)-1]
+}
 
-	// we have a very long-lived value it should get stack-ed
-	if i.End > spill.End {
-		injectSpill(f, i.Value)
-		return
-	}
-
-	i.Value.Register = spill.Value.Register
-	injectSpill(f, spill.Value)
-
+func (r *registerFile) setLastActive(i *liveInterval) {
 	r.active[len(r.active)-1] = i
 	r.sortActive()
+}
+
+func (r *registerFile) addActive(i *liveInterval) {
+	r.active = append(r.active, i)
+	r.sortActive()
+}
+
+func (r *registerFile) free() string {
+	if len(r.workingRegisters) == 0 {
+		return ""
+	}
+
+	reg := r.workingRegisters[0]
+	r.workingRegisters = r.workingRegisters[1:]
+	return reg
 }
 
 func injectSpill(f *Func, v *Value) {
