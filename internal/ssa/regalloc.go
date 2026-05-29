@@ -98,23 +98,23 @@ func injectSpill(f *Func, v *Value) {
 	}
 }
 
-func injectLoad(f *Func, loadFor *Value, loadFrom *Value, scratchIndex int) {
-	load := f.newValue(OpLoadReg, loadFrom.Type, loadFor.Block)
-	load.AuxInt = loadFrom.AuxInt // copy the stack slot index
+func injectLoad(f *Func, target *Value, spilledValue *Value, scratchIndex int) {
+	load := f.newValue(OpLoadReg, spilledValue.Type, target.Block)
+	load.AuxInt = spilledValue.AuxInt // copy the stack slot index
 
 	scratchRegs := []string{"rcx", "rdx"}
 	load.Register = scratchRegs[scratchIndex%len(scratchRegs)]
 
-	for i, blockVal := range loadFor.Block.Values {
-		if blockVal.Id == loadFor.Id {
-			loadFor.Block.Values = slices.Insert(loadFor.Block.Values, i, load)
+	for i, blockVal := range target.Block.Values {
+		if blockVal.Id == target.Id {
+			target.Block.Values = slices.Insert(target.Block.Values, i, load)
 			break
 		}
 	}
 
-	for idx, arg := range loadFor.Args {
-		if arg.Id == loadFrom.Id {
-			loadFor.Args[idx] = load
+	for idx, arg := range target.Args {
+		if arg.Id == spilledValue.Id {
+			target.Args[idx] = load
 		}
 	}
 }
