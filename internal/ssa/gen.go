@@ -22,6 +22,7 @@ func GenSsa(program []*ir.Node) ([]*Func, error) {
 		s.currFunc = &Func{Name: f.Sym.Name}
 
 		s.currBlock = s.newBlock()
+		s.currFunc.Entry = s.currBlock
 
 		for _, stmt := range f.List {
 			if err := s.genStatement(stmt); err != nil {

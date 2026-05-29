@@ -40,4 +40,5 @@ type Block struct {
 type Func struct {
 	Name   string
 	Blocks []*Block
+	Entry  *Block
 }
