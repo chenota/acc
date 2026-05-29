@@ -22,7 +22,7 @@ func TestGenSsa_Basic(t *testing.T) {
 
 	require.NoError(t, semantic.Analyze(funcs))
 
-	compiledFuncs, err := GenSsa(funcs)
+	compiledFuncs, err := BuildAndAllocate(funcs)
 	require.NoError(t, err)
 
 	require.Len(t, compiledFuncs, 1)

@@ -36,9 +36,3 @@ type Block struct {
 
 	Control *Value
 }
-
-type Func struct {
-	Name   string
-	Blocks []*Block
-	Entry  *Block
-}
