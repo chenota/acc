@@ -58,23 +58,6 @@ type registerFile struct {
 	active []*liveInterval
 }
 
-// takeFree attempts to allocate interval i to a free register. Returns false if there are no free registers.
-func (r *registerFile) takeFree(i *liveInterval) bool {
-	if len(r.workingRegisters) == 0 {
-		return false
-	}
-
-	reg := r.workingRegisters[0]
-	r.workingRegisters = r.workingRegisters[1:]
-
-	i.Value.Register = reg
-
-	r.active = append(r.active, i)
-	r.sortActive()
-
-	return true
-}
-
 // expireOldIntervals moves all registers taken by expired values back into the free pool
 func (r *registerFile) expireOldIntervals(i *liveInterval) {
 	for tick, interval := range r.active {
@@ -87,10 +70,16 @@ func (r *registerFile) expireOldIntervals(i *liveInterval) {
 	r.active = nil
 }
 
-func (r *registerFile) sortActive() {
-	slices.SortFunc(r.active, func(a, b *liveInterval) int { return a.End - b.End })
-}
+// free returns the first free register in the file if any exist
+func (r *registerFile) free() string {
+	if len(r.workingRegisters) == 0 {
+		return ""
+	}
 
+	reg := r.workingRegisters[0]
+	r.workingRegisters = r.workingRegisters[1:]
+	return reg
+}
 func (r *registerFile) lastActive() *liveInterval {
 	return r.active[len(r.active)-1]
 }
@@ -105,14 +94,8 @@ func (r *registerFile) addActive(i *liveInterval) {
 	r.sortActive()
 }
 
-func (r *registerFile) free() string {
-	if len(r.workingRegisters) == 0 {
-		return ""
-	}
-
-	reg := r.workingRegisters[0]
-	r.workingRegisters = r.workingRegisters[1:]
-	return reg
+func (r *registerFile) sortActive() {
+	slices.SortFunc(r.active, func(a, b *liveInterval) int { return a.End - b.End })
 }
 
 func injectSpill(f *Func, v *Value) {
