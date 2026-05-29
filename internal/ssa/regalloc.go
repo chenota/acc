@@ -13,21 +13,19 @@ type liveInterval struct {
 }
 
 func regalloc(f *Func) {
-	blocks := linearizeBlocks(f.Entry)
-	timeline := flattenValues(blocks)
+	timeline := generateTimeline(f.Entry)
 	intervals := computeLiveIntervals(timeline)
 
-	free := []string{"rax", "rbx"}
-	active := []*liveInterval{}
+	file := &registerFile{
+		workingRegisters: []string{"rax", "rbx"},
+		scratchRegisters: []string{"rcx", "rdx"},
+	}
 
-	for _, currentInterval := range intervals {
-		// expire old intervals by freeing their registers and untracking them
-		active, free = expireOldIntervals(currentInterval, active, free)
+	for _, curr := range intervals {
+		file.expireOldIntervals(curr)
 
-		if len(free) == 0 {
-			active = spillInterval(f, currentInterval, active)
-		} else {
-			active, free = takeFree(currentInterval, active, free)
+		if !file.takeFree(curr) {
+			file.spillInterval(f, curr)
 		}
 	}
 
@@ -43,42 +41,60 @@ func regalloc(f *Func) {
 	}
 }
 
-func takeFree(curr *liveInterval, active []*liveInterval, free []string) ([]*liveInterval, []string) {
-	reg := free[0]
+type registerFile struct {
+	workingRegisters []string
+	scratchRegisters []string
 
-	curr.Value.Register = reg
-	active = append(active, curr)
-	slices.SortFunc(active, func(a, b *liveInterval) int { return a.End - b.End })
-
-	return active, free[1:]
+	active []*liveInterval
 }
 
-func spillInterval(f *Func, curr *liveInterval, active []*liveInterval) []*liveInterval {
-	spill := active[len(active)-1]
+// takeFree attempts to allocate interval i to a free register. Returns false if there are no free registers.
+func (r *registerFile) takeFree(i *liveInterval) bool {
+	if len(r.workingRegisters) == 0 {
+		return false
+	}
+
+	reg := r.workingRegisters[0]
+	r.workingRegisters = r.workingRegisters[1:]
+
+	i.Value.Register = reg
+
+	r.active = append(r.active, i)
+	r.sortActive()
+
+	return true
+}
+
+// expireOldIntervals moves all registers taken by expired values back into the free pool
+func (r *registerFile) expireOldIntervals(i *liveInterval) {
+	for tick, interval := range r.active {
+		if interval.End >= i.Start {
+			r.active = r.active[tick:]
+			return
+		}
+		r.workingRegisters = append(r.workingRegisters, interval.Value.Register)
+	}
+	r.active = nil
+}
+
+func (r *registerFile) sortActive() {
+	slices.SortFunc(r.active, func(a, b *liveInterval) int { return a.End - b.End })
+}
+
+func (r *registerFile) spillInterval(f *Func, i *liveInterval) {
+	spill := r.active[len(r.active)-1]
 
 	// we have a very long-lived value it should get stack-ed
-	if curr.End > spill.End {
-		injectSpill(f, curr.Value)
-		return active
+	if i.End > spill.End {
+		injectSpill(f, i.Value)
+		return
 	}
 
-	curr.Value.Register = spill.Value.Register
+	i.Value.Register = spill.Value.Register
 	injectSpill(f, spill.Value)
 
-	active[len(active)-1] = curr
-	slices.SortFunc(active, func(a, b *liveInterval) int { return a.End - b.End })
-
-	return active
-}
-
-func expireOldIntervals(curr *liveInterval, active []*liveInterval, free []string) ([]*liveInterval, []string) {
-	for i, interval := range active {
-		if interval.End >= curr.Start {
-			return active[i:], free
-		}
-		free = append(free, interval.Value.Register)
-	}
-	return nil, free
+	r.active[len(r.active)-1] = i
+	r.sortActive()
 }
 
 func injectSpill(f *Func, v *Value) {
@@ -154,7 +170,7 @@ func computeLiveIntervals(timeline []*Value) []*liveInterval {
 	return sortedIntervals
 }
 
-func linearizeBlocks(entryBlock *Block) []*Block {
+func generateTimeline(entryBlock *Block) []*Value {
 	var order []*Block
 	visited := make(map[int]struct{})
 
@@ -174,15 +190,9 @@ func linearizeBlocks(entryBlock *Block) []*Block {
 
 	visit(entryBlock)
 
-	slices.Reverse(order)
-
-	return order
-}
-
-func flattenValues(orderedBlocks []*Block) []*Value {
 	var globalTimeline []*Value
 
-	for _, b := range orderedBlocks {
+	for _, b := range slices.Backward(order) {
 		globalTimeline = append(globalTimeline, b.Values...)
 	}
 
