@@ -80,6 +80,7 @@ func (r *registerFile) free() string {
 	r.workingRegisters = r.workingRegisters[1:]
 	return reg
 }
+
 func (r *registerFile) lastActive() *liveInterval {
 	return r.active[len(r.active)-1]
 }
