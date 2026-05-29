@@ -17,10 +17,12 @@ func BuildAndAllocate(program []*ir.Node) ([]*Func, error) {
 }
 
 func optimizedAllocatedFunction(n *ir.Node) (*Func, error) {
-	f, err := initialFunc(n)
+	f, err := buildFunc(n)
 	if err != nil {
 		return nil, err
 	}
+
+	regalloc(f)
 
 	return f, nil
 }

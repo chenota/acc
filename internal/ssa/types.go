@@ -7,6 +7,8 @@ type Op int
 const (
 	OpUnknown Op = iota
 	OpConstInt32
+	OpStoreReg
+	OpLoadReg
 )
 
 type Value struct {
@@ -18,6 +20,8 @@ type Value struct {
 	Args []*Value
 
 	AuxInt int64
+
+	Register string
 }
 
 type BlockKind int
@@ -34,6 +38,8 @@ type Block struct {
 	Kind   BlockKind
 	Values []*Value
 
+	Successors []*Block
+
 	Control *Value
 }
 
@@ -42,8 +48,9 @@ type Func struct {
 	Blocks []*Block
 	Entry  *Block
 
-	valueId int
-	blockId int
+	valueId   int
+	blockId   int
+	spillSlot int
 }
 
 func (f *Func) newValue(op Op, t *types.Type, b *Block) *Value {
@@ -57,4 +64,9 @@ func (f *Func) newBlock() *Block {
 	f.blockId += 1
 	f.Blocks = append(f.Blocks, b)
 	return b
+}
+
+func (f *Func) allocateSpill() int {
+	f.spillSlot += 1
+	return f.spillSlot - 1
 }

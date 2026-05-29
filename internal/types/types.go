@@ -8,6 +8,7 @@ const (
 	KUntypedInt
 	KInt32
 	KFunction
+	KMem
 )
 
 type Type struct {
@@ -57,4 +58,8 @@ func Function(inputs []*Type, output *Type) *Type {
 		Inputs: inputs,
 		Output: output,
 	}
+}
+
+func Mem() *Type {
+	return &Type{Kind: KMem}
 }

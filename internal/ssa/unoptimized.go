@@ -9,7 +9,7 @@ import (
 	"github.com/chenota/acc/internal/types"
 )
 
-func initialFunc(n *ir.Node) (*Func, error) {
+func buildFunc(n *ir.Node) (*Func, error) {
 	if n.Op != ir.OpFunction {
 		return nil, errors.New("expected function node")
 	}
