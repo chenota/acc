@@ -28,6 +28,8 @@ func TestGenSsa_Basic(t *testing.T) {
 	require.Len(t, compiledFuncs, 1)
 	f := compiledFuncs[0]
 
+	assert.Equal(t, "main", f.Name)
+
 	require.Len(t, f.Blocks, 1)
 	b := f.Blocks[0]
 
