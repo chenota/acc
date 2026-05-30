@@ -13,7 +13,7 @@ type liveInterval struct {
 }
 
 func regalloc(f *Func) {
-	timeline := generateTimeline(f.Entry)
+	timeline := f.values()
 	intervals := computeLiveIntervals(timeline)
 
 	file := &registerFile{
@@ -118,35 +118,6 @@ func computeLiveIntervals(timeline []*Value) []*liveInterval {
 	})
 
 	return sortedIntervals
-}
-
-func generateTimeline(entryBlock *Block) []*Value {
-	var order []*Block
-	visited := make(map[int]struct{})
-
-	var visit func(*Block)
-	visit = func(b *Block) {
-		if _, ok := visited[b.Id]; ok {
-			return
-		}
-		visited[b.Id] = struct{}{}
-
-		for _, succ := range b.Successors {
-			visit(succ)
-		}
-
-		order = append(order, b)
-	}
-
-	visit(entryBlock)
-
-	var globalTimeline []*Value
-
-	for _, b := range slices.Backward(order) {
-		globalTimeline = append(globalTimeline, b.Values...)
-	}
-
-	return globalTimeline
 }
 
 type registerFile struct {

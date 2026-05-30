@@ -1,6 +1,10 @@
 package ssa
 
-import "github.com/chenota/acc/internal/types"
+import (
+	"slices"
+
+	"github.com/chenota/acc/internal/types"
+)
 
 type Op int
 
@@ -51,6 +55,40 @@ type Func struct {
 	valueId   int
 	blockId   int
 	spillSlot int
+}
+
+// OrderedBlocks flattens a function's blocks using reverse post-order traversal
+func (f *Func) OrderedBlocks() []*Block {
+	var order []*Block
+	visited := make(map[int]struct{})
+
+	var visit func(*Block)
+	visit = func(b *Block) {
+		if _, ok := visited[b.Id]; ok {
+			return
+		}
+		visited[b.Id] = struct{}{}
+
+		for _, succ := range b.Successors {
+			visit(succ)
+		}
+
+		order = append(order, b)
+	}
+
+	visit(f.Entry)
+
+	slices.Reverse(order)
+
+	return order
+}
+
+func (f *Func) values() []*Value {
+	var vals []*Value
+	for _, b := range f.OrderedBlocks() {
+		vals = append(vals, b.Values...)
+	}
+	return vals
 }
 
 func (f *Func) newValue(op Op, t *types.Type, b *Block) *Value {
