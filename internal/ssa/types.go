@@ -21,7 +21,7 @@ type Value struct {
 
 	AuxInt int64
 
-	Register string
+	Loc Location
 }
 
 type BlockKind int
@@ -56,6 +56,7 @@ type Func struct {
 func (f *Func) newValue(op Op, t *types.Type, b *Block) *Value {
 	v := &Value{Id: f.valueId, Op: op, Type: t, Block: b}
 	f.valueId += 1
+	b.Values = append(b.Values, v)
 	return v
 }
 
@@ -69,4 +70,32 @@ func (f *Func) newBlock() *Block {
 func (f *Func) allocateSpill() int {
 	f.spillSlot += 1
 	return f.spillSlot - 1
+}
+
+type LocationKind int
+
+const (
+	LocNone LocationKind = iota
+	LocRegister
+	LocStack
+)
+
+type Location struct {
+	Kind LocationKind
+	Reg  int
+	Slot int
+}
+
+func NewReg(reg int) Location {
+	return Location{
+		Kind: LocRegister,
+		Reg:  reg,
+	}
+}
+
+func NewStack(slot int) Location {
+	return Location{
+		Kind: LocStack,
+		Slot: slot,
+	}
 }

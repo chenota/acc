@@ -35,4 +35,5 @@ func TestGenSsa_Basic(t *testing.T) {
 
 	require.NotNil(t, b.Control)
 	assert.True(t, types.Equal(b.Control.Type, types.Int32()))
+	assert.Equal(t, LocRegister, b.Control.Loc.Kind)
 }
