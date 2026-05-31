@@ -63,5 +63,5 @@ func assertContainsOpWithArgs(t *testing.T, insts []Inst, op string, args ...Arg
 			}
 		}
 	}
-	assert.Fail(t, "instructions list does not contain specified operation with argument", "operation", op, "args", args)
+	assert.Fail(t, "instructions list does not contain specified operation with arguments", op, args)
 }

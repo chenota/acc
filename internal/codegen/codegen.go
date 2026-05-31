@@ -1,9 +1,11 @@
 package codegen
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/chenota/acc/internal/ssa"
+	"github.com/chenota/acc/internal/types"
 )
 
 const BasicBlockPrefix string = "__bb"
@@ -49,9 +51,7 @@ func generateFunction(f *ssa.Func) []Inst {
 		})
 	}
 
-	blocks := f.OrderedBlocks()
-
-	for _, b := range blocks {
+	for _, b := range f.OrderedBlocks() {
 		insts = append(insts, generateBlock(b)...)
 	}
 
@@ -80,7 +80,9 @@ func generateBlock(b *ssa.Block) []Inst {
 
 	insts = append(insts, labelInst(blockLabel(b)))
 
-	for _, v := range b.Values {
+	for _, v := range b.OrderedValues() {
+		fmt.Println("fuck")
+		fmt.Println(v.Op)
 		insts = append(insts, generateValue(v)...)
 	}
 
@@ -93,11 +95,28 @@ func generateValue(v *ssa.Value) []Inst {
 	switch v.Op {
 	case ssa.OpConstInt32:
 		insts = append(insts, generateConstInt32(v))
+	case ssa.OpCopy:
+		insts = append(insts, generateCopy(v))
 	case ssa.OpLoadReg:
 	case ssa.OpStoreReg:
 	}
 
 	return insts
+}
+
+func generateCopy(v *ssa.Value) Inst {
+	source := toArg(v.Args[0].Loc)
+	dest := toArg(v.Loc)
+
+	switch v.Type.Kind {
+	case types.KInt32:
+		return Inst{
+			Op:   "movl",
+			Args: []Arg{source, dest},
+		}
+	default:
+		return Inst{}
+	}
 }
 
 func generateConstInt32(v *ssa.Value) Inst {

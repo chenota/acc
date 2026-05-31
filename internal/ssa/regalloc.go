@@ -13,6 +13,8 @@ type liveInterval struct {
 }
 
 func regalloc(f *Func) {
+	prepareReturns(f)
+
 	timeline := f.values()
 	intervals := computeLiveIntervals(timeline)
 
@@ -24,7 +26,22 @@ func regalloc(f *Func) {
 	for _, curr := range intervals {
 		file.expireOldIntervals(curr)
 
-		if reg, ok := file.free(); ok {
+		// current is pre-filled we must spill the existing value if something is using it
+		if curr.Value.Loc.Kind == LocRegister {
+			// optimization: skip allocation for redundant copy operation
+			if curr.Value.Op == OpCopy && curr.Value.Loc.Reg == curr.Value.Args[0].Loc.Reg {
+				// take control back one level if this copy is the control value
+				if curr.Value.Block.Control == curr.Value {
+					curr.Value.Block.Control = curr.Value.Args[0]
+				}
+				continue
+			} else if spill := file.activeWithRegister(curr.Value.Loc.Reg); spill != nil {
+				injectSpill(f, spill.Value)
+				file.replaceActive(spill, curr)
+			} else {
+				file.addActive(curr)
+			}
+		} else if reg, ok := file.free(); ok {
 			curr.Value.Loc = NewReg(reg)
 			file.addActive(curr)
 		} else {
@@ -47,6 +64,20 @@ func regalloc(f *Func) {
 				injectLoad(f, val, arg, file.scratchRegister(loadCount))
 				loadCount++
 			}
+		}
+	}
+}
+
+func prepareReturns(f *Func) {
+	for _, block := range f.Blocks {
+		if block.Kind == BlockRet {
+			oldRetVal := block.Control
+
+			copyInst := f.newValue(OpCopy, oldRetVal.Type, block)
+			copyInst.Args = []*Value{oldRetVal}
+			copyInst.Loc = NewReg(0) // pre-fill copy destination to RAX
+
+			block.Control = copyInst
 		}
 	}
 }
@@ -170,4 +201,22 @@ func (r *registerFile) sortActive() {
 
 func (r *registerFile) scratchRegister(i int) int {
 	return r.scratchRegisters[i%len(r.scratchRegisters)]
+}
+
+func (r *registerFile) activeWithRegister(reg int) *liveInterval {
+	for _, active := range r.active {
+		if active.Value.Loc.Kind == LocRegister && active.Value.Loc.Reg == reg {
+			return active
+		}
+	}
+	return nil
+}
+
+func (r *registerFile) replaceActive(old *liveInterval, new *liveInterval) {
+	for i, active := range r.active {
+		if active == old {
+			r.active[i] = new
+			return
+		}
+	}
 }

@@ -13,6 +13,7 @@ const (
 	OpConstInt32
 	OpStoreReg
 	OpLoadReg
+	OpCopy
 )
 
 type Value struct {
@@ -45,6 +46,29 @@ type Block struct {
 	Successors []*Block
 
 	Control *Value
+}
+
+func (b *Block) OrderedValues() []*Value {
+	var order []*Value
+	visited := make(map[int]struct{})
+
+	var visit func(*Value)
+	visit = func(v *Value) {
+		if _, ok := visited[v.Id]; ok {
+			return
+		}
+		visited[v.Id] = struct{}{}
+
+		for _, arg := range v.Args {
+			visit(arg)
+		}
+
+		order = append(order, v)
+	}
+
+	visit(b.Control)
+
+	return order
 }
 
 type Func struct {
@@ -86,7 +110,7 @@ func (f *Func) OrderedBlocks() []*Block {
 func (f *Func) values() []*Value {
 	var vals []*Value
 	for _, b := range f.OrderedBlocks() {
-		vals = append(vals, b.Values...)
+		vals = append(vals, b.OrderedValues()...)
 	}
 	return vals
 }
