@@ -27,35 +27,41 @@ func TestCodegen_Basic(t *testing.T) {
 
 	insts := GenerateProgram(ssaFuncs)
 
-	assertContainsOp(t, "_fmain:", insts)
-	assertContainsOp(t, "ret", insts)
-	assertContainsOpWithArg(t, "movl", KImmediate, insts)
+	// Function prologue/epilogue
+	assertContainsSeq(t, insts, "pushq", "movq", "popq", "ret")
+	// Immediate
+	assertContainsOpWithArgs(t, insts, "movl", KImmediate, KRegister)
 }
 
-func assertContainsOp(t *testing.T, op string, insts []Inst) {
+func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
 	t.Helper()
 
+	var seqIdx int
 	for _, inst := range insts {
-		if inst.Op == op {
+		if inst.Op == seq[seqIdx] {
+			seqIdx += 1
+		}
+		if seqIdx >= len(seq) {
 			return
 		}
 	}
 
-	assert.Fail(t, "instructions list does not contain specified operation", "operation", op)
+	assert.Fail(t, "instructions list does not contain the specified sequence of operations")
 }
 
-func assertContainsOpWithArg(t *testing.T, op string, arg ArgKind, insts []Inst) {
+func assertContainsOpWithArgs(t *testing.T, insts []Inst, op string, args ...ArgKind) {
 	t.Helper()
-
 	for _, inst := range insts {
-		if inst.Op == op {
-			for _, a := range inst.Args {
-				if a.Kind == arg {
+		if inst.Op == op && len(inst.Args) == len(args) {
+			for i := range args {
+				if inst.Args[i].Kind != args[i] {
+					break
+				}
+				if i == len(args)-1 {
 					return
 				}
 			}
 		}
 	}
-
-	assert.Fail(t, "instructions list does not contain specified operation with argument", "operation", op, "arg", arg)
+	assert.Fail(t, "instructions list does not contain specified operation with argument", "operation", op, "args", args)
 }
