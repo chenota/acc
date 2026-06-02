@@ -3,6 +3,7 @@ package ssa
 import (
 	"slices"
 
+	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/types"
 )
 
@@ -149,11 +150,11 @@ const (
 
 type Location struct {
 	Kind LocationKind
-	Reg  int
+	Reg  register.Register
 	Slot int
 }
 
-func NewReg(reg int) Location {
+func NewReg(reg register.Register) Location {
 	return Location{
 		Kind: LocRegister,
 		Reg:  reg,

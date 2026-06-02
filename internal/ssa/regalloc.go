@@ -3,6 +3,7 @@ package ssa
 import (
 	"slices"
 
+	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/types"
 )
 
@@ -12,15 +13,16 @@ type liveInterval struct {
 	End   int
 }
 
-func regalloc(f *Func) {
+func (s *ssaBuilder) regalloc(f *Func) {
 	prepareReturns(f)
 
 	timeline := f.values()
 	intervals := computeLiveIntervals(timeline)
 
 	file := &registerFile{
-		workingRegisters: []int{0, 1},
-		scratchRegisters: []int{2, 3},
+		workingRegisters: s.workingRegisters,
+		scratchRegisters: s.scratchRegisters,
+		returnTarget:     s.returnTarget,
 	}
 
 	for _, curr := range intervals {
@@ -98,7 +100,7 @@ func injectSpill(f *Func, v *Value) {
 	}
 }
 
-func injectLoad(f *Func, target *Value, spilledValue *Value, scratchRegister int) {
+func injectLoad(f *Func, target *Value, spilledValue *Value, scratchRegister register.Register) {
 	load := f.newValue(OpLoadReg, spilledValue.Type, target.Block)
 	load.Loc = NewReg(scratchRegister)
 
@@ -152,8 +154,9 @@ func computeLiveIntervals(timeline []*Value) []*liveInterval {
 }
 
 type registerFile struct {
-	workingRegisters []int
-	scratchRegisters []int
+	workingRegisters []register.Register
+	scratchRegisters []register.Register
+	returnTarget     register.Register
 
 	active []*liveInterval
 }
@@ -171,7 +174,7 @@ func (r *registerFile) expireOldIntervals(i *liveInterval) {
 }
 
 // free returns the first free register in the file if any exist
-func (r *registerFile) free() (int, bool) {
+func (r *registerFile) free() (register.Register, bool) {
 	if len(r.workingRegisters) == 0 {
 		return 0, false
 	}
@@ -199,11 +202,11 @@ func (r *registerFile) sortActive() {
 	slices.SortFunc(r.active, func(a, b *liveInterval) int { return a.End - b.End })
 }
 
-func (r *registerFile) scratchRegister(i int) int {
+func (r *registerFile) scratchRegister(i int) register.Register {
 	return r.scratchRegisters[i%len(r.scratchRegisters)]
 }
 
-func (r *registerFile) activeWithRegister(reg int) *liveInterval {
+func (r *registerFile) activeWithRegister(reg register.Register) *liveInterval {
 	for _, active := range r.active {
 		if active.Value.Loc.Kind == LocRegister && active.Value.Loc.Reg == reg {
 			return active
