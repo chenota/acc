@@ -8,6 +8,7 @@ import (
 	"github.com/chenota/acc/internal/parser"
 	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/semantic"
+	"github.com/chenota/acc/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,6 +40,7 @@ func TestGenSsa_Basic(t *testing.T) {
 
 	require.NotNil(t, b.Control)
 	assert.Equal(t, b.Control.Op, OpConstInt32)
+	assert.Equal(t, b.Control.Type.Kind, types.KInt32)
 	assert.Equal(t, LocRegister, b.Control.Loc.Kind)
 	assert.Equal(t, returnRegister, b.Control.Loc.Reg)
 }
