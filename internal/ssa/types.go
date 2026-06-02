@@ -14,7 +14,6 @@ const (
 	OpConstInt32
 	OpStoreReg
 	OpLoadReg
-	OpCopy
 )
 
 type Value struct {
