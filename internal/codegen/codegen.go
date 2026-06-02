@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"github.com/chenota/acc/internal/ssa"
-	"github.com/chenota/acc/internal/types"
 )
 
 const BasicBlockPrefix string = "__bb"
@@ -32,13 +31,13 @@ func generateFunction(f *ssa.Func) []Inst {
 	insts = append(insts, labelInst(funcLabel(f)))
 	insts = append(insts, Inst{
 		Op:   "pushq",
-		Args: []Arg{{Kind: KRegister, Size: Size64, AuxInt: BasePointer}},
+		Args: []Arg{{Kind: KRegister, AuxInt: BasePointer}},
 	})
 	insts = append(insts, Inst{
 		Op: "movq",
 		Args: []Arg{
-			{Kind: KRegister, Size: Size64, AuxInt: StackPointer},
-			{Kind: KRegister, Size: Size64, AuxInt: BasePointer},
+			{Kind: KRegister, AuxInt: StackPointer},
+			{Kind: KRegister, AuxInt: BasePointer},
 		},
 	})
 	if f.AllocSize() > 0 {
@@ -46,7 +45,7 @@ func generateFunction(f *ssa.Func) []Inst {
 			Op: "subq",
 			Args: []Arg{
 				{Kind: KImmediate, AuxInt: f.AllocSize()},
-				{Kind: KRegister, Size: Size64, AuxInt: StackPointer},
+				{Kind: KRegister, AuxInt: StackPointer},
 			},
 		})
 	}
@@ -60,14 +59,14 @@ func generateFunction(f *ssa.Func) []Inst {
 			Op: "addq",
 			Args: []Arg{
 				{Kind: KImmediate, AuxInt: f.AllocSize()},
-				{Kind: KRegister, Size: Size64, AuxInt: StackPointer},
+				{Kind: KRegister, AuxInt: StackPointer},
 			},
 		})
 	}
 
 	insts = append(insts, Inst{
 		Op:   "popq",
-		Args: []Arg{{Kind: KRegister, Size: Size64, AuxInt: BasePointer}},
+		Args: []Arg{{Kind: KRegister, AuxInt: BasePointer}},
 	})
 
 	insts = append(insts, Inst{Op: "ret"})
@@ -108,8 +107,8 @@ func generateCopy(v *ssa.Value) Inst {
 	source := toArg(v.Args[0].Loc)
 	dest := toArg(v.Loc)
 
-	switch v.Type.Kind {
-	case types.KInt32:
+	switch v.Type.Size() {
+	case 32:
 		return Inst{
 			Op:   "movl",
 			Args: []Arg{source, dest},
@@ -121,7 +120,6 @@ func generateCopy(v *ssa.Value) Inst {
 
 func generateConstInt32(v *ssa.Value) Inst {
 	dest := toArg(v.Loc)
-	dest.Size = Size32
 
 	return Inst{
 		Op:   "movl",

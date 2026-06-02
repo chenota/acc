@@ -63,3 +63,16 @@ func Function(inputs []*Type, output *Type) *Type {
 func Mem() *Type {
 	return &Type{Kind: KMem}
 }
+
+func (t *Type) Size() int {
+	switch t.Kind {
+	case KUnknown, KUntypedInt, KMem:
+		return -1
+	case KUnit:
+		return 0
+	case KInt32:
+		return 32
+	default:
+		return 64
+	}
+}
