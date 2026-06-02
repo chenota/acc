@@ -5,18 +5,14 @@ import (
 	"github.com/chenota/acc/internal/register"
 )
 
-var (
-	defaultWorkingRegisters = []register.Register{register.Reg8, register.Reg9, register.Reg10, register.Reg11, register.Reg12, register.Reg13}
-	defaultScratchRegisters = []register.Register{register.Reg14, register.Reg15}
-	defaultReturnTarget     = register.RegA
-)
+var defaultRegisterGroup = registerGroup{
+	working:      []register.Register{register.Reg8, register.Reg9, register.Reg10, register.Reg11, register.Reg12, register.Reg13},
+	scratch:      []register.Register{register.Reg14, register.Reg15},
+	returnTarget: register.RegA,
+}
 
 func BuildAndAllocate(program []*ir.Node, opts ...Option) ([]*Func, error) {
-	builder := &ssaBuilder{
-		workingRegisters: defaultWorkingRegisters,
-		scratchRegisters: defaultScratchRegisters,
-		returnTarget:     defaultReturnTarget,
-	}
+	builder := &ssaBuilder{registers: defaultRegisterGroup}
 
 	for _, o := range opts {
 		o(builder)
@@ -41,33 +37,37 @@ func (s *ssaBuilder) optimizedAllocatedFunction(n *ir.Node) (*Func, error) {
 		return nil, err
 	}
 
-	s.regalloc(f)
+	regalloc(f, s.registers)
 
 	return f, nil
 }
 
 type Option func(s *ssaBuilder)
 
-func WithWorkingRegisters(regs []register.Register) Option {
+func WithWorkingRegisters(regs ...register.Register) Option {
 	return func(s *ssaBuilder) {
-		s.workingRegisters = regs
+		s.registers.working = regs
 	}
 }
 
-func WithScratchRegisters(regs []register.Register) Option {
+func WithScratchRegisters(regs ...register.Register) Option {
 	return func(s *ssaBuilder) {
-		s.scratchRegisters = regs
+		s.registers.scratch = regs
 	}
 }
 
 func WithReturnRegister(r register.Register) Option {
 	return func(s *ssaBuilder) {
-		s.returnTarget = r
+		s.registers.returnTarget = r
 	}
 }
 
 type ssaBuilder struct {
-	workingRegisters []register.Register
-	scratchRegisters []register.Register
-	returnTarget     register.Register
+	registers registerGroup
+}
+
+type registerGroup struct {
+	working      []register.Register
+	scratch      []register.Register
+	returnTarget register.Register
 }

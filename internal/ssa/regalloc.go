@@ -7,133 +7,215 @@ import (
 	"github.com/chenota/acc/internal/types"
 )
 
-type liveInterval struct {
+type interval struct {
 	Value *Value
 	Start int
 	End   int
 }
 
-func (s *ssaBuilder) regalloc(f *Func) {
-	prepareReturns(f)
-
+func regalloc(f *Func, registers registerGroup) {
 	timeline := f.values()
 	intervals := computeLiveIntervals(timeline)
 
-	file := &registerFile{
-		workingRegisters: s.workingRegisters,
-		scratchRegisters: s.scratchRegisters,
-		returnTarget:     s.returnTarget,
-	}
+	r := newRegisterAllocater(registers)
+
+	r.prepareReturns(f)
 
 	for _, curr := range intervals {
-		file.expireOldIntervals(curr)
+		r.expireOldIntervals(curr.Start)
 
 		// current is pre-filled we must spill the existing value if something is using it
 		if curr.Value.Loc.Kind == LocRegister {
-			// optimization: skip allocation for redundant copy operation
-			if curr.Value.Op == OpCopy && curr.Value.Loc.Reg == curr.Value.Args[0].Loc.Reg {
-				// take control back one level if this copy is the control value
-				if curr.Value.Block.Control == curr.Value {
-					curr.Value.Block.Control = curr.Value.Args[0]
-				}
-				continue
-			} else if spill := file.activeWithRegister(curr.Value.Loc.Reg); spill != nil {
-				injectSpill(f, spill.Value)
-				file.replaceActive(spill, curr)
-			} else {
-				file.addActive(curr)
-			}
-		} else if reg, ok := file.free(); ok {
-			curr.Value.Loc = NewReg(reg)
-			file.addActive(curr)
-		} else {
-			spill := file.lastActive()
-			if curr.End > spill.End {
-				curr.Value.Loc = NewStack(f.allocateSpill())
-				continue
-			}
-			curr.Value.Loc = spill.Value.Loc
-			injectSpill(f, spill.Value)
-			file.setLastActive(curr)
+			r.processPreAllocatedInterval(f, curr)
+			continue
 		}
+
+		// is there a free register we can give this value?
+		if reg, ok := r.freeRegister(); ok {
+			r.assignRegister(curr, reg)
+		}
+
+		// last resort: spill a current active or self
+		r.spillOrEvict(f, curr)
 	}
 
-	// inject load instructions for "STACK" values
-	for _, val := range timeline {
-		loadCount := 0
-		for _, arg := range val.Args {
-			if arg.Loc.Kind == LocStack {
-				injectLoad(f, val, arg, file.scratchRegister(loadCount))
-				loadCount++
-			}
-		}
-	}
+	// inject load and store operations given values that were evicted to the stack
+	r.injectLoadsAndStores(f)
 }
 
-func prepareReturns(f *Func) {
+type registerAllocater struct {
+	working      map[register.Register]bool
+	scratch      []register.Register
+	returnTarget register.Register
+
+	active []*interval
+}
+
+func (r *registerAllocater) prepareReturns(f *Func) {
 	for _, block := range f.Blocks {
 		if block.Kind == BlockRet {
-			oldRetVal := block.Control
-
-			copyInst := f.newValue(OpCopy, oldRetVal.Type, block)
-			copyInst.Args = []*Value{oldRetVal}
-			copyInst.Loc = NewReg(0) // pre-fill copy destination to RAX
-
-			block.Control = copyInst
+			block.Control.Loc = NewReg(r.returnTarget)
 		}
 	}
 }
 
-func injectSpill(f *Func, v *Value) {
-	spill := f.newValue(OpStoreReg, types.Mem(), v.Block)
-	spill.Args = []*Value{v}
+func newRegisterAllocater(registers registerGroup) *registerAllocater {
+	working := make(map[register.Register]bool)
+	for _, r := range registers.working {
+		working[r] = true
+	}
 
-	spill.Loc = v.Loc
-	v.Loc = NewStack(f.allocateSpill())
+	return &registerAllocater{
+		working:      working,
+		scratch:      registers.scratch,
+		returnTarget: registers.returnTarget,
+	}
+}
 
-	// inject spill value immediately after current value
-	for i, blockVal := range v.Block.Values {
-		if blockVal.Id == v.Id {
-			v.Block.Values = slices.Insert(v.Block.Values, i+1, spill)
-			break
+func (r *registerAllocater) spillOrEvict(f *Func, i *interval) {
+	spill := r.latestActive()
+
+	// target interval takes too much time; directly spill target
+	if i.End > spill.End {
+		i.Value.Loc = NewStack(f.allocateSpill())
+		return
+	}
+
+	r.evictInterval(f, spill)
+	r.addActive(i)
+}
+
+// expireOldIntervals moves all registers taken by expired values back into the free pool
+func (r *registerAllocater) expireOldIntervals(cutoff int) {
+	for tick, interval := range r.active {
+		if interval.End >= cutoff {
+			r.active = r.active[tick:]
+			return
+		}
+		r.working[interval.Value.Loc.Reg] = true
+	}
+	r.active = nil
+}
+
+// freeRegister returns the first free register in the file if any exist
+func (r *registerAllocater) freeRegister() (register.Register, bool) {
+	for reg, isFree := range r.working {
+		if isFree {
+			return reg, true
+		}
+	}
+
+	return 0, false
+}
+
+func (r *registerAllocater) processPreAllocatedInterval(f *Func, i *interval) {
+	targetRegister := i.Value.Loc.Reg
+
+	// see if any currently active intervals hold that register
+	var theif *interval
+	for _, active := range r.active {
+		if active.Value.Loc.Kind == LocRegister && active.Value.Loc.Reg == targetRegister {
+			theif = active
+		}
+	}
+
+	// nothing has that register; assign it and mark it as taken
+	if theif == nil {
+		r.assignRegister(i, targetRegister)
+		return
+	}
+
+	r.evictInterval(f, theif)
+	r.addActive(i)
+}
+
+func (r *registerAllocater) injectLoadsAndStores(f *Func) {
+	for _, block := range f.Blocks {
+		for _, v := range block.Values {
+			scratchCount := 0
+
+			// uses - load before instruction
+			for idx, arg := range v.Args {
+				if arg.Loc.Kind == LocStack {
+					// create a load instruction using a dedicated scratch register
+					load := f.newValue(OpLoadReg, arg.Type, block)
+					load.Loc = NewReg(r.scratchRegister(scratchCount))
+					load.AuxInt = int64(arg.Loc.Slot)
+
+					// rewrite the instruction's argument to point to the result of our load
+					v.Args[idx] = load
+
+					scratchCount += 1
+				}
+			}
+
+			// defs - spill after instruction
+			if v.Loc.Kind == LocStack {
+				spill := f.newValue(OpStoreReg, types.Mem(), block)
+				spill.Args = []*Value{v}
+				spill.Loc = v.Loc // copy v's stack slot over to the new store instruction
+
+				// re-target original value to scratch register
+				v.Loc = NewReg(r.scratchRegister(scratchCount))
+
+				scratchCount += 1
+			}
 		}
 	}
 }
 
-func injectLoad(f *Func, target *Value, spilledValue *Value, scratchRegister register.Register) {
-	load := f.newValue(OpLoadReg, spilledValue.Type, target.Block)
-	load.Loc = NewReg(scratchRegister)
-
-	for i, blockVal := range target.Block.Values {
-		if blockVal.Id == target.Id {
-			target.Block.Values = slices.Insert(target.Block.Values, i, load)
-			break
-		}
-	}
-
-	for idx, arg := range target.Args {
-		if arg.Id == spilledValue.Id {
-			target.Args[idx] = load
-		}
-	}
+func (r *registerAllocater) assignRegister(i *interval, reg register.Register) {
+	r.working[reg] = false
+	i.Value.Loc = NewReg(reg)
+	r.addActive(i)
 }
 
-func computeLiveIntervals(timeline []*Value) []*liveInterval {
-	intervals := make(map[int]*liveInterval)
+func (r *registerAllocater) evictInterval(f *Func, i *interval) {
+	// see if there's a different free register we can give this value
+	if free, ok := r.freeRegister(); ok {
+		r.working[free] = false
+		i.Value.Loc.Reg = free
+		return
+	}
 
-	// walk backwards through timeline
+	// this interval must be spilled
+	r.removeActive(i)
+	i.Value.Loc = NewStack(f.allocateSpill())
+}
+
+func (r *registerAllocater) latestActive() *interval {
+	return r.active[len(r.active)-1]
+}
+
+func (r *registerAllocater) addActive(i *interval) {
+	r.active = append(r.active, i)
+	slices.SortFunc(r.active, func(a, b *interval) int { return a.End - b.End })
+}
+
+func (r *registerAllocater) removeActive(i *interval) {
+	r.active = slices.DeleteFunc(r.active, func(a *interval) bool { return a == i })
+}
+
+func (r *registerAllocater) scratchRegister(idx int) register.Register {
+	return r.scratch[idx%len(r.scratch)]
+}
+
+func computeLiveIntervals(timeline []*Value) []*interval {
+	intervals := make(map[int]*interval)
+
+	// walk backwards through timeline to deal with loop shenanigans
 	for tick := len(timeline) - 1; tick >= 0; tick-- {
 		v := timeline[tick]
 
-		if interval, exists := intervals[v.Id]; exists {
-			interval.Start = tick
+		if inter, exists := intervals[v.Id]; exists {
+			inter.Start = tick
 		} else {
-			intervals[v.Id] = &liveInterval{Value: v, Start: tick, End: tick}
+			intervals[v.Id] = &interval{Value: v, Start: tick, End: tick}
 		}
 
 		for _, arg := range v.Args {
 			if _, exists := intervals[arg.Id]; !exists {
-				intervals[arg.Id] = &liveInterval{
+				intervals[arg.Id] = &interval{
 					Value: arg,
 					End:   tick,
 				}
@@ -141,85 +223,15 @@ func computeLiveIntervals(timeline []*Value) []*liveInterval {
 		}
 	}
 
-	var sortedIntervals []*liveInterval
+	var sortedIntervals []*interval
 	for _, interval := range intervals {
 		sortedIntervals = append(sortedIntervals, interval)
 	}
 
-	slices.SortFunc(sortedIntervals, func(a, b *liveInterval) int {
+	// sort intervals by start tick ascending
+	slices.SortFunc(sortedIntervals, func(a, b *interval) int {
 		return a.Start - b.Start
 	})
 
 	return sortedIntervals
-}
-
-type registerFile struct {
-	workingRegisters []register.Register
-	scratchRegisters []register.Register
-	returnTarget     register.Register
-
-	active []*liveInterval
-}
-
-// expireOldIntervals moves all registers taken by expired values back into the free pool
-func (r *registerFile) expireOldIntervals(i *liveInterval) {
-	for tick, interval := range r.active {
-		if interval.End >= i.Start {
-			r.active = r.active[tick:]
-			return
-		}
-		r.workingRegisters = append(r.workingRegisters, interval.Value.Loc.Reg)
-	}
-	r.active = nil
-}
-
-// free returns the first free register in the file if any exist
-func (r *registerFile) free() (register.Register, bool) {
-	if len(r.workingRegisters) == 0 {
-		return 0, false
-	}
-
-	reg := r.workingRegisters[0]
-	r.workingRegisters = r.workingRegisters[1:]
-	return reg, true
-}
-
-func (r *registerFile) lastActive() *liveInterval {
-	return r.active[len(r.active)-1]
-}
-
-func (r *registerFile) setLastActive(i *liveInterval) {
-	r.active[len(r.active)-1] = i
-	r.sortActive()
-}
-
-func (r *registerFile) addActive(i *liveInterval) {
-	r.active = append(r.active, i)
-	r.sortActive()
-}
-
-func (r *registerFile) sortActive() {
-	slices.SortFunc(r.active, func(a, b *liveInterval) int { return a.End - b.End })
-}
-
-func (r *registerFile) scratchRegister(i int) register.Register {
-	return r.scratchRegisters[i%len(r.scratchRegisters)]
-}
-
-func (r *registerFile) activeWithRegister(reg register.Register) *liveInterval {
-	for _, active := range r.active {
-		if active.Value.Loc.Kind == LocRegister && active.Value.Loc.Reg == reg {
-			return active
-		}
-	}
-	return nil
-}
-
-func (r *registerFile) replaceActive(old *liveInterval, new *liveInterval) {
-	for i, active := range r.active {
-		if active == old {
-			r.active[i] = new
-			return
-		}
-	}
 }

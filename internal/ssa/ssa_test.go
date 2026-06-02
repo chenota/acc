@@ -6,8 +6,8 @@ import (
 
 	"github.com/chenota/acc/internal/lexer"
 	"github.com/chenota/acc/internal/parser"
+	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/semantic"
-	"github.com/chenota/acc/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +22,9 @@ func TestGenSsa_Basic(t *testing.T) {
 
 	require.NoError(t, semantic.Analyze(funcs))
 
-	compiledFuncs, err := BuildAndAllocate(funcs)
+	// not really necessary but ensuring the RAX is the return register
+	returnRegister := register.RegA
+	compiledFuncs, err := BuildAndAllocate(funcs, WithReturnRegister(returnRegister))
 	require.NoError(t, err)
 
 	require.Len(t, compiledFuncs, 1)
@@ -36,6 +38,7 @@ func TestGenSsa_Basic(t *testing.T) {
 	assert.Equal(t, BlockRet, b.Kind)
 
 	require.NotNil(t, b.Control)
-	assert.True(t, types.Equal(b.Control.Type, types.Int32()))
+	assert.Equal(t, b.Control.Op, OpConstInt32)
 	assert.Equal(t, LocRegister, b.Control.Loc.Kind)
+	assert.Equal(t, returnRegister, b.Control.Loc.Reg)
 }
