@@ -16,6 +16,7 @@ const (
 	KRegister
 	KImmediate
 	KStack
+	KText
 )
 
 type Arg struct {
@@ -24,4 +25,5 @@ type Arg struct {
 	Reg register.Register
 
 	Value int64
+	Text  string
 }

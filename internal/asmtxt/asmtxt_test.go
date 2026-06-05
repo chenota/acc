@@ -59,3 +59,17 @@ func TestAsmTxt_Label(t *testing.T) {
 	require.Len(t, instrs, len(cgInstrs))
 	assert.Equal(t, "great:", instrs[0])
 }
+
+func TestAsmTxt_Directive(t *testing.T) {
+	cgInstrs := []codegen.Inst{
+		{
+			Op:   ".hello",
+			Dest: codegen.Arg{Kind: codegen.KText, Text: "world"},
+		},
+	}
+
+	instrs := Stringify(cgInstrs)
+
+	require.Len(t, instrs, len(cgInstrs))
+	assert.Equal(t, "\t.hello world", instrs[0])
+}

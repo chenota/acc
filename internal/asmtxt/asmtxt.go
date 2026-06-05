@@ -14,23 +14,21 @@ func Stringify(instrs []codegen.Inst) []string {
 	strs := make([]string, 0, len(instrs))
 
 	for _, instr := range instrs {
-		if strings.Contains(instr.Op, ":") {
+		if strings.HasSuffix(instr.Op, ":") {
 			strs = append(strs, instr.Op)
 			continue
 		}
-
-		op := "\t" + instr.Op
 
 		src1 := argText(instr.Src1)
 		src2 := argText(instr.Src2)
 		dest := argText(instr.Dest)
 
 		if src1 == "" {
-			strs = append(strs, fmt.Sprintf("%s %s", op, dest))
+			strs = append(strs, fmt.Sprintf("\t%s %s", instr.Op, dest))
 		} else if src1 != "" && src2 == "" {
-			strs = append(strs, fmt.Sprintf("%s %s, %s", op, src1, dest))
+			strs = append(strs, fmt.Sprintf("\t%s %s, %s", instr.Op, src1, dest))
 		} else if src1 != "" && src2 != "" {
-			strs = append(strs, fmt.Sprintf("%s %s, %s, %s", op, src1, src2, dest))
+			strs = append(strs, fmt.Sprintf("\t%s %s, %s, %s", instr.Op, src1, src2, dest))
 		}
 	}
 
@@ -46,6 +44,8 @@ func argText(arg codegen.Arg) string {
 	case codegen.KStack:
 		rbpName := registerString(register.RegBP, 64)
 		return fmt.Sprintf("%d(%s)", arg.Value, rbpName)
+	case codegen.KText:
+		return arg.Text
 	}
 	return ""
 }

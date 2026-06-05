@@ -12,25 +12,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCodegen_Basic(t *testing.T) {
-	inputStr := `fun main () -> int { return 0; }`
-	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
-	require.NoError(t, err)
+func TestCodegen_PrologueEpilogue(t *testing.T) {
+	insts := requireGeneratesProgram(t, `fun main () -> int { return 0; }`)
 
-	funcs, err := parser.ParseProgram(tokens)
-	require.NoError(t, err)
-
-	require.NoError(t, semantic.Analyze(funcs))
-
-	ssaFuncs, err := ssa.BuildAndAllocate(funcs)
-	require.NoError(t, err)
-
-	insts := GenerateProgram(ssaFuncs)
-
-	// Function prologue/epilogue
 	assertContainsSeq(t, insts, "pushq", "movq", "popq", "ret")
-	// Immediate
+}
+
+func TestCodegen_ImmediateValue(t *testing.T) {
+	insts := requireGeneratesProgram(t, `fun main () -> int { return 0; }`)
+
 	assertContainsOpWithArgs(t, insts, "movl", KImmediate, KUndefined, KRegister)
+}
+
+func TestCodegen_Directives(t *testing.T) {
+	insts := requireGeneratesProgram(t, `fun main () -> int { return 0; }`)
+
+	assertContainsSeq(t, insts, ".text", ".globl")
+}
+
+func TestCodegen_Metadata(t *testing.T) {
+	insts := requireGeneratesProgram(t, `fun main () -> int { return 0; }`)
+
+	assertContainsSeq(t, insts, ".type", ".size")
 }
 
 func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
@@ -57,4 +60,19 @@ func assertContainsOpWithArgs(t *testing.T, insts []Inst, op string, src1, src2,
 		}
 	}
 	assert.Fail(t, "instructions list does not contain specified operation with arguments", op, src1, src2, dest)
+}
+
+func requireGeneratesProgram(t *testing.T, src string) []Inst {
+	tokens, err := lexer.Tokenize(strings.NewReader(src))
+	require.NoError(t, err)
+
+	funcs, err := parser.ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.NoError(t, semantic.Analyze(funcs))
+
+	ssaFuncs, err := ssa.BuildAndAllocate(funcs)
+	require.NoError(t, err)
+
+	return GenerateProgram(ssaFuncs)
 }

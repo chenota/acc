@@ -15,6 +15,10 @@ var (
 func GenerateProgram(program []*ssa.Func) []Inst {
 	var insts []Inst
 
+	insts = append(insts, Inst{
+		Op: ".text",
+	})
+
 	for _, f := range program {
 		insts = append(insts, generateFunction(f)...)
 	}
@@ -25,16 +29,27 @@ func GenerateProgram(program []*ssa.Func) []Inst {
 func generateFunction(f *ssa.Func) []Inst {
 	var insts []Inst
 
-	insts = append(insts, label(f.Name))
-	insts = append(insts, Inst{
-		Op:   "pushq",
-		Dest: basePointer,
-	})
-	insts = append(insts, Inst{
-		Op:   "movq",
-		Src1: stackPointer,
-		Dest: basePointer,
-	})
+	insts = append(insts,
+		Inst{
+			Op:   ".globl",
+			Dest: text(f.Name),
+		},
+		Inst{
+			Op:   ".type",
+			Src1: text(f.Name),
+			Dest: text("@function"),
+		},
+		label(f.Name),
+		Inst{
+			Op:   "pushq",
+			Dest: basePointer,
+		},
+		Inst{
+			Op:   "movq",
+			Src1: stackPointer,
+			Dest: basePointer,
+		},
+	)
 	if f.StackSize() > 0 {
 		insts = append(insts, Inst{
 			Op:   "subq",
@@ -60,7 +75,14 @@ func generateFunction(f *ssa.Func) []Inst {
 		Dest: basePointer,
 	})
 
-	insts = append(insts, Inst{Op: "ret"})
+	insts = append(insts,
+		Inst{Op: "ret"},
+		Inst{
+			Op:   ".size",
+			Src1: text(f.Name),
+			Dest: text(".-" + f.Name),
+		},
+	)
 
 	return insts
 }
@@ -166,4 +188,8 @@ func movOp(size int) string {
 		op = "movq"
 	}
 	return op
+}
+
+func text(v string) Arg {
+	return Arg{Kind: KText, Text: v}
 }
