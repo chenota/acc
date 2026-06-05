@@ -1,0 +1,97 @@
+package asmtxt
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/chenota/acc/internal/codegen"
+	"github.com/chenota/acc/internal/register"
+)
+
+// Stringify transforms a list of instructions into AT&T strings
+func Stringify(instrs []codegen.Inst) []string {
+	strs := make([]string, 0, len(instrs))
+
+	for _, instr := range instrs {
+		if strings.Contains(instr.Op, ":") {
+			strs = append(strs, instr.Op)
+			continue
+		}
+
+		op := "\t" + instr.Op
+
+		src1 := argText(instr.Src1)
+		src2 := argText(instr.Src2)
+		dest := argText(instr.Dest)
+
+		if src1 == "" {
+			strs = append(strs, fmt.Sprintf("%s %s", op, dest))
+		} else if src1 != "" && src2 == "" {
+			strs = append(strs, fmt.Sprintf("%s %s, %s", op, src1, dest))
+		} else if src1 != "" && src2 != "" {
+			strs = append(strs, fmt.Sprintf("%s %s, %s, %s", op, src1, src2, dest))
+		}
+	}
+
+	return strs
+}
+
+func argText(arg codegen.Arg) string {
+	switch arg.Kind {
+	case codegen.KImmediate:
+		return "$" + strconv.FormatInt(arg.Value, 10)
+	case codegen.KRegister:
+		return registerString(arg.Reg, arg.Value)
+	case codegen.KStack:
+		rbpName := registerString(register.RegBP, 64)
+		return fmt.Sprintf("%d(%s)", arg.Value, rbpName)
+	}
+	return ""
+}
+
+var classicRegs = map[register.Register][]string{
+	register.RegA:  {"al", "ax", "eax", "rax"},
+	register.RegB:  {"bl", "bx", "ebx", "rbx"},
+	register.RegC:  {"cl", "cx", "ecx", "rcx"},
+	register.RegD:  {"dl", "dx", "edx", "rdx"},
+	register.RegSI: {"sil", "si", "esi", "rsi"},
+	register.RegDI: {"dil", "di", "edi", "rdi"},
+	register.RegSP: {"spl", "sp", "esp", "rsp"},
+	register.RegBP: {"bpl", "bp", "ebp", "rbp"},
+}
+
+func registerString(reg register.Register, size int64) string {
+	var regStr string
+
+	if reg >= register.RegA && reg <= register.RegBP {
+		switch size {
+		case 8:
+			regStr = classicRegs[reg][0]
+		case 16:
+			regStr = classicRegs[reg][1]
+		case 32:
+			regStr = classicRegs[reg][2]
+		case 64:
+			regStr = classicRegs[reg][3]
+		}
+	}
+
+	if reg >= register.Reg8 && reg <= register.Reg15 {
+		switch size {
+		case 8:
+			regStr = fmt.Sprintf("r%db", reg)
+		case 16:
+			regStr = fmt.Sprintf("r%dw", reg)
+		case 32:
+			regStr = fmt.Sprintf("r%dd", reg)
+		case 64:
+			regStr = fmt.Sprintf("r%d", reg)
+		}
+	}
+
+	if regStr != "" {
+		return "%" + regStr
+	}
+	return ""
+}

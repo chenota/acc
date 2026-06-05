@@ -33,12 +33,12 @@ func generateFunction(f *ssa.Func) []Inst {
 	insts = append(insts, label(funcLabel(f)))
 	insts = append(insts, Inst{
 		Op:   "pushq",
-		Src1: basePointer,
+		Dest: basePointer,
 	})
 	insts = append(insts, Inst{
 		Op:   "movq",
 		Src1: stackPointer,
-		Src2: basePointer,
+		Dest: basePointer,
 	})
 	if f.StackSize() > 0 {
 		insts = append(insts, Inst{
