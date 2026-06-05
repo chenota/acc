@@ -7,11 +7,6 @@ import (
 	"github.com/chenota/acc/internal/ssa"
 )
 
-const (
-	BasicBlockPrefix = "__bb"
-	FunctionPrefix   = "_f"
-)
-
 var (
 	basePointer  = Arg{Kind: KRegister, Reg: register.RegBP, Value: 64}
 	stackPointer = Arg{Kind: KRegister, Reg: register.RegSP, Value: 64}
@@ -30,7 +25,7 @@ func GenerateProgram(program []*ssa.Func) []Inst {
 func generateFunction(f *ssa.Func) []Inst {
 	var insts []Inst
 
-	insts = append(insts, label(funcLabel(f)))
+	insts = append(insts, label(f.Name))
 	insts = append(insts, Inst{
 		Op:   "pushq",
 		Dest: basePointer,
@@ -73,7 +68,10 @@ func generateFunction(f *ssa.Func) []Inst {
 func generateBlock(b *ssa.Block) []Inst {
 	var insts []Inst
 
-	insts = append(insts, label(blockLabel(b)))
+	// only need a label if something is going to jump to this block
+	if len(b.Predecessors) > 0 {
+		insts = append(insts, label(blockLabel(b)))
+	}
 
 	for _, v := range b.OrderedValues() {
 		insts = append(insts, generateValue(v)...)
@@ -122,11 +120,7 @@ func generateStore(v *ssa.Value) Inst {
 }
 
 func blockLabel(b *ssa.Block) string {
-	return BasicBlockPrefix + strconv.Itoa(b.Id)
-}
-
-func funcLabel(f *ssa.Func) string {
-	return FunctionPrefix + f.Name
+	return "_block" + strconv.Itoa(b.Id)
 }
 
 func toArg(v *ssa.Value) Arg {

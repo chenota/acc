@@ -43,7 +43,8 @@ type Block struct {
 	Kind   BlockKind
 	Values []*Value
 
-	Successors []*Block
+	Successors   []*Block
+	Predecessors []*Block
 
 	Control *Value
 }
