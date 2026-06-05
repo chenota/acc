@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/chenota/acc/internal/compiler"
 	"github.com/spf13/cobra"
@@ -46,23 +45,7 @@ func (a *app) run(cmd *cobra.Command, args []string) error {
 	}
 	defer input.Close()
 
-	var output io.WriteCloser
-	if a.outputPath == "-" {
-		output = os.Stdout
-	} else {
-		// ensure defaults if empty
-		if a.outputPath == "" {
-			a.outputPath = fmt.Sprintf("%s.asm", strings.TrimSuffix(inputPath, filepath.Ext(inputPath)))
-		}
-		f, err := os.Create(a.outputPath)
-		if err != nil {
-			return err
-		}
-		output = f
-	}
-	defer output.Close()
-
-	return compiler.Compile(input, output)
+	return compiler.Compile(input, a.outputPath)
 }
 
 func validatePositionalArgs(cmd *cobra.Command, args []string) error {
