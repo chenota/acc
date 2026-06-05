@@ -134,8 +134,8 @@ func (f *Func) allocateSpill() int {
 	return f.spillSlot - 1
 }
 
-// AllocSize returns a 16-byte aligned value representing how large Func's stack is.
-func (f *Func) AllocSize() int64 {
+// StackSize returns a 16-byte aligned value representing how large Func's stack is.
+func (f *Func) StackSize() int64 {
 	return int64((((f.spillSlot * 8) + 16) / 16) * 16)
 }
 

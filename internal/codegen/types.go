@@ -1,19 +1,27 @@
 package codegen
 
+import "github.com/chenota/acc/internal/register"
+
 type Inst struct {
 	Op   string
-	Args []Arg
+	Dest Arg
+	Src1 Arg
+	Src2 Arg
 }
 
 type ArgKind int
 
 const (
-	KRegister ArgKind = iota
+	KUndefined ArgKind = iota
+	KRegister
 	KImmediate
 	KStack
 )
 
 type Arg struct {
-	Kind   ArgKind
-	AuxInt int64
+	Kind ArgKind
+
+	Reg register.Register
+
+	Value int64
 }

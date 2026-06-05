@@ -30,7 +30,7 @@ func TestCodegen_Basic(t *testing.T) {
 	// Function prologue/epilogue
 	assertContainsSeq(t, insts, "pushq", "movq", "popq", "ret")
 	// Immediate
-	assertContainsOpWithArgs(t, insts, "movl", KImmediate, KRegister)
+	assertContainsOpWithArgs(t, insts, "movl", KImmediate, KUndefined, KRegister)
 }
 
 func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
@@ -46,22 +46,15 @@ func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
 		}
 	}
 
-	assert.Fail(t, "instructions list does not contain the specified sequence of operations")
+	assert.Fail(t, "instructions list does not contain the specified sequence of operations", seq)
 }
 
-func assertContainsOpWithArgs(t *testing.T, insts []Inst, op string, args ...ArgKind) {
+func assertContainsOpWithArgs(t *testing.T, insts []Inst, op string, src1, src2, dest ArgKind) {
 	t.Helper()
 	for _, inst := range insts {
-		if inst.Op == op && len(inst.Args) == len(args) {
-			for i := range args {
-				if inst.Args[i].Kind != args[i] {
-					break
-				}
-				if i == len(args)-1 {
-					return
-				}
-			}
+		if inst.Op == op && inst.Src1.Kind == src1 && inst.Src2.Kind == src2 && inst.Dest.Kind == dest {
+			return
 		}
 	}
-	assert.Fail(t, "instructions list does not contain specified operation with arguments", op, args)
+	assert.Fail(t, "instructions list does not contain specified operation with arguments", op, src1, src2, dest)
 }

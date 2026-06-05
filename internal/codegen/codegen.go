@@ -3,15 +3,18 @@ package codegen
 import (
 	"strconv"
 
+	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/ssa"
 )
 
-const BasicBlockPrefix string = "__bb"
-const FunctionPrefix string = "_f"
-
 const (
-	StackPointer = 6
-	BasePointer  = 7
+	BasicBlockPrefix = "__bb"
+	FunctionPrefix   = "_f"
+)
+
+var (
+	basePointer  = Arg{Kind: KRegister, Reg: register.RegBP, Value: 64}
+	stackPointer = Arg{Kind: KRegister, Reg: register.RegSP, Value: 64}
 )
 
 func GenerateProgram(program []*ssa.Func) []Inst {
@@ -27,25 +30,21 @@ func GenerateProgram(program []*ssa.Func) []Inst {
 func generateFunction(f *ssa.Func) []Inst {
 	var insts []Inst
 
-	insts = append(insts, labelInst(funcLabel(f)))
+	insts = append(insts, label(funcLabel(f)))
 	insts = append(insts, Inst{
 		Op:   "pushq",
-		Args: []Arg{{Kind: KRegister, AuxInt: BasePointer}},
+		Src1: basePointer,
 	})
 	insts = append(insts, Inst{
-		Op: "movq",
-		Args: []Arg{
-			{Kind: KRegister, AuxInt: StackPointer},
-			{Kind: KRegister, AuxInt: BasePointer},
-		},
+		Op:   "movq",
+		Src1: stackPointer,
+		Src2: basePointer,
 	})
-	if f.AllocSize() > 0 {
+	if f.StackSize() > 0 {
 		insts = append(insts, Inst{
-			Op: "subq",
-			Args: []Arg{
-				{Kind: KImmediate, AuxInt: f.AllocSize()},
-				{Kind: KRegister, AuxInt: StackPointer},
-			},
+			Op:   "subq",
+			Src1: immediate(f.StackSize()),
+			Dest: stackPointer,
 		})
 	}
 
@@ -53,19 +52,17 @@ func generateFunction(f *ssa.Func) []Inst {
 		insts = append(insts, generateBlock(b)...)
 	}
 
-	if f.AllocSize() > 0 {
+	if f.StackSize() > 0 {
 		insts = append(insts, Inst{
-			Op: "addq",
-			Args: []Arg{
-				{Kind: KImmediate, AuxInt: f.AllocSize()},
-				{Kind: KRegister, AuxInt: StackPointer},
-			},
+			Op:   "addq",
+			Src1: immediate(f.StackSize()),
+			Dest: stackPointer,
 		})
 	}
 
 	insts = append(insts, Inst{
 		Op:   "popq",
-		Args: []Arg{{Kind: KRegister, AuxInt: BasePointer}},
+		Dest: basePointer,
 	})
 
 	insts = append(insts, Inst{Op: "ret"})
@@ -76,7 +73,7 @@ func generateFunction(f *ssa.Func) []Inst {
 func generateBlock(b *ssa.Block) []Inst {
 	var insts []Inst
 
-	insts = append(insts, labelInst(blockLabel(b)))
+	insts = append(insts, label(blockLabel(b)))
 
 	for _, v := range b.OrderedValues() {
 		insts = append(insts, generateValue(v)...)
@@ -92,23 +89,36 @@ func generateValue(v *ssa.Value) []Inst {
 	case ssa.OpConstInt32:
 		insts = append(insts, generateConstInt32(v))
 	case ssa.OpLoadReg:
+		insts = append(insts, generateLoad(v))
 	case ssa.OpStoreReg:
+		insts = append(insts, generateStore(v))
 	}
 
 	return insts
 }
 
 func generateConstInt32(v *ssa.Value) Inst {
-	dest := toArg(v.Loc)
-
 	return Inst{
-		Op:   "movl",
-		Args: []Arg{{Kind: KImmediate, AuxInt: v.AuxInt}, dest},
+		Op:   movOp(32),
+		Src1: immediate(v.AuxInt),
+		Dest: toArg(v),
 	}
 }
 
-func labelInst(label string) Inst {
-	return Inst{Op: label + ":"}
+func generateLoad(v *ssa.Value) Inst {
+	return Inst{
+		Op:   movOp(v.Type.Size()),
+		Src1: stack(v.AuxInt),
+		Dest: toArg(v),
+	}
+}
+
+func generateStore(v *ssa.Value) Inst {
+	return Inst{
+		Op:   movOp(v.Type.Size()),
+		Src1: toArg(v.Args[0]),
+		Dest: toArg(v),
+	}
 }
 
 func blockLabel(b *ssa.Block) string {
@@ -119,18 +129,47 @@ func funcLabel(f *ssa.Func) string {
 	return FunctionPrefix + f.Name
 }
 
-func toArg(l ssa.Location) Arg {
-	switch l.Kind {
+func toArg(v *ssa.Value) Arg {
+	switch v.Loc.Kind {
 	case ssa.LocRegister:
 		return Arg{
-			Kind:   KRegister,
-			AuxInt: int64(l.Reg),
+			Kind:  KRegister,
+			Reg:   v.Loc.Reg,
+			Value: int64(v.Type.Size()),
 		}
 	case ssa.LocStack:
 		return Arg{
-			Kind:   KStack,
-			AuxInt: int64(l.Slot * 8),
+			Kind:  KStack,
+			Reg:   v.Loc.Reg,
+			Value: int64(v.Loc.Slot),
 		}
 	}
 	return Arg{}
+}
+
+func immediate(v int64) Arg {
+	return Arg{Kind: KImmediate, Value: v}
+}
+
+func label(l string) Inst {
+	return Inst{Op: l + ":"}
+}
+
+func stack(slot int64) Arg {
+	return Arg{Kind: KStack, Value: slot}
+}
+
+func movOp(size int) string {
+	var op string
+	switch size {
+	case 8:
+		op = "movb"
+	case 16:
+		op = "movw"
+	case 32:
+		op = "movl"
+	default:
+		op = "movq"
+	}
+	return op
 }
