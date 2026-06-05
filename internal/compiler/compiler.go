@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/chenota/acc/internal/asmtxt"
@@ -14,7 +15,7 @@ import (
 
 // Compile is the top-level function of the acc compiler.
 // It orchestrates all the compiler's important components.
-func Compile(r io.Reader, outputPath string) error {
+func Compile(r io.Reader, w io.Writer, isAssembly bool) error {
 	tokens, err := lexer.Tokenize(r)
 	if err != nil {
 		return err
@@ -38,7 +39,18 @@ func Compile(r io.Reader, outputPath string) error {
 
 	stringInstructions := asmtxt.Stringify(instructions)
 
-	if err := gcc.CompileWithGcc(stringInstructions, outputPath); err != nil {
+	if isAssembly {
+		for _, inst := range stringInstructions {
+			_, err := fmt.Fprintln(w, inst)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	if err := gcc.CompileWithGcc(stringInstructions, w); err != nil {
 		return err
 	}
 

@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/chenota/acc/internal/compiler"
 	"github.com/spf13/cobra"
@@ -12,6 +13,7 @@ import (
 
 type app struct {
 	outputPath string
+	isAssembly bool
 }
 
 // NewRootCommand creates a self-contained Cobra command to run the app
@@ -26,6 +28,7 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&app.outputPath, "output", "o", "", "path to the output file")
+	cmd.Flags().BoolVarP(&app.isAssembly, "asm", "S", false, "output AMD64 assembly")
 
 	return cmd
 }
@@ -45,7 +48,27 @@ func (a *app) run(cmd *cobra.Command, args []string) error {
 	}
 	defer input.Close()
 
-	return compiler.Compile(input, a.outputPath)
+	var output io.WriteCloser
+	if a.outputPath == "-" {
+		output = os.Stdout
+	} else {
+		// ensure defaults if empty
+		if a.outputPath == "" {
+			extension := "out"
+			if a.isAssembly {
+				extension = "s"
+			}
+			a.outputPath = fmt.Sprintf("%s.%s", strings.TrimSuffix(inputPath, filepath.Ext(inputPath)), extension)
+		}
+		f, err := os.Create(a.outputPath)
+		if err != nil {
+			return err
+		}
+		output = f
+	}
+	defer output.Close()
+
+	return compiler.Compile(input, output, a.isAssembly)
 }
 
 func validatePositionalArgs(cmd *cobra.Command, args []string) error {

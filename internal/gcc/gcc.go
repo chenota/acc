@@ -3,33 +3,45 @@ package gcc
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
 )
 
-// CompileWithGcc compiles a list of AMD64 instructions into binary
-func CompileWithGcc(instructions []string, outputPath string) error {
-	// create a temporary file
-	tmpFile, err := os.CreateTemp("", "my_compiler_*.s")
+// CompileWithGcc compiles a list of AMD64 instructions into binary using GCC
+func CompileWithGcc(instructions []string, w io.Writer) error {
+	tmpBinary, err := os.CreateTemp("", "acc_bin_*")
 	if err != nil {
-		return fmt.Errorf("failed to create temp source file: %w", err)
+		return err
 	}
-	defer os.Remove(tmpFile.Name())
+	defer os.Remove(tmpBinary.Name())
+	// we don't want to write to this initially so close for now
+	tmpBinary.Close()
 
-	// write the assembly to the temp file
-	if _, err := tmpFile.WriteString(strings.Join(instructions, "\n")); err != nil {
-		tmpFile.Close()
-		return fmt.Errorf("failed to write assembly to temp file: %w", err)
-	}
-	tmpFile.Close()
+	cmd := exec.Command("gcc", "-x", "assembler", "-", "-no-pie", "-o", tmpBinary.Name())
 
-	// configure gcc and run
-	cmd := exec.Command("gcc", "-g", "-no-pie", tmpFile.Name(), "-o", outputPath)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+
+	cmd.Stdout = w
+
+	cmd.Stdin = bytes.NewBufferString(strings.Join(instructions, "\n"))
+
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("gcc failed to assemble source: %w (stderr: %s)", err, stderr.String())
+	}
+
+	// re-open the temporary file now that GCC has written to it
+	binaryReader, err := os.Open(tmpBinary.Name())
+	if err != nil {
+		return fmt.Errorf("failed to open linked binary for reading: %w", err)
+	}
+	defer binaryReader.Close()
+
+	_, err = io.Copy(w, binaryReader)
+	if err != nil {
+		return fmt.Errorf("failed to copy linked binary bytes to writer: %w", err)
 	}
 
 	return nil
