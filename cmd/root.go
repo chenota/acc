@@ -68,7 +68,13 @@ func (a *app) run(cmd *cobra.Command, args []string) error {
 	}
 	defer output.Close()
 
-	return compiler.Compile(input, output, a.isAssembly)
+	var opts []compiler.Option
+
+	if a.isAssembly {
+		opts = append(opts, compiler.WithAssemblyOnly())
+	}
+
+	return compiler.Compile(input, output, opts...)
 }
 
 func validatePositionalArgs(cmd *cobra.Command, args []string) error {

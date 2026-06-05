@@ -15,7 +15,13 @@ import (
 
 // Compile is the top-level function of the acc compiler.
 // It orchestrates all the compiler's important components.
-func Compile(r io.Reader, w io.Writer, isAssembly bool) error {
+func Compile(r io.Reader, w io.Writer, opts ...Option) error {
+	config := compilerOptions{}
+
+	for _, o := range opts {
+		o(&config)
+	}
+
 	tokens, err := lexer.Tokenize(r)
 	if err != nil {
 		return err
@@ -39,7 +45,7 @@ func Compile(r io.Reader, w io.Writer, isAssembly bool) error {
 
 	stringInstructions := asmtxt.Stringify(instructions)
 
-	if isAssembly {
+	if config.isAssembly {
 		for _, inst := range stringInstructions {
 			_, err := fmt.Fprintln(w, inst)
 			if err != nil {
@@ -55,4 +61,17 @@ func Compile(r io.Reader, w io.Writer, isAssembly bool) error {
 	}
 
 	return nil
+}
+
+type compilerOptions struct {
+	isAssembly bool
+}
+
+type Option func(*compilerOptions)
+
+// WithAssemblyOnly tells acc to emit text assembly rather than a linked binary.
+func WithAssemblyOnly() Option {
+	return func(o *compilerOptions) {
+		o.isAssembly = true
+	}
 }
