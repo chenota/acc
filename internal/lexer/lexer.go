@@ -1,7 +1,6 @@
 package lexer
 
 import (
-	"errors"
 	"io"
 
 	"github.com/chenota/acc/internal/diagnostic"
@@ -17,8 +16,14 @@ type Token struct {
 	Pos  diagnostic.Pos
 }
 
-// Tokenize processes an input into a list of tokens
-func Tokenize(r io.Reader) (*TokenList, error) {
+// Tokenize processes an input file into a list of tokens
+func Tokenize(r io.Reader, options ...Option) (*TokenList, error) {
+	cfg := config{}
+
+	for _, o := range options {
+		o(&cfg)
+	}
+
 	bytes, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
@@ -34,6 +39,8 @@ func Tokenize(r io.Reader) (*TokenList, error) {
 		var bestKind TokenKind
 		var bestLen int
 
+		pos := diagnostic.Pos{File: cfg.FileName, Col: col + 1, Line: line + 1}
+
 		for _, rule := range rules {
 			if loc := rule.pattern.FindIndex(bytes[i:]); loc != nil && loc[1] > bestLen {
 				bestLen = loc[1]
@@ -42,14 +49,14 @@ func Tokenize(r io.Reader) (*TokenList, error) {
 		}
 
 		if bestLen == 0 {
-			return nil, errors.New("invalid token")
+			return nil, diagnostic.NewError("invalid token", pos)
 		}
 
 		if !(bestKind == KindWhitespace || bestKind == KindNewlines) {
 			tokens = append(tokens, Token{
 				Kind: bestKind,
 				Text: string(bytes[i : i+bestLen]),
-				Pos:  diagnostic.Pos{Line: line, Col: col},
+				Pos:  pos,
 			})
 		}
 

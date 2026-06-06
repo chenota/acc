@@ -15,14 +15,14 @@ import (
 
 // Compile is the top-level function of the acc compiler.
 // It orchestrates all the compiler's important components.
-func Compile(r io.Reader, w io.Writer, opts ...Option) error {
+func Compile(r FileDetail, w io.Writer, opts ...Option) error {
 	config := compilerOptions{}
 
 	for _, o := range opts {
 		o(&config)
 	}
 
-	tokens, err := lexer.Tokenize(r)
+	tokens, err := lexer.Tokenize(r.Reader, lexer.WithFileName(r.Name))
 	if err != nil {
 		return err
 	}
@@ -61,4 +61,9 @@ func Compile(r io.Reader, w io.Writer, opts ...Option) error {
 	}
 
 	return nil
+}
+
+type FileDetail struct {
+	Reader io.Reader
+	Name   string
 }
