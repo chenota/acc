@@ -14,10 +14,7 @@ import (
 )
 
 func TestProgram_MainFunc(t *testing.T) {
-	// we're cheating a little bit by using the lexer here but it makes writing tests much easier
-	inputStr := `fun main () -> int { return 0; }`
-	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
-	require.NoError(t, err)
+	tokens := requireTokenize(t, `fun main () -> int { return 0; }`)
 
 	funcs, err := ParseProgram(tokens)
 	require.NoError(t, err)
@@ -39,4 +36,36 @@ func TestProgram_MainFunc(t *testing.T) {
 	e := ret.List[0]
 	assert.Equal(t, ir.OpInt, e.Op)
 	assert.NotNil(t, e.Val.(*big.Int))
+}
+
+func TestProgram_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"missing parenthesis 1", `fun main ( -> int { return 0; }`},
+		{"missing parenthesis 2", `fun main ) -> int { return 0; }`},
+		{"extra parenthesis", `fun main (() -> int { return 0; }`},
+		{"missing bracket 1", `fun main () -> int { return 0;`},
+		{"missing bracket 2", `fun main () -> int return 0; }`},
+		{"missing fun keyword", `main () -> int { return 0; }`},
+		{"missing fun name", `fun () -> int { return 0; }`},
+		{"missing semicolon", `fun main () -> int { return 0 }`},
+		{"missing int", `fun main () -> int { return ; }`},
+		{"extra int", `fun main () -> int { return 0 0; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := requireTokenize(t, tt.test)
+			_, err := ParseProgram(tokens)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func requireTokenize(t *testing.T, input string) *lexer.TokenList {
+	tokens, err := lexer.Tokenize(strings.NewReader(input))
+	require.NoError(t, err)
+	return tokens
 }

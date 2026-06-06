@@ -10,46 +10,53 @@ import (
 func ParseProgram(t *lexer.TokenList) ([]*ir.Node, error) {
 	var globalStmts []*ir.Node
 
+	p := &parser{
+		t: t,
+	}
+
 	// consume statements until we can't
 	for {
-		if s, ok := parseStmt(t); ok {
+		if s, ok := p.parseStmt(); ok {
 			globalStmts = append(globalStmts, s)
 		} else {
 			break
 		}
 	}
 
-	// assert no leftover tokens
+	// if not enough tokens were consumed then there was a parsing error
 	if !t.Empty() {
-		return nil, errors.New("token list not empty")
+		if p.err == nil {
+			return nil, errors.New("unknown parsing error: could not parse entire file")
+		}
+		return nil, p.err
 	}
 
-	// vertial slice check: for now we should have a single function
-	// eventually we'll separate statments into types, configure global vars, create a shadow function, etc.
+	// vertial slice check: for now we should have a single function called main
 	if len(globalStmts) != 1 || globalStmts[0].Op != ir.OpFunction {
-		return nil, errors.New("should have a single function named 'main'")
+		return nil, errors.New("vertical slice error: should have a single function called 'main'")
 	}
 
 	return globalStmts, nil
 }
 
-func parseBlock(t *lexer.TokenList) (*ir.Node, bool) {
-	loc := t.Mark()
+func (p *parser) parseBlock() (*ir.Node, bool) {
+	loc := p.t.Mark()
 
 	n := &ir.Node{
 		Op:  ir.OpBlock,
-		Pos: t.Pos(),
+		Pos: p.t.Pos(),
 	}
 
-	_, ok := t.Expect(lexer.KindLBracket)
+	_, ok := p.t.Expect(lexer.KindLBracket)
 	if !ok {
-		t.Restore(loc)
+		p.markErr("expected opening bracket '{'")
+		p.t.Restore(loc)
 		return nil, false
 	}
 
 	var stmts []*ir.Node
 	for {
-		s, ok := parseStmt(t)
+		s, ok := p.parseStmt()
 		if !ok {
 			break
 		}
@@ -58,101 +65,108 @@ func parseBlock(t *lexer.TokenList) (*ir.Node, bool) {
 	}
 	n.List = stmts
 
-	_, ok = t.Expect(lexer.KindRBracket)
+	_, ok = p.t.Expect(lexer.KindRBracket)
 	if !ok {
-		t.Restore(loc)
+		p.markErr("expected closing bracket '}' to match opening bracket")
+		p.t.Restore(loc)
 		return nil, false
 	}
 
 	return n, true
 }
 
-func parseStmt(t *lexer.TokenList) (*ir.Node, bool) {
-	if f, ok := parseFunction(t); ok {
+func (p *parser) parseStmt() (*ir.Node, bool) {
+	if f, ok := p.parseFunction(); ok {
 		return f, true
 	}
 
-	return parseReturn(t)
+	return p.parseReturn()
 }
 
-func parseReturn(t *lexer.TokenList) (*ir.Node, bool) {
-	loc := t.Mark()
+func (p *parser) parseReturn() (*ir.Node, bool) {
+	loc := p.t.Mark()
 
 	n := &ir.Node{
 		Op:  ir.OpReturn,
-		Pos: t.Pos(),
+		Pos: p.t.Pos(),
 	}
 
-	if _, ok := t.Expect(lexer.KindReturnKw); !ok {
-		t.Restore(loc)
+	if _, ok := p.t.Expect(lexer.KindReturnKw); !ok {
+		p.markErr("expected return keyword")
+		p.t.Restore(loc)
 		return nil, false
 	}
 
-	e, ok := parseExpr(t)
+	e, ok := p.parseExpr()
 	if !ok {
-		t.Restore(loc)
+		p.t.Restore(loc)
 		return nil, false
 	}
 	e.Parent = n
 	n.List = []*ir.Node{e}
 
-	if _, ok = t.Expect(lexer.KindSemicolon); !ok {
-		t.Restore(loc)
+	if _, ok = p.t.Expect(lexer.KindSemicolon); !ok {
+		p.markErr("expected semicolon")
+		p.t.Restore(loc)
 		return nil, false
 	}
 
 	return n, true
 }
 
-func parseFunction(t *lexer.TokenList) (*ir.Node, bool) {
-	loc := t.Mark()
-	pos := t.Pos()
+func (p *parser) parseFunction() (*ir.Node, bool) {
+	loc := p.t.Mark()
 
 	n := &ir.Node{
 		Op:        ir.OpFunction,
-		Pos:       pos,
+		Pos:       p.t.Pos(),
 		Signature: &ir.Signature{},
 	}
 
-	_, ok := t.Expect(lexer.KindFunKw)
+	_, ok := p.t.Expect(lexer.KindFunKw)
 	if !ok {
-		t.Restore(loc)
+		p.markErr("expected fun keyword")
+		p.t.Restore(loc)
 		return nil, false
 	}
 
-	name, ok := t.ExpectIdentifier()
+	name, ok := p.t.ExpectIdentifier()
 	if !ok {
-		t.Restore(loc)
+		p.markErr("expected identifier")
+		p.t.Restore(loc)
 		return nil, false
 	}
 	n.Name = name
 
 	// expect zero arguments for now
-	if _, ok := t.Expect(lexer.KindLParen); !ok {
-		t.Restore(loc)
+	if _, ok := p.t.Expect(lexer.KindLParen); !ok {
+		p.markErr("expected open parenthesis")
+		p.t.Restore(loc)
 		return nil, false
 	}
-	if _, ok := t.Expect(lexer.KindRParen); !ok {
-		t.Restore(loc)
-		return nil, false
-	}
-
-	if _, ok := t.Expect(lexer.KindArrow); !ok {
-		t.Restore(loc)
+	if _, ok := p.t.Expect(lexer.KindRParen); !ok {
+		p.markErr("expected closing parenthesis to match open parenthesis")
+		p.t.Restore(loc)
 		return nil, false
 	}
 
-	returnType, ok := parseType(t)
+	if _, ok := p.t.Expect(lexer.KindArrow); !ok {
+		p.markErr("expected arrow")
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	returnType, ok := p.parseType()
 	if !ok {
-		t.Restore(loc)
+		p.t.Restore(loc)
 		return nil, false
 	}
 	returnType.Parent = n
 	n.Signature.Result = returnType
 
-	body, ok := parseBlock(t)
+	body, ok := p.parseBlock()
 	if !ok {
-		t.Restore(loc)
+		p.t.Restore(loc)
 		return nil, false
 	}
 

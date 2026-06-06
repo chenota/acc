@@ -6,11 +6,11 @@ import (
 	"github.com/chenota/acc/internal/types"
 )
 
-func parseType(t *lexer.TokenList) (*ir.Node, bool) {
-	loc := t.Mark()
-	pos := t.Pos()
+func (p *parser) parseType() (*ir.Node, bool) {
+	loc := p.t.Mark()
+	pos := p.t.Pos()
 
-	if _, ok := t.Expect(lexer.KindIntKw); ok {
+	if _, ok := p.t.Expect(lexer.KindIntKw); ok {
 		// "int" aliases to "int32"
 		return &ir.Node{
 			Op:   ir.OpType,
@@ -19,6 +19,7 @@ func parseType(t *lexer.TokenList) (*ir.Node, bool) {
 		}, true
 	}
 
-	t.Restore(loc)
+	p.markErr("expected int keyword")
+	p.t.Restore(loc)
 	return nil, false
 }

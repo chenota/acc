@@ -12,6 +12,13 @@ type Pos struct {
 	Col  int
 }
 
+func (p Pos) GreaterThan(v Pos) bool {
+	if p.Line == v.Line {
+		return p.Col > v.Col
+	}
+	return p.Line > v.Line
+}
+
 type Error struct {
 	pos     Pos
 	message string
@@ -25,7 +32,7 @@ func (e *Error) Pos() Pos {
 	return e.pos
 }
 
-func NewError(message string, pos Pos) error {
+func NewError(message string, pos Pos) *Error {
 	return &Error{
 		message: message,
 		pos:     pos,

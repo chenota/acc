@@ -2,16 +2,16 @@ package parser
 
 import (
 	"github.com/chenota/acc/internal/ir"
-	"github.com/chenota/acc/internal/lexer"
 )
 
-func parseExpr(t *lexer.TokenList) (*ir.Node, bool) {
-	loc := t.Mark()
-	pos := t.Pos()
+func (p *parser) parseExpr() (*ir.Node, bool) {
+	loc := p.t.Mark()
+	pos := p.t.Pos()
 
-	intVal, ok := t.ExpectInteger()
+	intVal, ok := p.t.ExpectInteger()
 	if !ok {
-		t.Restore(loc)
+		p.markErr("expected integer literal")
+		p.t.Restore(loc)
 		return nil, false
 	}
 
