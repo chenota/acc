@@ -57,11 +57,20 @@ func (t *TokenList) ExpectInteger() (*big.Int, bool) {
 }
 
 func (t *TokenList) Empty() bool {
+	if t == nil {
+		return true
+	}
 	return t.i >= len(t.tokens)
 }
 
 func (t *TokenList) Pos() diagnostic.Pos {
-	if t == nil || t.i >= len(t.tokens) {
+	if t.Empty() {
+		// if we're at the end then return last token pos + 1
+		if len(t.tokens) > 0 {
+			pos := t.tokens[len(t.tokens)-1].Pos
+			pos.Col += 1
+			return pos
+		}
 		return diagnostic.Pos{}
 	}
 
