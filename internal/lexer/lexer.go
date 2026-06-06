@@ -3,6 +3,8 @@ package lexer
 import (
 	"errors"
 	"io"
+
+	"github.com/chenota/acc/internal/diagnostic"
 )
 
 // TokenKind represents a specific kind of token
@@ -12,7 +14,7 @@ type TokenKind int
 type Token struct {
 	Kind TokenKind
 	Text string
-	Pos  Pos
+	Pos  diagnostic.Pos
 }
 
 // Tokenize processes an input into a list of tokens
@@ -47,7 +49,7 @@ func Tokenize(r io.Reader) (*TokenList, error) {
 			tokens = append(tokens, Token{
 				Kind: bestKind,
 				Text: string(bytes[i : i+bestLen]),
-				Pos:  Pos{Line: line, Col: col},
+				Pos:  diagnostic.Pos{Line: line, Col: col},
 			})
 		}
 

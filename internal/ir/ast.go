@@ -1,7 +1,7 @@
 package ir
 
 import (
-	"github.com/chenota/acc/internal/lexer"
+	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/types"
 )
 
@@ -24,7 +24,7 @@ type Node struct {
 
 	Op   Op
 	Type *types.Type
-	Pos  lexer.Pos
+	Pos  diagnostic.Pos
 
 	List  []*Node
 	Left  *Node

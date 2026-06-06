@@ -3,6 +3,8 @@ package lexer
 import (
 	"math/big"
 	"strings"
+
+	"github.com/chenota/acc/internal/diagnostic"
 )
 
 type TokenList struct {
@@ -58,9 +60,9 @@ func (t *TokenList) Empty() bool {
 	return t.i >= len(t.tokens)
 }
 
-func (t *TokenList) Pos() Pos {
+func (t *TokenList) Pos() diagnostic.Pos {
 	if t == nil || t.i >= len(t.tokens) {
-		return Pos{}
+		return diagnostic.Pos{}
 	}
 
 	return t.tokens[t.i].Pos
