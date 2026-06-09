@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/chenota/acc/internal/compiler"
-	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/spf13/cobra"
 )
 
@@ -86,12 +85,7 @@ func (a *app) run(cmd *cobra.Command, args []string) error {
 		inputName = "stdin"
 	}
 
-	err := compiler.Compile(compiler.FileDetail{Reader: input, Name: inputName}, output, opts...)
-	if err != nil {
-		diagnostic.PrintError(os.Stderr, err)
-	}
-
-	return nil
+	return compiler.Compile(compiler.FileDetail{Reader: input, Name: inputName}, output, opts...)
 }
 
 func validatePositionalArgs(cmd *cobra.Command, args []string) error {

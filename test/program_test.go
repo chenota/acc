@@ -1,0 +1,113 @@
+package test
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/chenota/acc/cmd"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestProgram(t *testing.T) {
+	entries, err := os.ReadDir(".")
+	require.NoError(t, err)
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		t.Run(entry.Name(), func(t *testing.T) {
+			dirPath := filepath.Join(".", entry.Name())
+
+			mainFile := filepath.Join(dirPath, "main.acc")
+			require.FileExists(t, mainFile, "each source directory must contain a main file")
+
+			binaryPath := compileProgram(t, mainFile)
+			defer os.Remove(binaryPath)
+
+			cmdName, cmdArgs := resolveExecutor(t, binaryPath)
+
+			runCmd := exec.Command(cmdName, cmdArgs...)
+
+			err := runCmd.Run()
+			if err != nil {
+				var exitErr *exec.ExitError
+				require.ErrorAs(t, err, &exitErr, "unexpected runtime error", err.Error())
+			}
+
+			actualStatus := runCmd.ProcessState.ExitCode()
+
+			verifyGoldenStatus(t, dirPath, actualStatus)
+		})
+	}
+}
+
+func compileProgram(t *testing.T, mainFile string) string {
+	t.Helper()
+
+	tmpBinary, err := os.CreateTemp("", "acc_*")
+	require.NoError(t, err)
+
+	// immediately close our temporary file to avoid conflicts
+	tmpBinary.Close()
+
+	err = os.Chmod(tmpBinary.Name(), 0755)
+	require.NoError(t, err)
+
+	root := cmd.NewRootCommand()
+	root.SetArgs([]string{
+		mainFile,
+		"-o", tmpBinary.Name(),
+		"--static", // always use static compilation
+	})
+
+	// for now we're only doing happy path tests so don't need to worry about compilation failures
+	require.NoError(t, root.Execute())
+
+	return tmpBinary.Name()
+}
+
+func resolveExecutor(t *testing.T, binaryPath string) (string, []string) {
+	t.Helper()
+
+	if runtime.GOARCH == "amd64" {
+		return binaryPath, []string{}
+	}
+
+	emulator := "qemu-x86_64"
+	_, err := exec.LookPath(emulator)
+	require.NoError(t, err,
+		"Current architecture is %s, but '%s' was not found in your PATH. Please install QEMU to run AMD64 program tests.",
+		runtime.GOARCH, emulator,
+	)
+
+	return emulator, []string{binaryPath}
+}
+
+func verifyGoldenStatus(t *testing.T, dirPath string, actualStatus int) {
+	t.Helper()
+
+	statusPath := filepath.Join(dirPath, "status.golden")
+
+	statusBytes, err := os.ReadFile(statusPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		require.NoError(t, err, "failed to read status.golden file")
+	}
+
+	statusStr := strings.TrimSpace(string(statusBytes))
+
+	expectedStatus, err := strconv.Atoi(statusStr)
+	require.NoError(t, err)
+
+	assert.Equal(t, expectedStatus, actualStatus, "actual status does not match golden status")
+}
