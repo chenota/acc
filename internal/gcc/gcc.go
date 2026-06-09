@@ -10,7 +10,12 @@ import (
 )
 
 // CompileWithGcc compiles a list of AMD64 instructions into binary using GCC
-func CompileWithGcc(instructions []string, w io.Writer) error {
+func CompileWithGcc(instructions []string, w io.Writer, opts ...Option) error {
+	var config gccOptions
+	for _, o := range opts {
+		o(&config)
+	}
+
 	tmpBinary, err := os.CreateTemp("", "acc_bin_*")
 	if err != nil {
 		return err
@@ -19,7 +24,13 @@ func CompileWithGcc(instructions []string, w io.Writer) error {
 	// we don't want to write to this initially so close for now
 	tmpBinary.Close()
 
-	cmd := exec.Command("gcc", "-x", "assembler", "-", "-no-pie", "-o", tmpBinary.Name())
+	args := []string{"-x", "assembler", "-", "-no-pie", "-o", tmpBinary.Name()}
+
+	if config.isStatic {
+		args = append(args, "-static")
+	}
+
+	cmd := exec.Command("gcc", args...)
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
