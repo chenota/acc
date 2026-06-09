@@ -25,6 +25,10 @@ type Error struct {
 }
 
 func (e *Error) Error() string {
+	return fmt.Sprintf("%s:%d:%d: error: %s", e.pos.File, e.pos.Line, e.pos.Col, e.message)
+}
+
+func (e *Error) Message() string {
 	return e.message
 }
 
@@ -40,13 +44,9 @@ func NewError(message string, pos Pos) *Error {
 }
 
 func PrintError(w io.Writer, err error) {
-	if poser, ok := errors.AsType[interface {
-		Error() string
-		Pos() Pos
-	}](err); ok {
-		pos := poser.Pos()
-		fmt.Fprintf(w, "%s:%d:%d: error: %s\n", pos.File, pos.Line, pos.Col, poser.Error())
+	if e, ok := errors.AsType[*Error](err); ok {
+		fmt.Fprintln(w, e.Error())
 		return
 	}
-	fmt.Fprintf(w, "unknown: error: %s\n", err.Error())
+	fmt.Fprintf(w, "error: %s\n", err.Error())
 }
