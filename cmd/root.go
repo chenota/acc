@@ -26,6 +26,9 @@ func NewRootCommand() *cobra.Command {
 		Short: "Compiler for the acc language.",
 		Args:  validatePositionalArgs,
 		RunE:  app.run,
+
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 
 	cmd.Flags().StringVarP(&app.outputPath, "output", "o", "", "path to the output file")
