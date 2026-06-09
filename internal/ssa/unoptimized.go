@@ -1,17 +1,17 @@
 package ssa
 
 import (
-	"errors"
 	"fmt"
 	"math/big"
 
+	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/ir"
 	"github.com/chenota/acc/internal/types"
 )
 
 func buildFunc(n *ir.Node) (*Func, error) {
 	if n.Op != ir.OpFunction {
-		return nil, errors.New("expected function node")
+		return nil, diagnostic.NewError("expected function node", n.Pos)
 	}
 
 	f := &Func{
@@ -53,7 +53,7 @@ func (b *builder) genStatement(stmt *ir.Node) error {
 
 		return nil
 	default:
-		return errors.New("unsupported statement op")
+		return diagnostic.NewError(fmt.Sprintf("unknown statement operation: %d", stmt.Op), stmt.Pos)
 	}
 }
 
@@ -66,9 +66,9 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 			v.AuxInt = expr.Val.(*big.Int).Int64()
 			return v, nil
 		default:
-			return nil, fmt.Errorf("unknown integer type: %v", expr.Type)
+			return nil, diagnostic.NewError(fmt.Sprintf("unknown integer type: %v", expr.Type), expr.Pos)
 		}
 	default:
-		return nil, errors.New("unsupported expression op")
+		return nil, diagnostic.NewError(fmt.Sprintf("unknown expression operation: %d", expr.Op), expr.Pos)
 	}
 }
