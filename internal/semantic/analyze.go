@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/ir"
 	"github.com/chenota/acc/internal/types"
 )
@@ -27,7 +28,7 @@ func analyzeStmt(n *ir.Node) error {
 	case ir.OpReturn:
 		return analyzeReturn(n)
 	default:
-		return errors.New("unknown statement operation")
+		return diagnostic.NewError(fmt.Sprintf("unknown statement operation: %d", n.Op), n.Pos)
 	}
 }
 
@@ -38,7 +39,7 @@ func analyzeExpr(n *ir.Node, hint *types.Type) error {
 	case ir.OpInt:
 		return analyzeInt(n, hint)
 	default:
-		return errors.New("unknown expression operation")
+		return diagnostic.NewError(fmt.Sprintf("unknown expression operation: %d", n.Op), n.Pos)
 	}
 }
 
@@ -73,7 +74,7 @@ func analyzeReturn(r *ir.Node) error {
 
 	// we expect a return to appear in a function
 	if currentFunc == nil {
-		return errors.New("return outside of function definition")
+		return diagnostic.NewError("return statement appears outside of a function definition", r.Pos)
 	}
 	expectedOut := currentFunc.Type.Output
 
@@ -85,7 +86,7 @@ func analyzeReturn(r *ir.Node) error {
 
 	// this check is redundant for now but will be useful in the future when we introduce more complexity
 	if !types.Equal(e.Type, expectedOut) {
-		return errors.New("return type does not match function signature")
+		return diagnostic.NewError(fmt.Sprintf("return value type does not match type of function signature. expected %v, got %v", expectedOut, e.Type), e.Pos)
 	}
 
 	return nil
@@ -108,7 +109,7 @@ func analyzeInt(i *ir.Node, hint *types.Type) error {
 		}
 		i.Type = types.Int32()
 	default:
-		return fmt.Errorf("cannot use integer literal %v as type %v", intVal, hint)
+		return diagnostic.NewError(fmt.Sprintf("cannot use integer literal %v as type %v", intVal, hint), i.Pos)
 	}
 
 	return nil
