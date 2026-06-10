@@ -1,6 +1,6 @@
 # acc
 
-The so back meters are off the charts (we are so back). `acc` stands for AlexC Continued; it's a language I'm developing just for fun.
+The so back meter is off the charts. `acc` stands for [AlexC](https://github.com/chenota/alexc) Continued; it's a language that targets AMD64 assembly.
 
 ## Goals
 
@@ -10,7 +10,7 @@ The goal for this project is to create a feature-rich, compiled language that co
 
 To help with maintainability, I'm planning to write this compiler in a series of vertical slices that each introduce a specific and well-tested feature. Once a feature is introduced, I cannot break it or else I'm FIRED! For each vertical slice I'll provide a goal and an updated grammar for the various parts of the language.
 
-### Vertical Slice 1: Exit Code
+### [Done] Vertical Slice 1: Exit Code
 
 The first goal of this language is to have a main function that can return an exit code. This is really groundbreaking stuff!
 
