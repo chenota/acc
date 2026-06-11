@@ -62,3 +62,22 @@ The first goal of this language is to have a main function that can return an ex
 <Type> := <Atom>
 <Atom> := "int"
 ```
+
+### Vertical Slice 2: Constant Arithmetic
+
+We're introducing the ability to return an exit code from the result of an arithmetic expression.
+
+#### Expression Grammar (CFG)
+
+```
+<Expression> := <Add>
+<Add>        := <Add> '+' <Mul>
+              | <Add> '-' <Mul>
+              | <Mul>
+<Mul>        := <Mul> '*' <Atom>
+              | <Mul> '/' <Atom>
+              | <Atom>
+<Atom>       := <Integer>
+              | '(' <Expression> ')'
+<Integer>    := /[0-9]+/
+```
