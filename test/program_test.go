@@ -93,7 +93,7 @@ func resolveExecutor(t *testing.T, binaryPath string) (string, []string) {
 	emulator := "qemu-x86_64"
 	_, err := exec.LookPath(emulator)
 	require.NoError(t, err,
-		"Current architecture is %s, but '%s' was not found in your PATH. Please install QEMU to run AMD64 program tests.",
+		"Current architecture is %s, but '%s' was not found in your PATH. Please install QEMU to run x64 program tests.",
 		runtime.GOARCH, emulator,
 	)
 

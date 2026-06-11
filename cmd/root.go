@@ -32,7 +32,7 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&app.outputPath, "output", "o", "", "path to the output file")
-	cmd.Flags().BoolVarP(&app.isAssembly, "asm", "S", false, "output AMD64 assembly")
+	cmd.Flags().BoolVarP(&app.isAssembly, "asm", "S", false, "output assembly instructions")
 	cmd.Flags().BoolVar(&app.isStatic, "static", false, "compile into a static self-contained binary")
 
 	return cmd

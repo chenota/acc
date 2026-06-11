@@ -1,6 +1,6 @@
 # acc
 
-The so back meter is off the charts. `acc` stands for [AlexC](https://github.com/chenota/alexc) Continued; it's a language that targets AMD64 assembly.
+The so back meter is off the charts. `acc` stands for [AlexC](https://github.com/chenota/alexc) Continued; it's a language that targets x64 assembly.
 
 ## Goals
 

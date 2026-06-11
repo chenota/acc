@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// CompileWithGcc compiles a list of AMD64 instructions into binary using GCC
+// CompileWithGcc compiles a list of x64 instructions into binary using GCC
 func CompileWithGcc(instructions []string, w io.Writer, opts ...Option) error {
 	var config gccOptions
 	for _, o := range opts {
