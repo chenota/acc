@@ -12,6 +12,9 @@ test:
 testp:
 	go test ./test/...
 
+testp-wip:
+	ACC_RUN_WIP=true go test ./test/...
+
 clean:
 	go clean
 	rm -rf $(BIN)

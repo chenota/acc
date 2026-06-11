@@ -18,34 +18,43 @@ func TestProgram(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	require.NoError(t, err)
 
+	wipEnv := os.Getenv("ACC_RUN_WIP")
+	runWip := (wipEnv == "1" || wipEnv == "true")
+
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 
-		t.Run(entry.Name(), func(t *testing.T) {
-			dirPath := filepath.Join(".", entry.Name())
+		dirPath := filepath.Join(".", entry.Name())
 
-			mainFile := filepath.Join(dirPath, "main.acc")
-			require.FileExists(t, mainFile, "each source directory must contain a main file")
+		var isWip bool
+		if _, err := os.Stat(filepath.Join(dirPath, "wip")); err == nil {
+			isWip = true
+		}
 
-			binaryPath := compileProgram(t, mainFile)
-			defer os.Remove(binaryPath)
+		if runWip || !isWip {
+			t.Run(entry.Name(), func(t *testing.T) {
+				mainFile := filepath.Join(dirPath, "main.acc")
+				require.FileExists(t, mainFile, "each source directory must contain a main file")
 
-			cmdName, cmdArgs := resolveExecutor(t, binaryPath)
+				binaryPath := compileProgram(t, mainFile)
+				defer os.Remove(binaryPath)
 
-			runCmd := exec.Command(cmdName, cmdArgs...)
+				cmdName, cmdArgs := resolveExecutor(t, binaryPath)
 
-			err := runCmd.Run()
-			if err != nil {
-				var exitErr *exec.ExitError
-				require.ErrorAs(t, err, &exitErr, "unexpected runtime error", err.Error())
-			}
+				cmd := exec.Command(cmdName, cmdArgs...)
 
-			actualStatus := runCmd.ProcessState.ExitCode()
+				err := cmd.Run()
+				if err != nil {
+					var exitErr *exec.ExitError
+					require.ErrorAs(t, err, &exitErr, "unexpected runtime error", err.Error())
+				}
 
-			verifyGoldenStatus(t, dirPath, actualStatus)
-		})
+				actualStatus := cmd.ProcessState.ExitCode()
+				verifyGoldenStatus(t, dirPath, actualStatus)
+			})
+		}
 	}
 }
 
