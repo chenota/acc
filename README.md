@@ -65,19 +65,19 @@ The first goal of this language is to have a main function that can return an ex
 
 ### Vertical Slice 2: Constant Arithmetic
 
-We're introducing the ability to return an exit code from the result of an arithmetic expression.
+Return an exit code from the result of an arithmetic expression; this is deceptively simple since `acc` is going to implement constant folding but it's a necessary setup for the future.
 
 #### Expression Grammar (CFG)
 
 ```
 <Expression> := <Add>
-<Add>        := <Add> '+' <Mul>
-              | <Add> '-' <Mul>
+<Add>        := <Add> "+" <Mul>
+              | <Add> "-" <Mul>
               | <Mul>
-<Mul>        := <Mul> '*' <Atom>
-              | <Mul> '/' <Atom>
+<Mul>        := <Mul> "*" <Atom>
+              | <Mul> "/" <Atom>
               | <Atom>
 <Atom>       := <Integer>
-              | '(' <Expression> ')'
+              | "(" <Expression> ")"
 <Integer>    := /[0-9]+/
 ```
