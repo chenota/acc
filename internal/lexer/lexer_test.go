@@ -65,6 +65,22 @@ func TestLexer_Integer(t *testing.T) {
 	}
 }
 
+func TestLexer_Plus(t *testing.T) {
+	tokens, err := Tokenize(strings.NewReader("+"))
+	require.NoError(t, err)
+
+	_, ok := tokens.Expect(KindPlus)
+	require.True(t, ok)
+}
+
+func TestLexer_Star(t *testing.T) {
+	tokens, err := Tokenize(strings.NewReader("*"))
+	require.NoError(t, err)
+
+	_, ok := tokens.Expect(KindStar)
+	require.True(t, ok)
+}
+
 func TestLexer_Invalid(t *testing.T) {
 	input := strings.NewReader("%!*$-")
 

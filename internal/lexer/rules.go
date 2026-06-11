@@ -17,6 +17,10 @@ const (
 	KindRParen
 	KindArrow
 	KindComma
+	KindPlus
+	KindMinus
+	KindStar
+	KindDiv
 )
 
 type tokenRule struct {
@@ -34,6 +38,10 @@ var rules = []tokenRule{
 	{KindRBracket, mustAnchor(`}`)},
 	{KindLParen, mustAnchor(`\(`)},
 	{KindRParen, mustAnchor(`\)`)},
+	{KindPlus, mustAnchor(`\+`)},
+	{KindMinus, mustAnchor(`-`)},
+	{KindStar, mustAnchor(`\*`)},
+	{KindDiv, mustAnchor(`/`)},
 	{KindSemicolon, mustAnchor(`;`)},
 	{KindInteger, mustAnchor(`-?[0-9]+(_[0-9]+)*`)},
 	{KindIdentifier, mustAnchor(`[a-zA-Z_][a-zA-Z0-9_]*`)},
