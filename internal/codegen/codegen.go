@@ -34,11 +34,6 @@ func generateFunction(f *ssa.Func) []Inst {
 			Op:   ".globl",
 			Dest: text(f.Name),
 		},
-		Inst{
-			Op:   ".type",
-			Src1: text(f.Name),
-			Dest: text("@function"),
-		},
 		label(f.Name),
 		Inst{
 			Op:   "pushq",
@@ -75,14 +70,7 @@ func generateFunction(f *ssa.Func) []Inst {
 		Dest: basePointer,
 	})
 
-	insts = append(insts,
-		Inst{Op: "ret"},
-		Inst{
-			Op:   ".size",
-			Src1: text(f.Name),
-			Dest: text(".-" + f.Name),
-		},
-	)
+	insts = append(insts, Inst{Op: "ret"})
 
 	return insts
 }

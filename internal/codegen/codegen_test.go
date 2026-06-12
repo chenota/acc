@@ -30,12 +30,6 @@ func TestCodegen_Directives(t *testing.T) {
 	assertContainsSeq(t, insts, ".text", ".globl")
 }
 
-func TestCodegen_Metadata(t *testing.T) {
-	insts := requireGeneratesProgram(t, `fun main () -> int { return 0; }`)
-
-	assertContainsSeq(t, insts, ".type", ".size")
-}
-
 func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
 	t.Helper()
 
