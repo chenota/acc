@@ -11,6 +11,8 @@ import (
 var (
 	basePointer  = Arg{Kind: KRegister, Reg: register.RegBP, Value: 64}
 	stackPointer = Arg{Kind: KRegister, Reg: register.RegSP, Value: 64}
+	rax          = Arg{Kind: KRegister, Reg: register.RegA, Value: 64}
+	rdi          = Arg{Kind: KRegister, Reg: register.RegDI, Value: 64}
 )
 
 func GenerateProgram(program []*ssa.Func) ([]Inst, error) {
@@ -53,29 +55,14 @@ func callAndExit(wrapperLabel string, main *ssa.Func) []Inst {
 			Dest: text(main.Label()),
 		},
 		{
-			Op: "movq",
-			Src1: Arg{
-				Kind:  KRegister,
-				Reg:   register.RegA,
-				Value: 64,
-			},
-			Dest: Arg{
-				Kind:  KRegister,
-				Reg:   register.RegDI,
-				Value: 64,
-			},
+			Op:   "movq",
+			Src1: rax,
+			Dest: rdi,
 		},
 		{
-			Op: "movq",
-			Src1: Arg{
-				Kind:  KImmediate,
-				Value: 60,
-			},
-			Dest: Arg{
-				Kind:  KRegister,
-				Reg:   register.RegA,
-				Value: 64,
-			},
+			Op:   "movq",
+			Src1: immediate(60),
+			Dest: rax,
 		},
 		{
 			Op: "syscall",
