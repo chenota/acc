@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -41,9 +40,7 @@ func TestProgram(t *testing.T) {
 				binaryPath := compileProgram(t, mainFile)
 				defer os.Remove(binaryPath)
 
-				cmdName, cmdArgs := resolveExecutor(t, binaryPath)
-
-				cmd := exec.Command(cmdName, cmdArgs...)
+				cmd := exec.Command(binaryPath)
 
 				err := cmd.Run()
 				if err != nil {
@@ -81,23 +78,6 @@ func compileProgram(t *testing.T, mainFile string) string {
 	require.NoError(t, root.Execute())
 
 	return tmpBinary.Name()
-}
-
-func resolveExecutor(t *testing.T, binaryPath string) (string, []string) {
-	t.Helper()
-
-	if runtime.GOARCH == "amd64" {
-		return binaryPath, []string{}
-	}
-
-	emulator := "qemu-x86_64"
-	_, err := exec.LookPath(emulator)
-	require.NoError(t, err,
-		"Current architecture is %s, but '%s' was not found in your PATH. Please install QEMU to run x64 program tests.",
-		runtime.GOARCH, emulator,
-	)
-
-	return emulator, []string{binaryPath}
 }
 
 func verifyGoldenStatus(t *testing.T, dirPath string, actualStatus int) {
