@@ -32,9 +32,9 @@ func generateFunction(f *ssa.Func) []Inst {
 	insts = append(insts,
 		Inst{
 			Op:   ".globl",
-			Dest: text(f.Name),
+			Dest: text(f.Label()),
 		},
-		label(f.Name),
+		label(f.Label()),
 		Inst{
 			Op:   "pushq",
 			Dest: basePointer,
