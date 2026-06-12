@@ -2,7 +2,6 @@ package compiler
 
 type compilerOptions struct {
 	isAssembly bool
-	isStatic   bool
 }
 
 type Option func(*compilerOptions)
@@ -11,11 +10,5 @@ type Option func(*compilerOptions)
 func WithAssemblyOnly() Option {
 	return func(o *compilerOptions) {
 		o.isAssembly = true
-	}
-}
-
-func WithStaticCompilation() Option {
-	return func(o *compilerOptions) {
-		o.isStatic = true
 	}
 }

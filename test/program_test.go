@@ -71,7 +71,6 @@ func compileProgram(t *testing.T, mainFile string) string {
 	root.SetArgs([]string{
 		mainFile,
 		"-o", tmpBinary.Name(),
-		"--static", // always use static compilation
 	})
 
 	// for now we're only doing happy path tests so don't need to worry about compilation failures

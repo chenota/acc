@@ -33,7 +33,6 @@ func NewRootCommand() *cobra.Command {
 
 	cmd.Flags().StringVarP(&app.outputPath, "output", "o", "", "path to the output file")
 	cmd.Flags().BoolVarP(&app.isAssembly, "asm", "S", false, "output assembly instructions")
-	cmd.Flags().BoolVar(&app.isStatic, "static", false, "compile into a static self-contained binary")
 
 	return cmd
 }
@@ -77,10 +76,6 @@ func (a *app) run(cmd *cobra.Command, args []string) error {
 
 	if a.isAssembly {
 		opts = append(opts, compiler.WithAssemblyOnly())
-	}
-
-	if a.isStatic {
-		opts = append(opts, compiler.WithStaticCompilation())
 	}
 
 	inputName := inputPath
