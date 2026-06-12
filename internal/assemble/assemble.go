@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -19,15 +18,11 @@ func Assemble(instructions []string, w io.Writer) error {
 	// we don't want to write to this initially so close for now
 	tmpBinary.Close()
 
-	args := []string{"-x", "assembler", "-", "-no-pie", "-o", tmpBinary.Name()}
-
-	cmd := exec.Command("gcc", args...)
+	cmd := assembleCmd(tmpBinary.Name())
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-
 	cmd.Stdout = w
-
 	cmd.Stdin = bytes.NewBufferString(strings.Join(instructions, "\n"))
 
 	if err := cmd.Run(); err != nil {
