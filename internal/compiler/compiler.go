@@ -5,8 +5,8 @@ import (
 	"io"
 
 	"github.com/chenota/acc/internal/asmtxt"
+	"github.com/chenota/acc/internal/assemble"
 	"github.com/chenota/acc/internal/codegen"
-	"github.com/chenota/acc/internal/gcc"
 	"github.com/chenota/acc/internal/lexer"
 	"github.com/chenota/acc/internal/parser"
 	"github.com/chenota/acc/internal/semantic"
@@ -56,7 +56,7 @@ func Compile(r FileDetail, w io.Writer, opts ...Option) error {
 		return nil
 	}
 
-	if err := gcc.CompileWithGcc(stringInstructions, w); err != nil {
+	if err := assemble.Assemble(stringInstructions, w); err != nil {
 		return err
 	}
 

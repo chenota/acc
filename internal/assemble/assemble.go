@@ -1,4 +1,4 @@
-package gcc
+package assemble
 
 import (
 	"bytes"
@@ -9,8 +9,8 @@ import (
 	"strings"
 )
 
-// CompileWithGcc compiles a list of x64 instructions into binary using GCC
-func CompileWithGcc(instructions []string, w io.Writer) error {
+// Assemble assembles and links a list of x64 instructions into binary using GCC
+func Assemble(instructions []string, w io.Writer) error {
 	tmpBinary, err := os.CreateTemp("", "acc_bin_*")
 	if err != nil {
 		return err
