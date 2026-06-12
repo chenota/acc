@@ -41,7 +41,10 @@ func Compile(r FileDetail, w io.Writer, opts ...Option) error {
 		return err
 	}
 
-	instructions := codegen.GenerateProgram(ssaValues)
+	instructions, err := codegen.GenerateProgram(ssaValues)
+	if err != nil {
+		return err
+	}
 
 	stringInstructions := asmtxt.Stringify(instructions)
 

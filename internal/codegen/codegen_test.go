@@ -24,6 +24,12 @@ func TestCodegen_ImmediateValue(t *testing.T) {
 	assertContainsOpWithArgs(t, insts, "movl", KImmediate, KUndefined, KRegister)
 }
 
+func TestCodegen_MainWrapper(t *testing.T) {
+	insts := requireGeneratesProgram(t, `fun main () -> int { return 0; }`)
+
+	assertContainsSeq(t, insts, "call", "movq", "movq", "syscall")
+}
+
 func TestCodegen_Directives(t *testing.T) {
 	insts := requireGeneratesProgram(t, `fun main () -> int { return 0; }`)
 
@@ -68,5 +74,8 @@ func requireGeneratesProgram(t *testing.T, src string) []Inst {
 	ssaFuncs, err := ssa.BuildAndAllocate(funcs)
 	require.NoError(t, err)
 
-	return GenerateProgram(ssaFuncs)
+	p, err := GenerateProgram(ssaFuncs)
+	require.NoError(t, err)
+
+	return p
 }

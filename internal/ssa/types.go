@@ -140,6 +140,10 @@ func (f *Func) StackSize() int64 {
 	return int64(((f.spillSlot * 8) / 16) * 16)
 }
 
+func (f *Func) IsMain() bool {
+	return f.Name == "main"
+}
+
 func (f *Func) Label() string {
 	return "_" + f.Name
 }

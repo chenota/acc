@@ -9,6 +9,7 @@ func assembleCmd(bin string) *exec.Cmd {
 		"-x", "assembler",
 		"-",
 		"-no-pie",
+		"-nostdlib",
 		"-o", bin,
 	}
 

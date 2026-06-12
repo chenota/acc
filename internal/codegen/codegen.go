@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/chenota/acc/internal/register"
@@ -12,18 +13,74 @@ var (
 	stackPointer = Arg{Kind: KRegister, Reg: register.RegSP, Value: 64}
 )
 
-func GenerateProgram(program []*ssa.Func) []Inst {
+func GenerateProgram(program []*ssa.Func) ([]Inst, error) {
 	var insts []Inst
 
 	insts = append(insts, Inst{
 		Op: ".text",
 	})
 
+	var mainFunc *ssa.Func
+	for _, f := range program {
+		if f.IsMain() {
+			mainFunc = f
+			break
+		}
+	}
+
+	if mainFunc == nil {
+		return nil, errors.New("program has no main function")
+	}
+
+	insts = append(insts, callAndExit("_start", mainFunc)...)
+
 	for _, f := range program {
 		insts = append(insts, generateFunction(f)...)
 	}
 
-	return insts
+	return insts, nil
+}
+
+func callAndExit(wrapperLabel string, main *ssa.Func) []Inst {
+	return []Inst{
+		{
+			Op:   ".globl",
+			Dest: text(wrapperLabel),
+		},
+		label(wrapperLabel),
+		{
+			Op:   "call",
+			Dest: text(main.Label()),
+		},
+		{
+			Op: "movq",
+			Src1: Arg{
+				Kind:  KRegister,
+				Reg:   register.RegA,
+				Value: 64,
+			},
+			Dest: Arg{
+				Kind:  KRegister,
+				Reg:   register.RegDI,
+				Value: 64,
+			},
+		},
+		{
+			Op: "movq",
+			Src1: Arg{
+				Kind:  KImmediate,
+				Value: 60,
+			},
+			Dest: Arg{
+				Kind:  KRegister,
+				Reg:   register.RegA,
+				Value: 64,
+			},
+		},
+		{
+			Op: "syscall",
+		},
+	}
 }
 
 func generateFunction(f *ssa.Func) []Inst {
