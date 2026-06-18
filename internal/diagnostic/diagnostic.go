@@ -25,14 +25,23 @@ type Error struct {
 }
 
 func (e *Error) Error() string {
+	if e == nil {
+		return "unknown error"
+	}
 	return fmt.Sprintf("%s:%d:%d: error: %s", e.pos.File, e.pos.Line, e.pos.Col, e.message)
 }
 
 func (e *Error) Message() string {
+	if e == nil {
+		return ""
+	}
 	return e.message
 }
 
 func (e *Error) Pos() Pos {
+	if e == nil {
+		return Pos{}
+	}
 	return e.pos
 }
 

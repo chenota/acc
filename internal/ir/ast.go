@@ -17,6 +17,10 @@ const (
 	OpReturn
 	OpType
 	OpParam
+	OpPlus
+	OpMinus
+	OpTimes
+	OpDiv
 )
 
 type Node struct {
@@ -26,9 +30,7 @@ type Node struct {
 	Type *types.Type
 	Pos  diagnostic.Pos
 
-	List  []*Node
-	Left  *Node
-	Right *Node
+	List []*Node
 
 	Name      string
 	Signature *Signature

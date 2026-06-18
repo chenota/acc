@@ -29,12 +29,12 @@ func (t *TokenList) Restore(i int) {
 }
 
 func (t *TokenList) Expect(kind TokenKind) (Token, bool) {
-	if t == nil || t.i >= len(t.tokens) || t.tokens[t.i].Kind != kind {
+	curr, ok := t.Peek()
+	if !ok || curr.Kind != kind {
 		return Token{}, false
 	}
-
-	t.i += 1
-	return t.tokens[t.i-1], true
+	t.Advance()
+	return curr, true
 }
 
 func (t *TokenList) ExpectIdentifier() (string, bool) {
@@ -75,6 +75,19 @@ func (t *TokenList) Pos() diagnostic.Pos {
 	}
 
 	return t.tokens[t.i].Pos
+}
+
+func (t *TokenList) Peek() (Token, bool) {
+	if t.Empty() {
+		return Token{}, false
+	}
+	return t.tokens[t.i], true
+}
+
+func (t *TokenList) Advance() {
+	if !t.Empty() {
+		t.i += 1
+	}
 }
 
 func (t Token) ParseInteger() (*big.Int, bool) {

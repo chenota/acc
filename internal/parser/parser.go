@@ -11,7 +11,13 @@ type parser struct {
 }
 
 func (p *parser) markErr(message string) {
-	if p.err == nil || p.t.Pos().GreaterThan(p.err.Pos()) {
+	if p.t.Pos().GreaterThan(p.err.Pos()) {
 		p.err = diagnostic.NewError(message, p.t.Pos())
+	}
+}
+
+func (p *parser) markErrDiagnostic(e *diagnostic.Error) {
+	if e.Pos().GreaterThan(p.err.Pos()) {
+		p.err = e
 	}
 }
