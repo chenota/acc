@@ -12,7 +12,7 @@ import (
 
 func Analyze(functions []*ir.Node) error {
 	for _, f := range functions {
-		if err := analyzeFunction(f, nil); err != nil {
+		if err := analyzeFunction(f); err != nil {
 			return err
 		}
 	}
@@ -23,7 +23,7 @@ func Analyze(functions []*ir.Node) error {
 func analyzeStmt(n *ir.Node) error {
 	switch n.Op {
 	case ir.OpFunction:
-		return analyzeFunction(n, nil)
+		return analyzeFunction(n)
 	case ir.OpReturn:
 		return analyzeReturn(n)
 	default:
@@ -34,7 +34,7 @@ func analyzeStmt(n *ir.Node) error {
 func analyzeExpr(n *ir.Node, hint *types.Type) error {
 	switch n.Op {
 	case ir.OpFunction:
-		return analyzeFunction(n, hint)
+		return analyzeFunction(n)
 	case ir.OpInt:
 		return analyzeInt(n, hint)
 	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
@@ -87,7 +87,7 @@ func analyzeBop(n *ir.Node, hint *types.Type) error {
 	return nil
 }
 
-func analyzeFunction(f *ir.Node, _ *types.Type) error {
+func analyzeFunction(f *ir.Node) error {
 	// set own type
 	var paramTypes []*types.Type
 	for _, p := range f.Signature.Params {
