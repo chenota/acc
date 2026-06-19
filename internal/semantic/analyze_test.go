@@ -45,3 +45,30 @@ func TestAnalyze_Overflow(t *testing.T) {
 
 	assert.Error(t, Analyze(funcs))
 }
+
+func TestAnalyze_SimpleBop(t *testing.T) {
+	inputStr := `fun main () -> int { return 1 + 2 * 3; }`
+	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
+	require.NoError(t, err)
+
+	funcs, err := parser.ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.NotNil(t, fun.Type)
+	assert.Equal(t, types.KFunction, fun.Type.Kind)
+
+	require.NotNil(t, fun.Sym)
+	assert.Equal(t, "main", fun.Sym.Name)
+
+	require.Len(t, fun.List, 1)
+	bopExpr := fun.List[0].List[0]
+
+	assert.Equal(t, types.KInt32, bopExpr.Type.Kind)
+	assert.Equal(t, types.KInt32, bopExpr.List[0].Type.Kind)
+	assert.Equal(t, types.KInt32, bopExpr.List[1].Type.Kind)
+}

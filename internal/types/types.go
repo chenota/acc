@@ -44,6 +44,22 @@ func Equal(a *Type, b *Type) bool {
 	return a.Kind == b.Kind
 }
 
+func (t *Type) IsConcreteNumeric() bool {
+	if t == nil {
+		return false
+	}
+
+	return t.Kind == KInt32
+}
+
+func (t *Type) IsUntypedNumeric() bool {
+	if t == nil {
+		return false
+	}
+
+	return t.Kind == KUntypedInt
+}
+
 func Int32() *Type {
 	return &Type{Kind: KInt32}
 }

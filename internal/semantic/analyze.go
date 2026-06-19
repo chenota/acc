@@ -38,18 +38,68 @@ func analyzeExpr(n *ir.Node, hint *types.Type) error {
 		return analyzeFunction(n, hint)
 	case ir.OpInt:
 		return analyzeInt(n, hint)
+	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
+		return analyzeBop(n, hint)
 	default:
 		return diagnostic.NewError(fmt.Sprintf("unknown expression operation: %d", n.Op), n.Pos)
 	}
 }
 
-func analyzeFunction(f *ir.Node, _ *types.Type) error {
+func analyzeBop(n *ir.Node, hint *types.Type) error {
+	// extract left and right operands
+	if len(n.List) != 2 {
+		return diagnostic.NewError("binary operator without two operands", n.Pos)
+	}
+	left := n.List[0]
+	right := n.List[1]
+
+	// figure out types of left and right operands given context
+	if err := analyzeExpr(left, hint); err != nil {
+		return err
+	}
+	if err := analyzeExpr(right, hint); err != nil {
+		return err
+	}
+	leftType := left.Type
+	rightType := right.Type
+
+	// attempt to resolve flexible types
+	switch {
+	case leftType.IsUntypedNumeric() && rightType.IsConcreteNumeric():
+		if err := analyzeExpr(left, rightType); err != nil {
+			return err
+		}
+	case leftType.IsConcreteNumeric() && rightType.IsUntypedNumeric():
+		if err := analyzeExpr(right, leftType); err != nil {
+			return err
+		}
+	}
+	leftType = left.Type
+	rightType = right.Type
+
+	// types must be equal
+	if !types.Equal(leftType, rightType) {
+		return diagnostic.NewError(fmt.Sprintf("binary operation with mismatched types: %v and %v", leftType, rightType), n.Pos)
+	}
+
+	// finally, assign bop node to the agreed-upon type
+	n.Type = leftType
+
+	return nil
+}
+
+func analyzeFunction(f *ir.Node, hint *types.Type) error {
 	// set own type
 	var paramTypes []*types.Type
 	for _, p := range f.Signature.Params {
 		paramTypes = append(paramTypes, p.Type)
 	}
 	f.Type = types.Function(paramTypes, f.Signature.Result.Type)
+
+	// error if this function does not match the hint type
+	if hint != nil && !types.Equal(f.Type, hint) {
+		return diagnostic.NewError(fmt.Sprintf("mismatched types: expected %v but got %v", hint, f.Type), f.Pos)
+	}
 
 	// register own symbol
 	f.Sym = &ir.Sym{
