@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -146,7 +145,7 @@ func analyzeInt(i *ir.Node, hint *types.Type) error {
 		max32 := big.NewInt(math.MaxInt32)
 		min32 := big.NewInt(math.MinInt32)
 		if intVal.Cmp(max32) > 0 || intVal.Cmp(min32) < 0 {
-			return errors.New("int32 overflow")
+			return diagnostic.NewError(fmt.Sprintf("overflow: integer value %v too large for type %v", intVal, types.Int32()), i.Pos)
 		}
 		i.Type = types.Int32()
 	}
