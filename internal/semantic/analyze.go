@@ -88,18 +88,13 @@ func analyzeBop(n *ir.Node, hint *types.Type) error {
 	return nil
 }
 
-func analyzeFunction(f *ir.Node, hint *types.Type) error {
+func analyzeFunction(f *ir.Node, _ *types.Type) error {
 	// set own type
 	var paramTypes []*types.Type
 	for _, p := range f.Signature.Params {
 		paramTypes = append(paramTypes, p.Type)
 	}
 	f.Type = types.Function(paramTypes, f.Signature.Result.Type)
-
-	// error if this function does not match the hint type
-	if hint != nil && !types.Equal(f.Type, hint) {
-		return diagnostic.NewError(fmt.Sprintf("mismatched types: expected %v but got %v", hint, f.Type), f.Pos)
-	}
 
 	// register own symbol
 	f.Sym = &ir.Sym{
