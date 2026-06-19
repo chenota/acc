@@ -138,23 +138,17 @@ func analyzeReturn(r *ir.Node) error {
 }
 
 func analyzeInt(i *ir.Node, hint *types.Type) error {
-	if hint == nil {
-		i.Type = types.UntypedInt()
-		return nil
-	}
+	i.Type = types.UntypedInt()
 
 	intVal := i.Val.(*big.Int)
 
-	switch hint.Kind {
-	case types.KInt32:
+	if types.Equal(hint, types.Int32()) {
 		max32 := big.NewInt(math.MaxInt32)
 		min32 := big.NewInt(math.MinInt32)
 		if intVal.Cmp(max32) > 0 || intVal.Cmp(min32) < 0 {
 			return errors.New("int32 overflow")
 		}
 		i.Type = types.Int32()
-	default:
-		return diagnostic.NewError(fmt.Sprintf("cannot use integer literal %v as type %v", intVal, hint), i.Pos)
 	}
 
 	return nil
