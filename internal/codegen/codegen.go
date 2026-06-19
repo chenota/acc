@@ -138,7 +138,7 @@ func generateValue(v *ssa.Value) []Inst {
 	var insts []Inst
 
 	switch v.Op {
-	case ssa.OpConstInt32:
+	case ssa.OpLiteral:
 		insts = append(insts, generateConstInt32(v))
 	case ssa.OpLoadReg:
 		insts = append(insts, generateLoad(v))

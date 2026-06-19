@@ -39,8 +39,68 @@ func TestGenSsa_Basic(t *testing.T) {
 	assert.Equal(t, BlockRet, b.Kind)
 
 	require.NotNil(t, b.Control)
-	assert.Equal(t, b.Control.Op, OpConstInt32)
-	assert.Equal(t, b.Control.Type.Kind, types.KInt32)
+	assert.Equal(t, OpLiteral, b.Control.Op)
+	assert.Equal(t, types.KInt32, b.Control.Type.Kind)
 	assert.Equal(t, LocRegister, b.Control.Loc.Kind)
 	assert.Equal(t, returnRegister, b.Control.Loc.Reg)
+}
+
+func TestGenSsa_ConstantFolding(t *testing.T) {
+	inputStr := `fun main () -> int { return 1 + 1; }`
+	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
+	require.NoError(t, err)
+
+	funcs, err := parser.ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.NoError(t, semantic.Analyze(funcs))
+
+	// not really necessary but ensuring the RAX is the return register
+	returnRegister := register.RegA
+	compiledFuncs, err := BuildAndAllocate(funcs, WithReturnRegister(returnRegister))
+	require.NoError(t, err)
+
+	require.Len(t, compiledFuncs, 1)
+	f := compiledFuncs[0]
+
+	assert.Equal(t, "main", f.Name)
+
+	require.Len(t, f.Blocks, 1)
+	b := f.Blocks[0]
+
+	assert.Equal(t, BlockRet, b.Kind)
+
+	require.NotNil(t, b.Control)
+	assert.Equal(t, OpLiteral, b.Control.Op)
+	assert.Equal(t, types.KInt32, b.Control.Type.Kind)
+	assert.Equal(t, int64(2), b.Control.AuxInt)
+}
+
+func TestGenSsa_DivideByZero(t *testing.T) {
+	inputStr := `fun main () -> int { return 1 / 0; }`
+	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
+	require.NoError(t, err)
+
+	funcs, err := parser.ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.NoError(t, semantic.Analyze(funcs))
+
+	// not really necessary but ensuring the RAX is the return register
+	returnRegister := register.RegA
+	compiledFuncs, err := BuildAndAllocate(funcs, WithReturnRegister(returnRegister))
+	require.NoError(t, err)
+
+	require.Len(t, compiledFuncs, 1)
+	f := compiledFuncs[0]
+
+	assert.Equal(t, "main", f.Name)
+
+	require.Len(t, f.Blocks, 1)
+	b := f.Blocks[0]
+
+	assert.Equal(t, BlockRet, b.Kind)
+
+	require.NotNil(t, b.Control)
+	assert.Equal(t, OpDivide, b.Control.Op)
 }

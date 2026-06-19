@@ -11,7 +11,7 @@ type Op int
 
 const (
 	OpUnknown Op = iota
-	OpConstInt32
+	OpLiteral
 	OpStoreReg
 	OpLoadReg
 	OpAdd
@@ -31,6 +31,14 @@ type Value struct {
 	AuxInt int64
 
 	Loc Location
+}
+
+func (v *Value) IsBinaryOp() bool {
+	return v.Op == OpAdd || v.Op == OpSubtract || v.Op == OpMultiply || v.Op == OpDivide
+}
+
+func (v *Value) IsConstant() bool {
+	return v.Op == OpLiteral
 }
 
 type BlockKind int
@@ -150,6 +158,22 @@ func (f *Func) IsMain() bool {
 
 func (f *Func) Label() string {
 	return "_" + f.Name
+}
+
+func (f *Func) substituteValue(old, new *Value) {
+	for _, block := range f.Blocks {
+		for _, value := range block.Values {
+			for i := range value.Args {
+				if value.Args[i] == old {
+					value.Args[i] = new
+				}
+			}
+		}
+
+		if block.Control == old {
+			block.Control = new
+		}
+	}
 }
 
 type LocationKind int

@@ -62,7 +62,7 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 	case ir.OpInt:
 		switch expr.Type.Kind {
 		case types.KInt32:
-			v := b.targetFunc.newValue(OpConstInt32, types.Int32(), b.currentBlock)
+			v := b.targetFunc.newValue(OpLiteral, types.Int32(), b.currentBlock)
 			v.AuxInt = expr.Val.(*big.Int).Int64()
 			return v, nil
 		default:
@@ -92,17 +92,16 @@ func (b *builder) genBop(expr *ir.Node) (*Value, error) {
 		return nil, err
 	}
 
-	switch expr.Type.Kind {
-	case types.KInt32:
-		v := b.targetFunc.newValue(intBopFrom(expr), expr.Type, b.currentBlock)
+	if expr.Type.IsConcreteNumeric() {
+		v := b.targetFunc.newValue(numericBopFrom(expr), expr.Type, b.currentBlock)
 		v.Args = []*Value{leftVal, rightVal}
 		return v, nil
-	default:
-		return nil, diagnostic.NewError(fmt.Sprintf("cannot perform addition for type %v", expr.Type), expr.Pos)
 	}
+
+	return nil, diagnostic.NewError(fmt.Sprintf("cannot perform binary operation for type %v", expr.Type), expr.Pos)
 }
 
-func intBopFrom(n *ir.Node) Op {
+func numericBopFrom(n *ir.Node) Op {
 	switch n.Op {
 	case ir.OpPlus:
 		return OpAdd
