@@ -10,39 +10,38 @@ func foldConstants(f *Func) {
 				continue
 			}
 
-			leftVal := v.Args[0].AuxInt
-			rightVal := v.Args[1].AuxInt
-
-			foldedVal, ok := evaluateBop(v.Op, v.Type, leftVal, rightVal)
+			foldedVal, ok := evaluateBop(v.Op, v.Type, v.Args[0].Value, v.Args[1].Value)
 			if !ok {
 				continue
 			}
 
 			constOp := f.newValue(OpLiteral, v.Type, b)
-			constOp.AuxInt = foldedVal
+			constOp.Value = foldedVal
 
 			f.substituteValue(v, constOp)
 		}
 	}
 }
 
-func evaluateBop(op Op, t *types.Type, left, right int64) (int64, bool) {
-	if !t.IsConcreteNumeric() {
-		return 0, false
-	}
+func evaluateBop(op Op, t *types.Type, left, right any) (any, bool) {
+	switch {
+	case types.Equal(t, types.Int32()):
+		leftVal := left.(int32)
+		rightVal := right.(int32)
 
-	switch op {
-	case OpAdd:
-		return left + right, true
-	case OpSubtract:
-		return left - right, true
-	case OpMultiply:
-		return left * right, true
-	case OpDivide:
-		if right != 0 {
-			return left / right, true
+		switch op {
+		case OpAdd:
+			return leftVal + rightVal, true
+		case OpSubtract:
+			return leftVal - rightVal, true
+		case OpMultiply:
+			return leftVal * rightVal, true
+		case OpDivide:
+			if rightVal != 0 {
+				return leftVal / rightVal, true
+			}
 		}
 	}
 
-	return 0, false
+	return nil, false
 }

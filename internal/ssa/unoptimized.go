@@ -60,18 +60,22 @@ func (b *builder) genStatement(stmt *ir.Node) error {
 func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 	switch expr.Op {
 	case ir.OpInt:
-		switch expr.Type.Kind {
-		case types.KInt32:
-			v := b.targetFunc.newValue(OpLiteral, types.Int32(), b.currentBlock)
-			v.AuxInt = expr.Val.(*big.Int).Int64()
-			return v, nil
-		default:
-			return nil, diagnostic.NewError(fmt.Sprintf("unknown integer type: %v", expr.Type), expr.Pos)
-		}
+		return b.genInt(expr)
 	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
 		return b.genBop(expr)
 	default:
 		return nil, diagnostic.NewError(fmt.Sprintf("unknown expression operation: %d", expr.Op), expr.Pos)
+	}
+}
+
+func (b *builder) genInt(expr *ir.Node) (*Value, error) {
+	switch expr.Type.Kind {
+	case types.KInt32:
+		v := b.targetFunc.newValue(OpLiteral, types.Int32(), b.currentBlock)
+		v.Value = int32(expr.Val.(*big.Int).Int64())
+		return v, nil
+	default:
+		return nil, diagnostic.NewError(fmt.Sprintf("unknown integer type: %v", expr.Type), expr.Pos)
 	}
 }
 

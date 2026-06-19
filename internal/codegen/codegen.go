@@ -92,7 +92,7 @@ func generateFunction(f *ssa.Func) []Inst {
 	if f.StackSize() > 0 {
 		insts = append(insts, Inst{
 			Op:   "subq",
-			Src1: immediate(f.StackSize()),
+			Src1: immediate(int32(f.StackSize())),
 			Dest: stackPointer,
 		})
 	}
@@ -104,7 +104,7 @@ func generateFunction(f *ssa.Func) []Inst {
 	if f.StackSize() > 0 {
 		insts = append(insts, Inst{
 			Op:   "addq",
-			Src1: immediate(f.StackSize()),
+			Src1: immediate(int32(f.StackSize())),
 			Dest: stackPointer,
 		})
 	}
@@ -152,7 +152,7 @@ func generateValue(v *ssa.Value) []Inst {
 func generateConstInt32(v *ssa.Value) Inst {
 	return Inst{
 		Op:   movOp(32),
-		Src1: immediate(v.AuxInt),
+		Src1: immediate(v.Value.(int32)),
 		Dest: toArg(v),
 	}
 }
@@ -160,7 +160,7 @@ func generateConstInt32(v *ssa.Value) Inst {
 func generateLoad(v *ssa.Value) Inst {
 	return Inst{
 		Op:   movOp(v.Type.Size()),
-		Src1: stack(v.AuxInt),
+		Src1: stack(v.Value.(int)),
 		Dest: toArg(v),
 	}
 }
@@ -195,16 +195,16 @@ func toArg(v *ssa.Value) Arg {
 	return Arg{}
 }
 
-func immediate(v int64) Arg {
-	return Arg{Kind: KImmediate, Value: v}
+func immediate(v int32) Arg {
+	return Arg{Kind: KImmediate, Value: int64(v)}
 }
 
 func label(l string) Inst {
 	return Inst{Op: l + ":"}
 }
 
-func stack(slot int64) Arg {
-	return Arg{Kind: KStack, Value: slot}
+func stack(slot int) Arg {
+	return Arg{Kind: KStack, Value: int64(slot)}
 }
 
 func movOp(size int) string {

@@ -28,7 +28,7 @@ type Value struct {
 
 	Args []*Value
 
-	AuxInt int64
+	Value any
 
 	Loc Location
 }
@@ -148,8 +148,8 @@ func (f *Func) allocateSpill() int {
 }
 
 // StackSize returns a 16-byte aligned value representing how large Func's stack is.
-func (f *Func) StackSize() int64 {
-	return int64(((f.spillSlot * 8) / 16) * 16)
+func (f *Func) StackSize() int {
+	return ((f.spillSlot * 8) / 16) * 16
 }
 
 func (f *Func) IsMain() bool {

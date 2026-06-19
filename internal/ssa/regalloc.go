@@ -140,7 +140,7 @@ func (r *registerAllocater) injectLoadsAndStores(f *Func) {
 					// create a load instruction using a dedicated scratch register
 					load := f.newValue(OpLoadReg, arg.Type, block)
 					load.Loc = NewReg(r.scratchRegister(scratchCount))
-					load.AuxInt = int64(arg.Loc.Slot)
+					load.Value = arg.Loc.Slot
 
 					// rewrite the instruction's argument to point to the result of our load
 					v.Args[idx] = load

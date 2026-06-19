@@ -73,7 +73,7 @@ func TestGenSsa_ConstantFolding(t *testing.T) {
 	require.NotNil(t, b.Control)
 	assert.Equal(t, OpLiteral, b.Control.Op)
 	assert.Equal(t, types.KInt32, b.Control.Type.Kind)
-	assert.Equal(t, int64(2), b.Control.AuxInt)
+	assert.Equal(t, int32(2), b.Control.Value)
 }
 
 func TestGenSsa_DivideByZero(t *testing.T) {
