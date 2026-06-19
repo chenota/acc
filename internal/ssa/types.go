@@ -14,6 +14,10 @@ const (
 	OpConstInt32
 	OpStoreReg
 	OpLoadReg
+	OpAdd
+	OpSubtract
+	OpMultiply
+	OpDivide
 )
 
 type Value struct {
