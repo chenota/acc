@@ -36,7 +36,7 @@ make testp
 
 To help with maintainability, I'm planning to write this compiler in a series of vertical slices that each introduce a specific and well-tested feature. Once a feature is introduced, I cannot break it or else I'm FIRED! For each vertical slice I'll provide a goal and an updated grammar for the various parts of the language.
  
-### Vertical Slice 1: Exit Code [Complete] 
+### Vertical Slice 1: Exit Code [Complete]
 
 The first goal of this language is to have a main function that can return an exit code. This is really groundbreaking stuff!
 
@@ -63,7 +63,7 @@ The first goal of this language is to have a main function that can return an ex
 <Atom> := "int"
 ```
 
-### Vertical Slice 2: Constant Arithmetic
+### Vertical Slice 2: Constant Arithmetic [Complete]
 
 Return an exit code from the result of an arithmetic expression; this is deceptively simple since `acc` is going to implement constant folding but it's a necessary setup for the future.
 
@@ -81,3 +81,29 @@ Return an exit code from the result of an arithmetic expression; this is decepti
               | "(" <Expression> ")"
 <Integer>    := /[0-9]+/
 ```
+
+### Vertical Slice 3: Variables [Work in Progress]
+
+`acc` at this point is still stuck with its only output being an exit code. I'd like to work towards being able to do file output via a format print, but to get to that point `acc` needs a couple of foundational constructs with variables being one of them. I've made the type in a declaration optional since the bidirectional type system naturally supports inference very well so it's not a huge lift to add support for now.
+
+#### Program Grammar (PEG)
+
+```
+<Statement> := "return" <Expression> ";"
+             | "let" <Ident> <Type>? = <Expression> ";"
+             | <Ident> = <Expression> ";"
+```
+
+#### Expression Grammar (CFG)
+
+```
+<Expression> := <Ident>
+```
+
+### Vertical Slice 4: Functions [Not Started]
+
+We can build on Vertical Slice 3 and add the last foundational construct we need before introducing a format print by adding functions.
+
+### Vertical Slice 5: String Literals and File Output [Not Started]
+
+With functions and variables out of the way, we can finally add a format print which greatly expands the usefulness of the `acc` language.
