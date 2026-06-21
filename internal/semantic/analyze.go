@@ -28,9 +28,36 @@ func analyzeStmt(n *ir.Node) error {
 		return analyzeReturn(n)
 	case ir.OpDeclaration:
 		return analyzeDeclaration(n)
+	case ir.OpAssignment:
+		return analyzeAssignment(n)
 	default:
 		return diagnostic.NewError(fmt.Sprintf("unknown statement operation: %d", n.Op), n.Pos)
 	}
+}
+
+func analyzeAssignment(n *ir.Node) error {
+	// need an existing symbol for this ident
+	existingSym := n.ScopedSym(n.Name)
+	if existingSym == nil {
+		return diagnostic.NewError(fmt.Sprintf("variable used before declaration: %v", n.Name), n.Pos)
+	}
+
+	n.Sym = existingSym
+
+	// analyze the expression with hint of existing type
+	if len(n.List) != 1 {
+		return diagnostic.NewError("variable assignment missing expression", n.Pos)
+	}
+	if err := analyzeExpr(n.List[0], n.Sym.Type); err != nil {
+		return err
+	}
+
+	// make sure the expression and wanted type match
+	if !types.Equal(n.Sym.Type, n.List[0].Type) {
+		return diagnostic.NewError(fmt.Sprintf("variable declaration with mismatched types: want %v, got %v", n.Sym.Type, n.List[0].Type), n.Pos)
+	}
+
+	return nil
 }
 
 func analyzeDeclaration(n *ir.Node) error {

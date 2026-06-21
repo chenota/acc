@@ -173,3 +173,36 @@ func TestAnalyze_VariableUsage_BeforeDeclared(t *testing.T) {
 
 	require.Error(t, Analyze(funcs))
 }
+
+func TestAnalyze_Assignment(t *testing.T) {
+	inputStr := `fun main () -> int { let x int = 10; x = 15; return x; }`
+	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
+	require.NoError(t, err)
+
+	funcs, err := parser.ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.NotNil(t, fun.Type)
+	assert.Equal(t, types.KFunction, fun.Type.Kind)
+
+	require.Len(t, fun.List, 3)
+	decl := fun.List[0]
+	assign := fun.List[1]
+	assert.Equal(t, decl.Sym, assign.Sym)
+}
+
+func TestAnalyze_Assignment_BeforeDeclared(t *testing.T) {
+	inputStr := `fun main () -> int { x = 15; return x; }`
+	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
+	require.NoError(t, err)
+
+	funcs, err := parser.ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Error(t, Analyze(funcs))
+}
