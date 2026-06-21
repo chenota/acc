@@ -1,0 +1,6 @@
+fun main () -> int {
+    let x int = 42;
+    let y = x;
+    x = 55;
+    return y;
+}

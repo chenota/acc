@@ -1,0 +1,6 @@
+fun main () -> int {
+    let x int = 10;
+    let y int = 22;
+    let z = (x * 2) + y;
+    return z;
+}
