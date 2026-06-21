@@ -80,6 +80,10 @@ func Mem() *Type {
 	return &Type{Kind: KMem}
 }
 
+func Unit() *Type {
+	return &Type{Kind: KUnit}
+}
+
 func (t *Type) Size() int {
 	switch t.Kind {
 	case KUnknown, KUntypedInt, KMem:
@@ -90,5 +94,16 @@ func (t *Type) Size() int {
 		return 32
 	default:
 		return 64
+	}
+}
+
+func (t *Type) ToDefault() *Type {
+	switch {
+	case t == nil:
+		return Unit()
+	case Equal(t, UntypedInt()):
+		return Int32()
+	default:
+		return t
 	}
 }

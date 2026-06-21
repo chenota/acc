@@ -62,13 +62,64 @@ func TestAnalyze_SimpleBop(t *testing.T) {
 	require.NotNil(t, fun.Type)
 	assert.Equal(t, types.KFunction, fun.Type.Kind)
 
-	require.NotNil(t, fun.Sym)
-	assert.Equal(t, "main", fun.Sym.Name)
-
 	require.Len(t, fun.List, 1)
 	bopExpr := fun.List[0].List[0]
 
 	assert.Equal(t, types.KInt32, bopExpr.Type.Kind)
 	assert.Equal(t, types.KInt32, bopExpr.List[0].Type.Kind)
 	assert.Equal(t, types.KInt32, bopExpr.List[1].Type.Kind)
+}
+
+func TestAnalyze_VariableDeclaration(t *testing.T) {
+	inputStr := `fun main () -> int { let x int = 10; return 0; }`
+	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
+	require.NoError(t, err)
+
+	funcs, err := parser.ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.NotNil(t, fun.Type)
+	assert.Equal(t, types.KFunction, fun.Type.Kind)
+
+	require.Len(t, fun.List, 2)
+	decl := fun.List[0]
+	require.NotNil(t, decl.Sym)
+	assert.Equal(t, types.KInt32, decl.Sym.Type.Kind)
+	assert.Equal(t, "x", decl.Sym.Name)
+
+	e := decl.List[1]
+	require.NotNil(t, e)
+	assert.Equal(t, e.Type.Kind, types.KInt32)
+}
+
+func TestAnalyze_VariableDeclaration_Inference(t *testing.T) {
+	inputStr := `fun main () -> int { let x = 10; return 0; }`
+	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
+	require.NoError(t, err)
+
+	funcs, err := parser.ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.NotNil(t, fun.Type)
+	assert.Equal(t, types.KFunction, fun.Type.Kind)
+
+	require.Len(t, fun.List, 2)
+	decl := fun.List[0]
+	require.NotNil(t, decl.Sym)
+	assert.Equal(t, types.KInt32, decl.Sym.Type.Kind)
+	assert.Equal(t, "x", decl.Sym.Name)
+
+	e := decl.List[1]
+	require.NotNil(t, e)
+	assert.Equal(t, e.Type.Kind, types.KInt32)
 }

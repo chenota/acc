@@ -64,3 +64,19 @@ func (n *Node) Predecessor(op Op) *Node {
 
 	return nil
 }
+
+func (n *Node) ScopedSym(name string) *Sym {
+	if n == nil {
+		return nil
+	}
+
+	curr := n.Parent
+	for curr != nil {
+		if curr.Sym != nil && curr.Sym.Name == name {
+			return curr.Sym
+		}
+		curr = curr.Parent
+	}
+
+	return nil
+}

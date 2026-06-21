@@ -26,9 +26,58 @@ func analyzeStmt(n *ir.Node) error {
 		return analyzeFunction(n)
 	case ir.OpReturn:
 		return analyzeReturn(n)
+	case ir.OpDeclaration:
+		return analyzeDeclaration(n)
 	default:
 		return diagnostic.NewError(fmt.Sprintf("unknown statement operation: %d", n.Op), n.Pos)
 	}
+}
+
+func analyzeDeclaration(n *ir.Node) error {
+	// make sure there isn't already a declared symbol in this scope
+	if existingSym := n.ScopedSym(n.Name); existingSym != nil {
+		return diagnostic.NewError(fmt.Sprintf("variable re-declared: %v", n.Name), n.Pos)
+	}
+
+	if len(n.List) != 2 {
+		return diagnostic.NewError("variable declaration missing components", n.Pos)
+	}
+	typeNode := n.List[0]
+	e := n.List[1]
+
+	var hint *types.Type
+	if typeNode != nil {
+		hint = typeNode.Type
+	}
+
+	if err := analyzeExpr(e, hint); err != nil {
+		return err
+	}
+
+	// we need a concrete type at this point to resolve any unknowns. must re-analyze with hint if type changes.
+	defaultType := e.Type.ToDefault()
+	if !types.Equal(defaultType, e.Type) {
+		hint = defaultType
+		if err := analyzeExpr(e, hint); err != nil {
+			return err
+		}
+	}
+
+	// wanted type must equal got type
+	if !types.Equal(hint, e.Type) {
+		return diagnostic.NewError(fmt.Sprintf("variable declaration with mismatched types: want %v, got %v", hint, e.Type), n.Pos)
+	}
+
+	// make a new symbol attached to this declaration
+	if n.Sym == nil {
+		n.Sym = &ir.Sym{
+			Name: n.Name,
+			Def:  n,
+			Type: e.Type,
+		}
+	}
+
+	return nil
 }
 
 func analyzeExpr(n *ir.Node, hint *types.Type) error {
