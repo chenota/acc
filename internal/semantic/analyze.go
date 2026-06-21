@@ -96,10 +96,12 @@ func analyzeFunction(f *ir.Node) error {
 	f.Type = types.Function(paramTypes, f.Signature.Result.Type)
 
 	// register own symbol
-	f.Sym = &ir.Sym{
-		Name: f.Name,
-		Def:  f,
-		Type: f.Type,
+	if f.Sym == nil {
+		f.Sym = &ir.Sym{
+			Name: f.Name,
+			Def:  f,
+			Type: f.Type,
+		}
 	}
 
 	// analyze types of body statements
