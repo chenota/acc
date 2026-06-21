@@ -84,7 +84,7 @@ Return an exit code from the result of an arithmetic expression; this is decepti
 
 ### Vertical Slice 3: Variables [Work in Progress]
 
-`acc` at this point is still stuck with its only output being an exit code. I'd like to work towards being able to do file output via a format print, but to get to that point `acc` needs a couple of foundational constructs with variables being one of them. I've made the type in a declaration optional since the bidirectional type system naturally supports inference very well so it's not a huge lift to add support for now.
+`acc` at this point is still stuck with its only output being an exit code. I'd like to work towards being able to do file output via a format print, but to get to that point `acc` needs a couple of foundational constructs with variables being one of them. I've made the type in a declaration optional since the bidirectional type system naturally supports inference very well so it's not a huge lift to add support now.
 
 #### Program Grammar (PEG)
 
@@ -97,7 +97,7 @@ Return an exit code from the result of an arithmetic expression; this is decepti
 #### Expression Grammar (CFG)
 
 ```
-<Expression> := <Ident>
+<Atom> := <Ident>
 ```
 
 ### Vertical Slice 4: Functions [Not Started]
