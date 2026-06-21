@@ -52,7 +52,7 @@ func Tokenize(r io.Reader, options ...Option) (*TokenList, error) {
 			return nil, diagnostic.NewError("invalid token", pos)
 		}
 
-		if !(bestKind == KindWhitespace || bestKind == KindNewlines) {
+		if !(bestKind == KWhitespace || bestKind == KNewLines) {
 			tokens = append(tokens, Token{
 				Kind: bestKind,
 				Text: string(bytes[i : i+bestLen]),
@@ -62,7 +62,7 @@ func Tokenize(r io.Reader, options ...Option) (*TokenList, error) {
 
 		i += bestLen
 
-		if bestKind == KindNewlines {
+		if bestKind == KNewLines {
 			line += bestLen
 			col = 0
 		} else {

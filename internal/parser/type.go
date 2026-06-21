@@ -10,7 +10,7 @@ func (p *parser) parseType() (*ir.Node, bool) {
 	loc := p.t.Mark()
 	pos := p.t.Pos()
 
-	if _, ok := p.t.Expect(lexer.KindIntKw); ok {
+	if _, ok := p.t.Expect(lexer.KIntKw); ok {
 		// "int" aliases to "int32"
 		return &ir.Node{
 			Op:   ir.OpType,

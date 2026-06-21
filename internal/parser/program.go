@@ -47,7 +47,7 @@ func (p *parser) parseBlock() (*ir.Node, bool) {
 		Pos: p.t.Pos(),
 	}
 
-	_, ok := p.t.Expect(lexer.KindLBracket)
+	_, ok := p.t.Expect(lexer.KLBracket)
 	if !ok {
 		p.markErr("expected opening bracket '{'")
 		p.t.Restore(loc)
@@ -65,7 +65,7 @@ func (p *parser) parseBlock() (*ir.Node, bool) {
 	}
 	n.List = stmts
 
-	_, ok = p.t.Expect(lexer.KindRBracket)
+	_, ok = p.t.Expect(lexer.KRBracket)
 	if !ok {
 		p.markErr("expected closing bracket '}' to match opening bracket")
 		p.t.Restore(loc)
@@ -91,7 +91,7 @@ func (p *parser) parseReturn() (*ir.Node, bool) {
 		Pos: p.t.Pos(),
 	}
 
-	if _, ok := p.t.Expect(lexer.KindReturnKw); !ok {
+	if _, ok := p.t.Expect(lexer.KReturnKw); !ok {
 		p.markErr("expected return keyword")
 		p.t.Restore(loc)
 		return nil, false
@@ -105,7 +105,7 @@ func (p *parser) parseReturn() (*ir.Node, bool) {
 	e.Parent = n
 	n.List = []*ir.Node{e}
 
-	if _, ok = p.t.Expect(lexer.KindSemicolon); !ok {
+	if _, ok = p.t.Expect(lexer.KSemicolon); !ok {
 		p.markErr("expected semicolon")
 		p.t.Restore(loc)
 		return nil, false
@@ -123,7 +123,7 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 		Signature: &ir.Signature{},
 	}
 
-	_, ok := p.t.Expect(lexer.KindFunKw)
+	_, ok := p.t.Expect(lexer.KFunKw)
 	if !ok {
 		p.markErr("expected fun keyword")
 		p.t.Restore(loc)
@@ -139,18 +139,18 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 	n.Name = name
 
 	// expect zero arguments for now
-	if _, ok := p.t.Expect(lexer.KindLParen); !ok {
+	if _, ok := p.t.Expect(lexer.KLParen); !ok {
 		p.markErr("expected open parenthesis")
 		p.t.Restore(loc)
 		return nil, false
 	}
-	if _, ok := p.t.Expect(lexer.KindRParen); !ok {
+	if _, ok := p.t.Expect(lexer.KRParen); !ok {
 		p.markErr("expected closing parenthesis to match open parenthesis")
 		p.t.Restore(loc)
 		return nil, false
 	}
 
-	if _, ok := p.t.Expect(lexer.KindArrow); !ok {
+	if _, ok := p.t.Expect(lexer.KArrow); !ok {
 		p.markErr("expected arrow")
 		p.t.Restore(loc)
 		return nil, false

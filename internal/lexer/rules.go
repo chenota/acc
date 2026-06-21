@@ -3,26 +3,26 @@ package lexer
 import "regexp"
 
 const (
-	KindWhitespace TokenKind = iota
-	KindNewlines
-	KindFunKw
-	KindLBracket
-	KindRBracket
-	KindIntKw
-	KindReturnKw
-	KindSemicolon
-	KindInteger
-	KindIdentifier
-	KindLParen
-	KindRParen
-	KindArrow
-	KindComma
-	KindPlus
-	KindMinus
-	KindStar
-	KindDiv
-	KindLetKw
-	KindEqual
+	KWhitespace TokenKind = iota
+	KNewLines
+	KFunKw
+	KLBracket
+	KRBracket
+	KIntKw
+	KReturnKw
+	KSemicolon
+	KInteger
+	KIdentifier
+	KLParen
+	KRParen
+	KArrow
+	KComma
+	KPlus
+	KMinus
+	KStar
+	KDiv
+	KLetKw
+	KEqual
 )
 
 type tokenRule struct {
@@ -31,26 +31,26 @@ type tokenRule struct {
 }
 
 var rules = []tokenRule{
-	{KindFunKw, mustAnchor(`fun`)},
-	{KindIntKw, mustAnchor(`int`)},
-	{KindReturnKw, mustAnchor(`return`)},
-	{KindLetKw, mustAnchor(`let`)},
-	{KindComma, mustAnchor(`,`)},
-	{KindArrow, mustAnchor(`->`)},
-	{KindLBracket, mustAnchor(`{`)},
-	{KindRBracket, mustAnchor(`}`)},
-	{KindLParen, mustAnchor(`\(`)},
-	{KindRParen, mustAnchor(`\)`)},
-	{KindPlus, mustAnchor(`\+`)},
-	{KindMinus, mustAnchor(`-`)},
-	{KindStar, mustAnchor(`\*`)},
-	{KindDiv, mustAnchor(`/`)},
-	{KindEqual, mustAnchor(`=`)},
-	{KindSemicolon, mustAnchor(`;`)},
-	{KindInteger, mustAnchor(`-?[0-9]+(_[0-9]+)*`)},
-	{KindIdentifier, mustAnchor(`[a-zA-Z_][a-zA-Z0-9_]*`)},
-	{KindNewlines, mustAnchor(`\n+`)},
-	{KindWhitespace, mustAnchor(`[[:blank:]]+`)},
+	{KFunKw, mustAnchor(`fun`)},
+	{KIntKw, mustAnchor(`int`)},
+	{KReturnKw, mustAnchor(`return`)},
+	{KLetKw, mustAnchor(`let`)},
+	{KComma, mustAnchor(`,`)},
+	{KArrow, mustAnchor(`->`)},
+	{KLBracket, mustAnchor(`{`)},
+	{KRBracket, mustAnchor(`}`)},
+	{KLParen, mustAnchor(`\(`)},
+	{KRParen, mustAnchor(`\)`)},
+	{KPlus, mustAnchor(`\+`)},
+	{KMinus, mustAnchor(`-`)},
+	{KStar, mustAnchor(`\*`)},
+	{KDiv, mustAnchor(`/`)},
+	{KEqual, mustAnchor(`=`)},
+	{KSemicolon, mustAnchor(`;`)},
+	{KInteger, mustAnchor(`-?[0-9]+(_[0-9]+)*`)},
+	{KIdentifier, mustAnchor(`[a-zA-Z_][a-zA-Z0-9_]*`)},
+	{KNewLines, mustAnchor(`\n+`)},
+	{KWhitespace, mustAnchor(`[[:blank:]]+`)},
 }
 
 func mustAnchor(pattern string) *regexp.Regexp {

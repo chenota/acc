@@ -38,7 +38,7 @@ func (t *TokenList) Expect(kind TokenKind) (Token, bool) {
 }
 
 func (t *TokenList) ExpectIdentifier() (string, bool) {
-	ident, ok := t.Expect(KindIdentifier)
+	ident, ok := t.Expect(KIdentifier)
 	if !ok {
 		return "", false
 	}
@@ -48,7 +48,7 @@ func (t *TokenList) ExpectIdentifier() (string, bool) {
 
 // ExpectInteger returns a parsed integer value from the token list
 func (t *TokenList) ExpectInteger() (*big.Int, bool) {
-	token, ok := t.Expect(KindInteger)
+	token, ok := t.Expect(KInteger)
 	if !ok {
 		return nil, false
 	}

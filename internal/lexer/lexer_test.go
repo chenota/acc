@@ -14,10 +14,10 @@ func TestLexer_Keyword(t *testing.T) {
 	tokens, err := Tokenize(input)
 	require.NoError(t, err)
 
-	token, ok := tokens.Expect(KindFunKw)
+	token, ok := tokens.Expect(KFunKw)
 	require.True(t, ok)
 
-	assert.Equal(t, KindFunKw, token.Kind)
+	assert.Equal(t, KFunKw, token.Kind)
 	assert.Equal(t, "fun", token.Text)
 }
 
@@ -69,7 +69,7 @@ func TestLexer_Plus(t *testing.T) {
 	tokens, err := Tokenize(strings.NewReader("+"))
 	require.NoError(t, err)
 
-	_, ok := tokens.Expect(KindPlus)
+	_, ok := tokens.Expect(KPlus)
 	require.True(t, ok)
 }
 
@@ -77,7 +77,7 @@ func TestLexer_Star(t *testing.T) {
 	tokens, err := Tokenize(strings.NewReader("*"))
 	require.NoError(t, err)
 
-	_, ok := tokens.Expect(KindStar)
+	_, ok := tokens.Expect(KStar)
 	require.True(t, ok)
 }
 
@@ -93,8 +93,8 @@ func TestLexer_Pos(t *testing.T) {
 		tokens, err := Tokenize(strings.NewReader("hello world"), WithFileName("hello"))
 		require.NoError(t, err)
 
-		tokens.Expect(KindIdentifier)
-		token, ok := tokens.Expect(KindIdentifier)
+		tokens.Expect(KIdentifier)
+		token, ok := tokens.Expect(KIdentifier)
 		require.True(t, ok)
 
 		assert.Equal(t, 7, token.Pos.Col)
@@ -105,7 +105,7 @@ func TestLexer_Pos(t *testing.T) {
 		tokens, err := Tokenize(strings.NewReader("\n\n\n hello"), WithFileName("burger"))
 		require.NoError(t, err)
 
-		token, ok := tokens.Expect(KindIdentifier)
+		token, ok := tokens.Expect(KIdentifier)
 		require.True(t, ok)
 
 		assert.Equal(t, 2, token.Pos.Col)

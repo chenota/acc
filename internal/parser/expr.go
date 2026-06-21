@@ -63,7 +63,7 @@ func (p *parser) expr(currentBindingPower int) (*ir.Node, error) {
 
 func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 	switch left.Kind {
-	case lexer.KindInteger:
+	case lexer.KInteger:
 		intVal, ok := left.ParseInteger()
 		if !ok {
 			return nil, diagnostic.NewError("cannot parse integer literal", left.Pos)
@@ -74,18 +74,18 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 			Pos: left.Pos,
 			Val: intVal,
 		}, nil
-	case lexer.KindLParen:
+	case lexer.KLParen:
 		e, err := p.expr(0)
 		if err != nil {
 			return nil, err
 		}
 
-		if _, ok := p.t.Expect(lexer.KindRParen); !ok {
+		if _, ok := p.t.Expect(lexer.KRParen); !ok {
 			return nil, diagnostic.NewError("expected closing parenthisis ')' to match opening parenthisis", p.t.Pos())
 		}
 
 		return e, nil
-	case lexer.KindIdentifier:
+	case lexer.KIdentifier:
 		return &ir.Node{
 			Op:   ir.OpIdent,
 			Pos:  left.Pos,
@@ -137,9 +137,9 @@ func isOperator(t lexer.Token) bool {
 
 func bindingPower(t lexer.Token) int {
 	switch t.Kind {
-	case lexer.KindPlus, lexer.KindMinus:
+	case lexer.KPlus, lexer.KMinus:
 		return 10
-	case lexer.KindStar, lexer.KindDiv:
+	case lexer.KStar, lexer.KDiv:
 		return 20
 	default:
 		return 0
@@ -148,13 +148,13 @@ func bindingPower(t lexer.Token) int {
 
 func bopFrom(t lexer.Token) ir.Op {
 	switch t.Kind {
-	case lexer.KindPlus:
+	case lexer.KPlus:
 		return ir.OpPlus
-	case lexer.KindMinus:
+	case lexer.KMinus:
 		return ir.OpMinus
-	case lexer.KindStar:
+	case lexer.KStar:
 		return ir.OpTimes
-	case lexer.KindDiv:
+	case lexer.KDiv:
 		return ir.OpDiv
 	default:
 		return ir.OpUnknown
