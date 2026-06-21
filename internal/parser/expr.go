@@ -85,6 +85,12 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 		}
 
 		return e, nil
+	case lexer.KindIdentifier:
+		return &ir.Node{
+			Op:   ir.OpIdent,
+			Pos:  left.Pos,
+			Name: left.Text,
+		}, nil
 	default:
 		return nil, diagnostic.NewError("expected prefix or literal expression", left.Pos)
 	}

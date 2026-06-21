@@ -159,6 +159,24 @@ func TestParser_NestedParens(t *testing.T) {
 	assert.Equal(t, ir.OpInt, e.Op)
 }
 
+func TestParser_Ident(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { return _burger123; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	e := ret.List[0]
+	assert.Equal(t, ir.OpIdent, e.Op)
+	assert.Equal(t, "_burger123", e.Name)
+}
+
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {
 	tokens, err := lexer.Tokenize(strings.NewReader(input))
 	require.NoError(t, err)

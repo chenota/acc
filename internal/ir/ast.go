@@ -21,6 +21,7 @@ const (
 	OpMinus
 	OpTimes
 	OpDiv
+	OpIdent
 )
 
 type Node struct {
