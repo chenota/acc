@@ -88,9 +88,24 @@ func analyzeExpr(n *ir.Node, hint *types.Type) error {
 		return analyzeInt(n, hint)
 	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
 		return analyzeBop(n, hint)
+	case ir.OpIdent:
+		return analyzeIdent(n)
 	default:
 		return diagnostic.NewError(fmt.Sprintf("unknown expression operation: %d", n.Op), n.Pos)
 	}
+}
+
+func analyzeIdent(n *ir.Node) error {
+	// need an existing symbol for this ident
+	existingSym := n.ScopedSym(n.Name)
+	if existingSym == nil {
+		return diagnostic.NewError(fmt.Sprintf("variable used before declaration: %v", n.Name), n.Pos)
+	}
+
+	n.Type = existingSym.Type
+	n.Sym = existingSym
+
+	return nil
 }
 
 func analyzeBop(n *ir.Node, hint *types.Type) error {
