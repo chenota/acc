@@ -11,8 +11,10 @@ import (
 )
 
 func Analyze(functions []*ir.Node) error {
+	globalScope := ir.NewTable()
+
 	for _, f := range functions {
-		if err := analyzeFunction(f); err != nil {
+		if err := analyzeFunction(globalScope, f); err != nil {
 			return err
 		}
 	}
@@ -20,24 +22,24 @@ func Analyze(functions []*ir.Node) error {
 	return nil
 }
 
-func analyzeStmt(n *ir.Node) error {
+func analyzeStmt(scope *ir.Table, n *ir.Node) error {
 	switch n.Op {
 	case ir.OpFunction:
-		return analyzeFunction(n)
+		return analyzeFunction(scope, n)
 	case ir.OpReturn:
-		return analyzeReturn(n)
+		return analyzeReturn(scope, n)
 	case ir.OpDeclaration:
-		return analyzeDeclaration(n)
+		return analyzeDeclaration(scope, n)
 	case ir.OpAssignment:
-		return analyzeAssignment(n)
+		return analyzeAssignment(scope, n)
 	default:
 		return diagnostic.NewError(fmt.Sprintf("unknown statement operation: %d", n.Op), n.Pos)
 	}
 }
 
-func analyzeAssignment(n *ir.Node) error {
+func analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 	// need an existing symbol for this ident
-	existingSym := n.ScopedSym(n.Name)
+	existingSym := scope.Sym(n.Name)
 	if existingSym == nil {
 		return diagnostic.NewError(fmt.Sprintf("variable used before declaration: %v", n.Name), n.Pos)
 	}
@@ -48,7 +50,7 @@ func analyzeAssignment(n *ir.Node) error {
 	if len(n.List) != 1 {
 		return diagnostic.NewError("variable assignment missing expression", n.Pos)
 	}
-	if err := analyzeExpr(n.List[0], n.Sym.Type); err != nil {
+	if err := analyzeExpr(scope, n.List[0], n.Sym.Type); err != nil {
 		return err
 	}
 
@@ -60,12 +62,7 @@ func analyzeAssignment(n *ir.Node) error {
 	return nil
 }
 
-func analyzeDeclaration(n *ir.Node) error {
-	// make sure there isn't already a declared symbol in this scope
-	if existingSym := n.ScopedSym(n.Name); existingSym != nil {
-		return diagnostic.NewError(fmt.Sprintf("variable re-declared: %v", n.Name), n.Pos)
-	}
-
+func analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 	if len(n.List) != 2 {
 		return diagnostic.NewError("variable declaration missing components", n.Pos)
 	}
@@ -77,7 +74,7 @@ func analyzeDeclaration(n *ir.Node) error {
 		hint = typeNode.Type
 	}
 
-	if err := analyzeExpr(e, hint); err != nil {
+	if err := analyzeExpr(scope, e, hint); err != nil {
 		return err
 	}
 
@@ -85,7 +82,7 @@ func analyzeDeclaration(n *ir.Node) error {
 	defaultType := e.Type.ToDefault()
 	if !types.Equal(defaultType, e.Type) {
 		hint = defaultType
-		if err := analyzeExpr(e, hint); err != nil {
+		if err := analyzeExpr(scope, e, hint); err != nil {
 			return err
 		}
 	}
@@ -95,36 +92,34 @@ func analyzeDeclaration(n *ir.Node) error {
 		return diagnostic.NewError(fmt.Sprintf("variable declaration with mismatched types: want %v, got %v", hint, e.Type), n.Pos)
 	}
 
-	// make a new symbol attached to this declaration
-	if n.Sym == nil {
-		n.Sym = &ir.Sym{
-			Name: n.Name,
-			Def:  n,
-			Type: e.Type,
-		}
+	// register self in scope; will get nil if variable already exists in scope
+	sym := scope.Register(n.Name, e.Type)
+	if sym == nil {
+		return diagnostic.NewError(fmt.Sprintf("variable re-declared: %v", n.Name), n.Pos)
 	}
+	n.Sym = sym
 
 	return nil
 }
 
-func analyzeExpr(n *ir.Node, hint *types.Type) error {
+func analyzeExpr(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 	switch n.Op {
 	case ir.OpFunction:
-		return analyzeFunction(n)
+		return analyzeFunction(scope, n)
 	case ir.OpInt:
 		return analyzeInt(n, hint)
 	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
-		return analyzeBop(n, hint)
+		return analyzeBop(scope, n, hint)
 	case ir.OpIdent:
-		return analyzeIdent(n)
+		return analyzeIdent(scope, n)
 	default:
 		return diagnostic.NewError(fmt.Sprintf("unknown expression operation: %d", n.Op), n.Pos)
 	}
 }
 
-func analyzeIdent(n *ir.Node) error {
+func analyzeIdent(scope *ir.Table, n *ir.Node) error {
 	// need an existing symbol for this ident
-	existingSym := n.ScopedSym(n.Name)
+	existingSym := scope.Sym(n.Name)
 	if existingSym == nil {
 		return diagnostic.NewError(fmt.Sprintf("variable used before declaration: %v", n.Name), n.Pos)
 	}
@@ -135,7 +130,7 @@ func analyzeIdent(n *ir.Node) error {
 	return nil
 }
 
-func analyzeBop(n *ir.Node, hint *types.Type) error {
+func analyzeBop(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 	// extract left and right operands
 	if len(n.List) != 2 {
 		return diagnostic.NewError("binary operator without two operands", n.Pos)
@@ -144,10 +139,10 @@ func analyzeBop(n *ir.Node, hint *types.Type) error {
 	right := n.List[1]
 
 	// figure out types of left and right operands given context
-	if err := analyzeExpr(left, hint); err != nil {
+	if err := analyzeExpr(scope, left, hint); err != nil {
 		return err
 	}
-	if err := analyzeExpr(right, hint); err != nil {
+	if err := analyzeExpr(scope, right, hint); err != nil {
 		return err
 	}
 	leftType := left.Type
@@ -156,11 +151,11 @@ func analyzeBop(n *ir.Node, hint *types.Type) error {
 	// attempt to resolve flexible types
 	switch {
 	case leftType.IsUntypedNumeric() && rightType.IsConcreteNumeric():
-		if err := analyzeExpr(left, rightType); err != nil {
+		if err := analyzeExpr(scope, left, rightType); err != nil {
 			return err
 		}
 	case leftType.IsConcreteNumeric() && rightType.IsUntypedNumeric():
-		if err := analyzeExpr(right, leftType); err != nil {
+		if err := analyzeExpr(scope, right, leftType); err != nil {
 			return err
 		}
 	}
@@ -178,7 +173,7 @@ func analyzeBop(n *ir.Node, hint *types.Type) error {
 	return nil
 }
 
-func analyzeFunction(f *ir.Node) error {
+func analyzeFunction(scope *ir.Table, f *ir.Node) error {
 	// set own type
 	var paramTypes []*types.Type
 	for _, p := range f.Signature.Params {
@@ -186,18 +181,19 @@ func analyzeFunction(f *ir.Node) error {
 	}
 	f.Type = types.Function(paramTypes, f.Signature.Result.Type)
 
-	// register own symbol
-	if f.Sym == nil {
-		f.Sym = &ir.Sym{
-			Name: f.Name,
-			Def:  f,
-			Type: f.Type,
-		}
+	// register self onto scope
+	sym := scope.Register(f.Name, f.Type)
+	if sym == nil {
+		return diagnostic.NewError(fmt.Sprintf("symbol '%s' already declared", f.Name), f.Pos)
 	}
+	f.Sym = sym
+
+	// need a child scope for function body
+	funScope := scope.NewChild()
 
 	// analyze types of body statements
 	for _, s := range f.List {
-		if err := analyzeStmt(s); err != nil {
+		if err := analyzeStmt(funScope, s); err != nil {
 			return err
 		}
 	}
@@ -205,7 +201,7 @@ func analyzeFunction(f *ir.Node) error {
 	return nil
 }
 
-func analyzeReturn(r *ir.Node) error {
+func analyzeReturn(scope *ir.Table, r *ir.Node) error {
 	// grab first function we can find in the AST
 	currentFunc := r.Predecessor(ir.OpFunction)
 
@@ -217,7 +213,7 @@ func analyzeReturn(r *ir.Node) error {
 
 	// determine type of sub-expression
 	e := r.List[0]
-	if err := analyzeExpr(e, expectedOut); err != nil {
+	if err := analyzeExpr(scope, e, expectedOut); err != nil {
 		return err
 	}
 
