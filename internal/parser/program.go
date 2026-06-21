@@ -76,11 +76,111 @@ func (p *parser) parseBlock() (*ir.Node, bool) {
 }
 
 func (p *parser) parseStmt() (*ir.Node, bool) {
-	if f, ok := p.parseFunction(); ok {
-		return f, true
+	if n, ok := p.parseFunction(); ok {
+		return n, true
+	}
+
+	if n, ok := p.parseDeclaration(); ok {
+		return n, true
+	}
+
+	if n, ok := p.parseAssignment(); ok {
+		return n, true
 	}
 
 	return p.parseReturn()
+}
+
+func (p *parser) parseDeclaration() (*ir.Node, bool) {
+	loc := p.t.Mark()
+
+	n := &ir.Node{
+		Op:   ir.OpDeclaration,
+		Pos:  p.t.Pos(),
+		List: make([]*ir.Node, 2),
+	}
+
+	if _, ok := p.t.Expect(lexer.KLetKw); !ok {
+		p.markErr("expected let keyword")
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	varName, ok := p.t.ExpectIdentifier()
+	if !ok {
+		p.markErr("expected identifier in variable declaration")
+		p.t.Restore(loc)
+		return nil, false
+	}
+	n.Name = varName
+
+	// first element of the list is either the declared type or nil if unspecified
+	if varType, ok := p.parseType(); ok {
+		n.List[0] = varType
+	} else {
+		n.List[0] = nil
+	}
+
+	if _, ok := p.t.Expect(lexer.KEqual); !ok {
+		p.markErr("expected equal sign in variable declaration")
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	e, ok := p.parseExpr()
+	if !ok {
+		p.t.Restore(loc)
+		return nil, false
+	}
+	e.Parent = n
+	n.List[1] = e
+
+	if _, ok = p.t.Expect(lexer.KSemicolon); !ok {
+		p.markErr("expected semicolon")
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	return n, true
+}
+
+func (p *parser) parseAssignment() (*ir.Node, bool) {
+	loc := p.t.Mark()
+
+	n := &ir.Node{
+		Op:  ir.OpAssignment,
+		Pos: p.t.Pos(),
+	}
+
+	varName, ok := p.t.ExpectIdentifier()
+	if !ok {
+		p.markErr("expected identifier")
+		p.t.Restore(loc)
+		return nil, false
+	}
+	n.Name = varName
+
+	if _, ok := p.t.Expect(lexer.KEqual); !ok {
+		p.markErr("expected equal sign in variable assignment")
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	e, ok := p.parseExpr()
+	if !ok {
+		p.t.Restore(loc)
+		return nil, false
+	}
+	e.Parent = n
+	n.List = []*ir.Node{e}
+
+	if _, ok = p.t.Expect(lexer.KSemicolon); !ok {
+		p.markErr("expected semicolon")
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	return n, true
 }
 
 func (p *parser) parseReturn() (*ir.Node, bool) {

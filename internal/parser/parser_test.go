@@ -56,6 +56,8 @@ func TestParser_Err(t *testing.T) {
 		{"missing right operand", `fun main () -> int { return 4 + ;}`},
 		{"missing left operand", `fun main () -> int { return / 5; }`},
 		{"operator by itself", `fun main () -> int { return *; }`},
+		{"let without equals", `fun main () -> int { let x 10; }`},
+		{"assignment without expression", `fun main () -> int { x = ; }`},
 	}
 
 	for _, tt := range tests {
@@ -175,6 +177,76 @@ func TestParser_Ident(t *testing.T) {
 	e := ret.List[0]
 	assert.Equal(t, ir.OpIdent, e.Op)
 	assert.Equal(t, "_burger123", e.Name)
+}
+
+func TestParser_Declaration_WithType(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { let x int = 10; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	decl := fun.List[0]
+	assert.Equal(t, ir.OpDeclaration, decl.Op)
+
+	require.Len(t, decl.List, 2)
+	varType := decl.List[0]
+	expr := decl.List[1]
+	assert.Equal(t, ir.OpType, varType.Op)
+	assert.Equal(t, ir.OpInt, expr.Op)
+}
+
+func TestParser_Declaration_WithoutType(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { let x = 10; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	decl := fun.List[0]
+	assert.Equal(t, ir.OpDeclaration, decl.Op)
+
+	require.Len(t, decl.List, 2)
+	varType := decl.List[0]
+	expr := decl.List[1]
+	assert.Nil(t, varType)
+	assert.Equal(t, ir.OpInt, expr.Op)
+}
+
+func TestParser_Assignment(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { x = 10; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	decl := fun.List[0]
+	assert.Equal(t, ir.OpAssignment, decl.Op)
+
+	require.Len(t, decl.List, 1)
+	expr := decl.List[0]
+	assert.Equal(t, ir.OpInt, expr.Op)
+}
+
+func TestParser_StmtList(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { let x int = 5; x = 10; return x; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	assert.Len(t, fun.List, 3)
 }
 
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {

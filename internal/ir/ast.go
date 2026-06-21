@@ -22,6 +22,8 @@ const (
 	OpTimes
 	OpDiv
 	OpIdent
+	OpDeclaration
+	OpAssignment
 )
 
 type Node struct {
