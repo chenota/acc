@@ -45,9 +45,9 @@ func (e *Error) Pos() Pos {
 	return e.pos
 }
 
-func NewError(message string, pos Pos) *Error {
+func NewError(pos Pos, format string, args ...any) *Error {
 	return &Error{
-		message: message,
+		message: fmt.Sprintf(format, args...),
 		pos:     pos,
 	}
 }

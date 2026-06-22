@@ -49,7 +49,7 @@ func Tokenize(r io.Reader, options ...Option) (*TokenList, error) {
 		}
 
 		if bestLen == 0 {
-			return nil, diagnostic.NewError("invalid token", pos)
+			return nil, diagnostic.NewError(pos, "invalid token")
 		}
 
 		if !(bestKind == KWhitespace || bestKind == KNewLines) {

@@ -29,7 +29,7 @@ func (p *parser) parseExpr() (*ir.Node, bool) {
 func (p *parser) expr(currentBindingPower int) (*ir.Node, error) {
 	leftToken, ok := p.t.Peek()
 	if !ok {
-		return nil, diagnostic.NewError("expected prefix or literal expression", p.t.Pos())
+		return nil, diagnostic.NewError(p.t.Pos(), "expected prefix or literal expression")
 	}
 	p.t.Advance()
 
@@ -66,7 +66,7 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 	case lexer.KInteger:
 		intVal, ok := left.ParseInteger()
 		if !ok {
-			return nil, diagnostic.NewError("cannot parse integer literal", left.Pos)
+			return nil, diagnostic.NewError(left.Pos, "cannot parse integer literal")
 		}
 
 		return &ir.Node{
@@ -81,7 +81,7 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 		}
 
 		if _, ok := p.t.Expect(lexer.KRParen); !ok {
-			return nil, diagnostic.NewError("expected closing parenthisis ')' to match opening parenthisis", p.t.Pos())
+			return nil, diagnostic.NewError(p.t.Pos(), "expected closing parenthisis ')' to match opening parenthisis")
 		}
 
 		return e, nil
@@ -92,7 +92,7 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 			Name: left.Text,
 		}, nil
 	default:
-		return nil, diagnostic.NewError("expected prefix or literal expression", left.Pos)
+		return nil, diagnostic.NewError(left.Pos, "expected prefix or literal expression")
 	}
 }
 
@@ -117,7 +117,7 @@ func (p *parser) led(left *ir.Node, op lexer.Token) (*ir.Node, error) {
 		}, nil
 	}
 
-	return nil, diagnostic.NewError("expected infix operator", op.Pos)
+	return nil, diagnostic.NewError(op.Pos, "expected infix operator")
 }
 
 func (p *parser) nextTokenBindingPower() int {

@@ -1,7 +1,6 @@
 package ssa
 
 import (
-	"fmt"
 	"math/big"
 
 	"github.com/chenota/acc/internal/diagnostic"
@@ -11,7 +10,7 @@ import (
 
 func buildFunc(n *ir.Node) (*Func, error) {
 	if n.Op != ir.OpFunction {
-		return nil, diagnostic.NewError("expected function node", n.Pos)
+		return nil, diagnostic.NewError(n.Pos, "expected function node")
 	}
 
 	f := &Func{
@@ -53,7 +52,7 @@ func (b *builder) genStatement(stmt *ir.Node) error {
 
 		return nil
 	default:
-		return diagnostic.NewError(fmt.Sprintf("unknown statement operation: %d", stmt.Op), stmt.Pos)
+		return diagnostic.NewError(stmt.Pos, "unknown statement operation: %d", stmt.Op)
 	}
 }
 
@@ -64,7 +63,7 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
 		return b.genBop(expr)
 	default:
-		return nil, diagnostic.NewError(fmt.Sprintf("unknown expression operation: %d", expr.Op), expr.Pos)
+		return nil, diagnostic.NewError(expr.Pos, "unknown expression operation: %d", expr.Op)
 	}
 }
 
@@ -75,13 +74,13 @@ func (b *builder) genInt(expr *ir.Node) (*Value, error) {
 		v.Value = int32(expr.Val.(*big.Int).Int64())
 		return v, nil
 	default:
-		return nil, diagnostic.NewError(fmt.Sprintf("unknown integer type: %v", expr.Type), expr.Pos)
+		return nil, diagnostic.NewError(expr.Pos, "unknown integer type: %v", expr.Type)
 	}
 }
 
 func (b *builder) genBop(expr *ir.Node) (*Value, error) {
 	if len(expr.List) != 2 {
-		return nil, diagnostic.NewError("binary operator without two operands", expr.Pos)
+		return nil, diagnostic.NewError(expr.Pos, "binary operator without two operands")
 	}
 	left := expr.List[0]
 	right := expr.List[1]
@@ -102,7 +101,7 @@ func (b *builder) genBop(expr *ir.Node) (*Value, error) {
 		return v, nil
 	}
 
-	return nil, diagnostic.NewError(fmt.Sprintf("cannot perform binary operation for type %v", expr.Type), expr.Pos)
+	return nil, diagnostic.NewError(expr.Pos, "cannot perform binary operation for type %v", expr.Type)
 }
 
 func numericBopFrom(n *ir.Node) Op {

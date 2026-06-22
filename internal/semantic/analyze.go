@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"fmt"
 	"math"
 	"math/big"
 
@@ -33,7 +32,7 @@ func analyzeStmt(scope *ir.Table, n *ir.Node) error {
 	case ir.OpAssignment:
 		return analyzeAssignment(scope, n)
 	default:
-		return diagnostic.NewError(fmt.Sprintf("unknown statement operation: %d", n.Op), n.Pos)
+		return diagnostic.NewError(n.Pos, "unknown statement operation: %d", n.Op)
 	}
 }
 
@@ -41,14 +40,14 @@ func analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 	// need an existing symbol for this ident
 	existingSym := scope.Sym(n.Name)
 	if existingSym == nil {
-		return diagnostic.NewError(fmt.Sprintf("variable used before declaration: %v", n.Name), n.Pos)
+		return diagnostic.NewError(n.Pos, "variable used before declaration: %v", n.Name)
 	}
 
 	n.Sym = existingSym
 
 	// analyze the expression with hint of existing type
 	if len(n.List) != 1 {
-		return diagnostic.NewError("variable assignment missing expression", n.Pos)
+		return diagnostic.NewError(n.Pos, "variable assignment missing expression")
 	}
 	if err := analyzeExpr(scope, n.List[0], n.Sym.Type); err != nil {
 		return err
@@ -56,7 +55,7 @@ func analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 
 	// make sure the expression and wanted type match
 	if !types.Equal(n.Sym.Type, n.List[0].Type) {
-		return diagnostic.NewError(fmt.Sprintf("variable declaration with mismatched types: want %v, got %v", n.Sym.Type, n.List[0].Type), n.Pos)
+		return diagnostic.NewError(n.Pos, "variable declaration with mismatched types: want %v, got %v", n.Sym.Type, n.List[0].Type)
 	}
 
 	return nil
@@ -64,7 +63,7 @@ func analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 
 func analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 	if len(n.List) != 2 {
-		return diagnostic.NewError("variable declaration missing components", n.Pos)
+		return diagnostic.NewError(n.Pos, "variable declaration missing components")
 	}
 	typeNode := n.List[0]
 	e := n.List[1]
@@ -89,13 +88,13 @@ func analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 
 	// wanted type must equal got type
 	if !types.Equal(hint, e.Type) {
-		return diagnostic.NewError(fmt.Sprintf("variable declaration with mismatched types: want %v, got %v", hint, e.Type), n.Pos)
+		return diagnostic.NewError(n.Pos, "variable declaration with mismatched types: want %v, got %v", hint, e.Type)
 	}
 
 	// register self in scope; will get nil if variable already exists in scope
 	sym := scope.Register(n.Name, e.Type)
 	if sym == nil {
-		return diagnostic.NewError(fmt.Sprintf("variable re-declared: %v", n.Name), n.Pos)
+		return diagnostic.NewError(n.Pos, "variable re-declared: %v", n.Name)
 	}
 	n.Sym = sym
 
@@ -113,7 +112,7 @@ func analyzeExpr(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 	case ir.OpIdent:
 		return analyzeIdent(scope, n)
 	default:
-		return diagnostic.NewError(fmt.Sprintf("unknown expression operation: %d", n.Op), n.Pos)
+		return diagnostic.NewError(n.Pos, "unknown expression operation: %d", n.Op)
 	}
 }
 
@@ -121,7 +120,7 @@ func analyzeIdent(scope *ir.Table, n *ir.Node) error {
 	// need an existing symbol for this ident
 	existingSym := scope.Sym(n.Name)
 	if existingSym == nil {
-		return diagnostic.NewError(fmt.Sprintf("variable used before declaration: %v", n.Name), n.Pos)
+		return diagnostic.NewError(n.Pos, "variable used before declaration: %v", n.Name)
 	}
 
 	n.Type = existingSym.Type
@@ -133,7 +132,7 @@ func analyzeIdent(scope *ir.Table, n *ir.Node) error {
 func analyzeBop(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 	// extract left and right operands
 	if len(n.List) != 2 {
-		return diagnostic.NewError("binary operator without two operands", n.Pos)
+		return diagnostic.NewError(n.Pos, "binary operator without two operands")
 	}
 	left := n.List[0]
 	right := n.List[1]
@@ -164,7 +163,7 @@ func analyzeBop(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 
 	// types must be equal
 	if !types.Equal(leftType, rightType) {
-		return diagnostic.NewError(fmt.Sprintf("binary operation with mismatched types: %v and %v", leftType, rightType), n.Pos)
+		return diagnostic.NewError(n.Pos, "binary operation with mismatched types: %v and %v", leftType, rightType)
 	}
 
 	// finally, assign bop node to the agreed-upon type
@@ -184,7 +183,7 @@ func analyzeFunction(scope *ir.Table, f *ir.Node) error {
 	// register self onto scope
 	sym := scope.Register(f.Name, f.Type)
 	if sym == nil {
-		return diagnostic.NewError(fmt.Sprintf("symbol '%s' already declared", f.Name), f.Pos)
+		return diagnostic.NewError(f.Pos, "symbol '%s' already declared", f.Name)
 	}
 	f.Sym = sym
 
@@ -207,7 +206,7 @@ func analyzeReturn(scope *ir.Table, r *ir.Node) error {
 
 	// we expect a return to appear in a function
 	if currentFunc == nil {
-		return diagnostic.NewError("return statement appears outside of a function definition", r.Pos)
+		return diagnostic.NewError(r.Pos, "return statement appears outside of a function definition")
 	}
 	expectedOut := currentFunc.Type.Output
 
@@ -219,7 +218,7 @@ func analyzeReturn(scope *ir.Table, r *ir.Node) error {
 
 	// this check is redundant for now but will be useful in the future when we introduce more complexity
 	if !types.Equal(e.Type, expectedOut) {
-		return diagnostic.NewError(fmt.Sprintf("return value type does not match type of function signature. expected %v, got %v", expectedOut, e.Type), e.Pos)
+		return diagnostic.NewError(e.Pos, "return value type does not match type of function signature. expected %v, got %v", expectedOut, e.Type)
 	}
 
 	return nil
@@ -234,7 +233,7 @@ func analyzeInt(i *ir.Node, hint *types.Type) error {
 		max32 := big.NewInt(math.MaxInt32)
 		min32 := big.NewInt(math.MinInt32)
 		if intVal.Cmp(max32) > 0 || intVal.Cmp(min32) < 0 {
-			return diagnostic.NewError(fmt.Sprintf("overflow: integer value %v too large for type %v", intVal, types.Int32()), i.Pos)
+			return diagnostic.NewError(i.Pos, "overflow: integer value %v too large for type %v", intVal, types.Int32())
 		}
 		i.Type = types.Int32()
 	}
