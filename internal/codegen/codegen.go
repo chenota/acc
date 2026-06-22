@@ -139,7 +139,7 @@ func generateValue(v *ssa.Value) []Inst {
 
 	switch v.Op {
 	case ssa.OpLiteral:
-		insts = append(insts, generateConstInt32(v))
+		insts = append(insts, generateConstInt(v))
 	case ssa.OpLoad:
 		insts = append(insts, generateLoad(v))
 	case ssa.OpStore:
@@ -149,7 +149,7 @@ func generateValue(v *ssa.Value) []Inst {
 	return insts
 }
 
-func generateConstInt32(v *ssa.Value) Inst {
+func generateConstInt(v *ssa.Value) Inst {
 	return Inst{
 		Op:   movOp(v.Type.Size()),
 		Src1: immediate(v.Value.(int32)),

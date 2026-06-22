@@ -33,7 +33,7 @@ func foldConstants(f *Func) {
 
 func evaluateBop(op Op, t *types.Type, left, right any) (any, bool) {
 	switch {
-	case types.Equal(t, types.Int32()):
+	case types.Equal(t, types.Int()):
 		leftVal := left.(int32)
 		rightVal := right.(int32)
 

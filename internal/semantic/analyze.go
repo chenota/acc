@@ -229,13 +229,13 @@ func analyzeInt(i *ir.Node, hint *types.Type) error {
 
 	intVal := i.Val.(*big.Int)
 
-	if types.Equal(hint, types.Int32()) {
+	if types.Equal(hint, types.Int()) {
 		max32 := big.NewInt(math.MaxInt32)
 		min32 := big.NewInt(math.MinInt32)
 		if intVal.Cmp(max32) > 0 || intVal.Cmp(min32) < 0 {
-			return diagnostic.NewError(i.Pos, "overflow: integer value %v too large for type %v", intVal, types.Int32())
+			return diagnostic.NewError(i.Pos, "overflow: integer value %v too large for type %v", intVal, types.Int())
 		}
-		i.Type = types.Int32()
+		i.Type = types.Int()
 	}
 
 	return nil

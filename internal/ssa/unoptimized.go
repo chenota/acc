@@ -69,8 +69,8 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 
 func (b *builder) genInt(expr *ir.Node) (*Value, error) {
 	switch expr.Type.Kind {
-	case types.KInt32:
-		v := b.targetFunc.appendValue(OpLiteral, types.Int32(), b.currentBlock)
+	case types.KInt:
+		v := b.targetFunc.appendValue(OpLiteral, types.Int(), b.currentBlock)
 		v.Value = int32(expr.Val.(*big.Int).Int64())
 		return v, nil
 	default:
