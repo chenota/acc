@@ -4,7 +4,6 @@ import (
 	"slices"
 
 	"github.com/chenota/acc/internal/register"
-	"github.com/chenota/acc/internal/types"
 )
 
 type interval struct {
@@ -49,6 +48,8 @@ type registerAllocater struct {
 	returnTarget register.Register
 
 	active []*interval
+
+	spillMap map[int]*Value
 }
 
 func (r *registerAllocater) prepareReturns(f *Func) {
@@ -69,6 +70,7 @@ func newRegisterAllocater(registers registerGroup) *registerAllocater {
 		working:      working,
 		scratch:      registers.scratch,
 		returnTarget: registers.returnTarget,
+		spillMap:     make(map[int]*Value),
 	}
 }
 
@@ -77,7 +79,7 @@ func (r *registerAllocater) spillOrEvict(f *Func, i *interval) {
 
 	// target interval takes too much time; directly spill target
 	if i.End > spill.End {
-		i.Value.Loc = NewStack(f.allocateSpill())
+		r.spillValue(f, i)
 		return
 	}
 
@@ -136,11 +138,11 @@ func (r *registerAllocater) injectLoadsAndStores(f *Func) {
 
 			// uses - load before instruction
 			for idx, arg := range v.Args {
-				if arg.Loc.Kind == LocStack {
+				if alloca, ok := r.spillMap[arg.Id]; ok {
 					// create a load instruction using a dedicated scratch register
-					load := f.newValue(OpLoadReg, arg.Type, block)
+					load := f.newValue(OpLoad, arg.Type, block)
+					load.Args = []*Value{alloca}
 					load.Loc = NewReg(r.scratchRegister(scratchCount))
-					load.Value = arg.Loc.Slot
 
 					// rewrite the instruction's argument to point to the result of our load
 					v.Args[idx] = load
@@ -150,12 +152,10 @@ func (r *registerAllocater) injectLoadsAndStores(f *Func) {
 			}
 
 			// defs - spill after instruction
-			if v.Loc.Kind == LocStack {
-				spill := f.newValue(OpStoreReg, types.Mem(), block)
-				spill.Args = []*Value{v}
-				spill.Loc = v.Loc // copy v's stack slot over to the new store instruction
+			if alloca, ok := r.spillMap[v.Id]; ok {
+				store := f.newValue(OpStore, v.Type, block)
+				store.Args = []*Value{v, alloca}
 
-				// re-target original value to scratch register
 				v.Loc = NewReg(r.scratchRegister(scratchCount))
 
 				scratchCount += 1
@@ -180,7 +180,12 @@ func (r *registerAllocater) evictInterval(f *Func, i *interval) {
 
 	// this interval must be spilled
 	r.removeActive(i)
-	i.Value.Loc = NewStack(f.allocateSpill())
+	r.spillValue(f, i)
+}
+
+func (r *registerAllocater) spillValue(f *Func, i *interval) {
+	alloca := f.newValue(OpAlloca, i.Value.Type, i.Value.Block)
+	r.spillMap[i.Value.Id] = alloca
 }
 
 func (r *registerAllocater) latestActive() *interval {

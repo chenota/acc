@@ -24,6 +24,5 @@ type Arg struct {
 
 	Reg register.Register
 
-	Value int64
-	Text  string
+	Value any
 }

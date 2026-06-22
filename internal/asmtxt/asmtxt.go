@@ -38,14 +38,14 @@ func Stringify(instrs []codegen.Inst) []string {
 func argText(arg codegen.Arg) string {
 	switch arg.Kind {
 	case codegen.KImmediate:
-		return "$" + strconv.FormatInt(arg.Value, 10)
+		return "$" + strconv.FormatInt(int64(arg.Value.(int32)), 10)
 	case codegen.KRegister:
-		return registerString(arg.Reg, arg.Value)
+		return registerString(arg.Reg, arg.Value.(int))
 	case codegen.KStack:
-		rbpName := registerString(register.RegBP, 64)
+		rbpName := registerString(register.RegBP, 8)
 		return fmt.Sprintf("%d(%s)", arg.Value, rbpName)
 	case codegen.KText:
-		return arg.Text
+		return arg.Value.(string)
 	}
 	return ""
 }
@@ -61,31 +61,31 @@ var classicRegs = map[register.Register][]string{
 	register.RegBP: {"bpl", "bp", "ebp", "rbp"},
 }
 
-func registerString(reg register.Register, size int64) string {
+func registerString(reg register.Register, size int) string {
 	var regStr string
 
 	if reg >= register.RegA && reg <= register.RegBP {
 		switch size {
-		case 8:
+		case 1:
 			regStr = classicRegs[reg][0]
-		case 16:
+		case 2:
 			regStr = classicRegs[reg][1]
-		case 32:
+		case 4:
 			regStr = classicRegs[reg][2]
-		case 64:
+		case 8:
 			regStr = classicRegs[reg][3]
 		}
 	}
 
 	if reg >= register.Reg8 && reg <= register.Reg15 {
 		switch size {
-		case 8:
+		case 1:
 			regStr = fmt.Sprintf("r%db", reg)
-		case 16:
+		case 2:
 			regStr = fmt.Sprintf("r%dw", reg)
-		case 32:
+		case 4:
 			regStr = fmt.Sprintf("r%dd", reg)
-		case 64:
+		case 8:
 			regStr = fmt.Sprintf("r%d", reg)
 		}
 	}

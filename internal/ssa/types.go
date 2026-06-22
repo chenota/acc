@@ -12,8 +12,9 @@ type Op int
 const (
 	OpUnknown Op = iota
 	OpLiteral
-	OpStoreReg
-	OpLoadReg
+	OpAlloca
+	OpLoad
+	OpStore
 	OpAdd
 	OpSubtract
 	OpMultiply
@@ -91,7 +92,7 @@ type Func struct {
 
 	valueId   int
 	blockId   int
-	spillSlot int
+	frameSize int
 }
 
 // OrderedBlocks flattens a function's blocks using reverse post-order traversal
@@ -142,16 +143,6 @@ func (f *Func) newBlock() *Block {
 	return b
 }
 
-func (f *Func) allocateSpill() int {
-	f.spillSlot += 1
-	return f.spillSlot - 1
-}
-
-// StackSize returns a 16-byte aligned value representing how large Func's stack is.
-func (f *Func) StackSize() int {
-	return ((f.spillSlot * 8) / 16) * 16
-}
-
 func (f *Func) IsMain() bool {
 	return f.Name == "main"
 }
@@ -176,6 +167,10 @@ func (f *Func) substituteValue(old, new *Value) {
 	}
 }
 
+func (f *Func) FrameSize() int {
+	return f.frameSize
+}
+
 type LocationKind int
 
 const (
@@ -185,9 +180,9 @@ const (
 )
 
 type Location struct {
-	Kind LocationKind
-	Reg  register.Register
-	Slot int
+	Kind   LocationKind
+	Reg    register.Register
+	Offset int // negative byte offset from rbp
 }
 
 func NewReg(reg register.Register) Location {
@@ -197,9 +192,9 @@ func NewReg(reg register.Register) Location {
 	}
 }
 
-func NewStack(slot int) Location {
+func NewStack(offset int) Location {
 	return Location{
-		Kind: LocStack,
-		Slot: slot,
+		Kind:   LocStack,
+		Offset: offset,
 	}
 }

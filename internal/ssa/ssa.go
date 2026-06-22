@@ -36,10 +36,9 @@ func (s *ssaBuilder) optimizedAllocatedFunction(n *ir.Node) (*Func, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	foldConstants(f)
-
 	regalloc(f, s.registers)
+	layoutFrame(f)
 
 	return f, nil
 }

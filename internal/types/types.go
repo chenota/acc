@@ -84,16 +84,15 @@ func Unit() *Type {
 	return &Type{Kind: KUnit}
 }
 
+// Size returns the type's size in bytes
 func (t *Type) Size() int {
 	switch t.Kind {
-	case KUnknown, KUntypedInt, KMem:
-		return -1
 	case KUnit:
 		return 0
 	case KInt32:
-		return 32
+		return 4
 	default:
-		return 64
+		return 8
 	}
 }
 

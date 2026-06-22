@@ -9,10 +9,10 @@ import (
 )
 
 var (
-	basePointer  = Arg{Kind: KRegister, Reg: register.RegBP, Value: 64}
-	stackPointer = Arg{Kind: KRegister, Reg: register.RegSP, Value: 64}
-	rax          = Arg{Kind: KRegister, Reg: register.RegA, Value: 64}
-	rdi          = Arg{Kind: KRegister, Reg: register.RegDI, Value: 64}
+	basePointer  = Arg{Kind: KRegister, Reg: register.RegBP, Value: 8}
+	stackPointer = Arg{Kind: KRegister, Reg: register.RegSP, Value: 8}
+	rax          = Arg{Kind: KRegister, Reg: register.RegA, Value: 8}
+	rdi          = Arg{Kind: KRegister, Reg: register.RegDI, Value: 8}
 )
 
 func GenerateProgram(program []*ssa.Func) ([]Inst, error) {
@@ -89,10 +89,10 @@ func generateFunction(f *ssa.Func) []Inst {
 			Dest: basePointer,
 		},
 	)
-	if f.StackSize() > 0 {
+	if f.FrameSize() > 0 {
 		insts = append(insts, Inst{
 			Op:   "subq",
-			Src1: immediate(int32(f.StackSize())),
+			Src1: immediate(int32(f.FrameSize())),
 			Dest: stackPointer,
 		})
 	}
@@ -101,10 +101,10 @@ func generateFunction(f *ssa.Func) []Inst {
 		insts = append(insts, generateBlock(b)...)
 	}
 
-	if f.StackSize() > 0 {
+	if f.FrameSize() > 0 {
 		insts = append(insts, Inst{
 			Op:   "addq",
-			Src1: immediate(int32(f.StackSize())),
+			Src1: immediate(int32(f.FrameSize())),
 			Dest: stackPointer,
 		})
 	}
@@ -140,9 +140,9 @@ func generateValue(v *ssa.Value) []Inst {
 	switch v.Op {
 	case ssa.OpLiteral:
 		insts = append(insts, generateConstInt32(v))
-	case ssa.OpLoadReg:
+	case ssa.OpLoad:
 		insts = append(insts, generateLoad(v))
-	case ssa.OpStoreReg:
+	case ssa.OpStore:
 		insts = append(insts, generateStore(v))
 	}
 
@@ -151,25 +151,30 @@ func generateValue(v *ssa.Value) []Inst {
 
 func generateConstInt32(v *ssa.Value) Inst {
 	return Inst{
-		Op:   movOp(32),
+		Op:   movOp(v.Type.Size()),
 		Src1: immediate(v.Value.(int32)),
 		Dest: toArg(v),
 	}
 }
 
 func generateLoad(v *ssa.Value) Inst {
+	alloca := v.Args[0]
+
 	return Inst{
 		Op:   movOp(v.Type.Size()),
-		Src1: stack(v.Value.(int)),
+		Src1: toArg(alloca),
 		Dest: toArg(v),
 	}
 }
 
 func generateStore(v *ssa.Value) Inst {
+	src := v.Args[0]
+	alloca := v.Args[1]
+
 	return Inst{
 		Op:   movOp(v.Type.Size()),
-		Src1: toArg(v.Args[0]),
-		Dest: toArg(v),
+		Src1: toArg(src),
+		Dest: toArg(alloca),
 	}
 }
 
@@ -183,38 +188,33 @@ func toArg(v *ssa.Value) Arg {
 		return Arg{
 			Kind:  KRegister,
 			Reg:   v.Loc.Reg,
-			Value: int64(v.Type.Size()),
+			Value: v.Type.Size(),
 		}
 	case ssa.LocStack:
 		return Arg{
 			Kind:  KStack,
-			Reg:   v.Loc.Reg,
-			Value: int64(v.Loc.Slot),
+			Value: v.Loc.Offset,
 		}
 	}
 	return Arg{}
 }
 
 func immediate(v int32) Arg {
-	return Arg{Kind: KImmediate, Value: int64(v)}
+	return Arg{Kind: KImmediate, Value: v}
 }
 
 func label(l string) Inst {
 	return Inst{Op: l + ":"}
 }
 
-func stack(slot int) Arg {
-	return Arg{Kind: KStack, Value: int64(slot)}
-}
-
 func movOp(size int) string {
 	var op string
 	switch size {
-	case 8:
+	case 1:
 		op = "movb"
-	case 16:
+	case 2:
 		op = "movw"
-	case 32:
+	case 4:
 		op = "movl"
 	default:
 		op = "movq"
@@ -223,5 +223,5 @@ func movOp(size int) string {
 }
 
 func text(v string) Arg {
-	return Arg{Kind: KText, Text: v}
+	return Arg{Kind: KText, Value: v}
 }

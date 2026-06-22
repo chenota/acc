@@ -11,7 +11,7 @@ import (
 
 func TestAsmTxt_OnlyDest(t *testing.T) {
 	cgInstrs := []codegen.Inst{
-		{Op: "movl", Dest: codegen.Arg{Kind: codegen.KImmediate, Value: 10}},
+		{Op: "movl", Dest: codegen.Arg{Kind: codegen.KImmediate, Value: int32(10)}},
 	}
 
 	instrs := Stringify(cgInstrs)
@@ -24,8 +24,8 @@ func TestAsmTxt_OneSrc(t *testing.T) {
 	cgInstrs := []codegen.Inst{
 		{
 			Op:   "movq",
-			Src1: codegen.Arg{Kind: codegen.KImmediate, Value: 10},
-			Dest: codegen.Arg{Kind: codegen.KRegister, Reg: register.Reg10, Value: 64},
+			Src1: codegen.Arg{Kind: codegen.KImmediate, Value: int32(10)},
+			Dest: codegen.Arg{Kind: codegen.KRegister, Reg: register.Reg10, Value: 8},
 		},
 	}
 
@@ -39,9 +39,9 @@ func TestAsmTxt_TwoSrc(t *testing.T) {
 	cgInstrs := []codegen.Inst{
 		{
 			Op:   "movl",
-			Src1: codegen.Arg{Kind: codegen.KImmediate, Value: 10},
+			Src1: codegen.Arg{Kind: codegen.KImmediate, Value: int32(10)},
 			Src2: codegen.Arg{Kind: codegen.KStack, Value: -8},
-			Dest: codegen.Arg{Kind: codegen.KRegister, Reg: register.RegA, Value: 32},
+			Dest: codegen.Arg{Kind: codegen.KRegister, Reg: register.RegA, Value: 4},
 		},
 	}
 
@@ -64,7 +64,7 @@ func TestAsmTxt_Directive(t *testing.T) {
 	cgInstrs := []codegen.Inst{
 		{
 			Op:   ".hello",
-			Dest: codegen.Arg{Kind: codegen.KText, Text: "world"},
+			Dest: codegen.Arg{Kind: codegen.KText, Value: "world"},
 		},
 	}
 
