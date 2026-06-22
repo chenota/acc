@@ -62,27 +62,13 @@ type Block struct {
 	Control *Value
 }
 
-func (b *Block) OrderedValues() []*Value {
-	var order []*Value
-	visited := make(map[int]struct{})
-
-	var visit func(*Value)
-	visit = func(v *Value) {
-		if _, ok := visited[v.Id]; ok {
-			return
+func (b *Block) indexOf(v *Value) int {
+	for i, value := range b.Values {
+		if value == v {
+			return i
 		}
-		visited[v.Id] = struct{}{}
-
-		for _, arg := range v.Args {
-			visit(arg)
-		}
-
-		order = append(order, v)
 	}
-
-	visit(b.Control)
-
-	return order
+	return -1
 }
 
 type Func struct {
@@ -124,7 +110,7 @@ func (f *Func) OrderedBlocks() []*Block {
 func (f *Func) values() []*Value {
 	var vals []*Value
 	for _, b := range f.OrderedBlocks() {
-		vals = append(vals, b.OrderedValues()...)
+		vals = append(vals, b.Values...)
 	}
 	return vals
 }
@@ -132,8 +118,37 @@ func (f *Func) values() []*Value {
 func (f *Func) newValue(op Op, t *types.Type, b *Block) *Value {
 	v := &Value{Id: f.valueId, Op: op, Type: t, Block: b}
 	f.valueId += 1
-	b.Values = append(b.Values, v)
 	return v
+}
+
+func (f *Func) appendValue(op Op, t *types.Type, b *Block) *Value {
+	newVal := f.newValue(op, t, b)
+	b.Values = append(b.Values, newVal)
+	return newVal
+}
+
+func (f *Func) insertValueBefore(v *Value, op Op, t *types.Type, b *Block) *Value {
+	blockIdx := b.indexOf(v)
+	if blockIdx < 0 {
+		return nil
+	}
+
+	newVal := f.newValue(op, t, b)
+	b.Values = slices.Insert(b.Values, blockIdx, newVal)
+
+	return newVal
+}
+
+func (f *Func) insertValueAfter(v *Value, op Op, t *types.Type, b *Block) *Value {
+	blockIdx := b.indexOf(v)
+	if blockIdx < 0 {
+		return nil
+	}
+
+	newVal := f.newValue(op, t, b)
+	b.Values = slices.Insert(b.Values, blockIdx+1, newVal)
+
+	return newVal
 }
 
 func (f *Func) newBlock() *Block {
@@ -153,6 +168,12 @@ func (f *Func) Label() string {
 
 func (f *Func) substituteValue(old, new *Value) {
 	for _, block := range f.Blocks {
+		for i, v := range block.Values {
+			if v == old {
+				block.Values[i] = new
+			}
+		}
+
 		for _, value := range block.Values {
 			for i := range value.Args {
 				if value.Args[i] == old {
@@ -163,6 +184,25 @@ func (f *Func) substituteValue(old, new *Value) {
 
 		if block.Control == old {
 			block.Control = new
+		}
+	}
+}
+
+func (f *Func) removeValue(v *Value) {
+	// filter v out of each block's values list and control value
+	for _, block := range f.Blocks {
+		// stupid go does not have a filter function so this is what we're doing
+		var n int
+		for _, value := range block.Values {
+			if value != v {
+				block.Values[n] = value
+				n += 1
+			}
+		}
+		block.Values = block.Values[:n]
+
+		if block.Control == v {
+			block.Control = nil
 		}
 	}
 }

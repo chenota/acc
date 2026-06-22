@@ -71,7 +71,7 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 func (b *builder) genInt(expr *ir.Node) (*Value, error) {
 	switch expr.Type.Kind {
 	case types.KInt32:
-		v := b.targetFunc.newValue(OpLiteral, types.Int32(), b.currentBlock)
+		v := b.targetFunc.appendValue(OpLiteral, types.Int32(), b.currentBlock)
 		v.Value = int32(expr.Val.(*big.Int).Int64())
 		return v, nil
 	default:
@@ -97,7 +97,7 @@ func (b *builder) genBop(expr *ir.Node) (*Value, error) {
 	}
 
 	if expr.Type.IsConcreteNumeric() {
-		v := b.targetFunc.newValue(numericBopFrom(expr), expr.Type, b.currentBlock)
+		v := b.targetFunc.appendValue(numericBopFrom(expr), expr.Type, b.currentBlock)
 		v.Args = []*Value{leftVal, rightVal}
 		return v, nil
 	}

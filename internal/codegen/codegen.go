@@ -127,7 +127,7 @@ func generateBlock(b *ssa.Block) []Inst {
 		insts = append(insts, label(blockLabel(b)))
 	}
 
-	for _, v := range b.OrderedValues() {
+	for _, v := range b.Values {
 		insts = append(insts, generateValue(v)...)
 	}
 

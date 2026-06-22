@@ -3,23 +3,31 @@ package ssa
 import "github.com/chenota/acc/internal/types"
 
 func foldConstants(f *Func) {
-	for _, b := range f.OrderedBlocks() {
-		for _, v := range b.OrderedValues() {
-			// exclude everything that isn't a bop with constant args; this will need expanded later
-			if !v.IsBinaryOp() || !v.Args[0].IsConstant() || !v.Args[1].IsConstant() {
-				continue
-			}
-
-			foldedVal, ok := evaluateBop(v.Op, v.Type, v.Args[0].Value, v.Args[1].Value)
-			if !ok {
-				continue
-			}
-
-			constOp := f.newValue(OpLiteral, v.Type, b)
-			constOp.Value = foldedVal
-
-			f.substituteValue(v, constOp)
+	for _, v := range f.values() {
+		if !v.IsBinaryOp() {
+			continue
 		}
+
+		left := v.Args[0]
+		right := v.Args[1]
+
+		if !(left.IsConstant() && right.IsConstant()) {
+			continue
+		}
+
+		foldedVal, ok := evaluateBop(v.Op, v.Type, left.Value, right.Value)
+		if !ok {
+			continue
+		}
+
+		constOp := f.newValue(OpLiteral, v.Type, v.Block)
+		constOp.Value = foldedVal
+
+		// replace the top-level value with the new constant
+		f.substituteValue(v, constOp)
+		// remove left and right constant operands
+		f.removeValue(left)
+		f.removeValue(right)
 	}
 }
 

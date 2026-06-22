@@ -32,6 +32,7 @@ func regalloc(f *Func, registers registerGroup) {
 		// is there a free register we can give this value?
 		if reg, ok := r.freeRegister(); ok {
 			r.assignRegister(curr, reg)
+			continue
 		}
 
 		// last resort: spill a current active or self
@@ -140,7 +141,7 @@ func (r *registerAllocater) injectLoadsAndStores(f *Func) {
 			for idx, arg := range v.Args {
 				if alloca, ok := r.spillMap[arg.Id]; ok {
 					// create a load instruction using a dedicated scratch register
-					load := f.newValue(OpLoad, arg.Type, block)
+					load := f.insertValueBefore(v, OpLoad, arg.Type, block)
 					load.Args = []*Value{alloca}
 					load.Loc = NewReg(r.scratchRegister(scratchCount))
 
@@ -153,7 +154,7 @@ func (r *registerAllocater) injectLoadsAndStores(f *Func) {
 
 			// defs - spill after instruction
 			if alloca, ok := r.spillMap[v.Id]; ok {
-				store := f.newValue(OpStore, v.Type, block)
+				store := f.insertValueAfter(v, OpStore, v.Type, block)
 				store.Args = []*Value{v, alloca}
 
 				v.Loc = NewReg(r.scratchRegister(scratchCount))
@@ -184,6 +185,7 @@ func (r *registerAllocater) evictInterval(f *Func, i *interval) {
 }
 
 func (r *registerAllocater) spillValue(f *Func, i *interval) {
+	// construct a new alloca but don't add it to the block's value list so that it never generates instructions
 	alloca := f.newValue(OpAlloca, i.Value.Type, i.Value.Block)
 	r.spillMap[i.Value.Id] = alloca
 }

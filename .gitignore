@@ -33,3 +33,6 @@ bin/
 
 # Claude
 .claude/
+
+# Bin
+bin/
