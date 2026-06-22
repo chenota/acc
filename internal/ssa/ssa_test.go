@@ -42,7 +42,7 @@ func TestGenSsa_Basic(t *testing.T) {
 
 	require.NotNil(t, b.Control)
 	assert.Equal(t, OpLiteral, b.Control.Op)
-	assert.Equal(t, types.KInt, b.Control.Type.Kind)
+	assert.Equal(t, types.Int(), b.Control.Type)
 	assert.Equal(t, LocRegister, b.Control.Loc.Kind)
 	assert.Equal(t, returnRegister, b.Control.Loc.Reg)
 }
@@ -74,7 +74,7 @@ func TestGenSsa_ConstantFolding(t *testing.T) {
 
 	require.NotNil(t, b.Control)
 	assert.Equal(t, OpLiteral, b.Control.Op)
-	assert.Equal(t, types.KInt, b.Control.Type.Kind)
+	assert.Equal(t, types.Int(), b.Control.Type)
 	assert.Equal(t, int32(2), b.Control.Value)
 }
 
@@ -134,6 +134,6 @@ func TestGenSsa_AdditionOverflow(t *testing.T) {
 
 	require.NotNil(t, b.Control)
 	assert.Equal(t, OpLiteral, b.Control.Op)
-	assert.Equal(t, types.KInt, b.Control.Type.Kind)
+	assert.Equal(t, types.Int(), b.Control.Type)
 	assert.Equal(t, int32(math.MinInt32), b.Control.Value)
 }

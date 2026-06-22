@@ -16,7 +16,7 @@ const (
 )
 
 type Type struct {
-	Kind Kind
+	kind Kind // making this private so outside callers are forced to use Equal.
 
 	// for KFunction
 	Inputs []*Type
@@ -29,7 +29,7 @@ func Equal(a *Type, b *Type) bool {
 	}
 
 	// function comparison
-	if a.Kind == KFunction && b.Kind == KFunction {
+	if a.kind == KFunction && b.kind == KFunction {
 		if !Equal(a.Output, b.Output) {
 			return false
 		}
@@ -45,7 +45,7 @@ func Equal(a *Type, b *Type) bool {
 	}
 
 	// atom comparison: just use the kinds
-	return a.Kind == b.Kind
+	return a.kind == b.kind
 }
 
 func (t *Type) IsConcreteNumeric() bool {
@@ -53,11 +53,11 @@ func (t *Type) IsConcreteNumeric() bool {
 		return false
 	}
 
-	return t.Kind == KInt
+	return t.kind == KInt
 }
 
 func (t *Type) String() string {
-	switch t.Kind {
+	switch t.kind {
 	case KUnit:
 		return "()"
 	case KUntypedInt:
@@ -81,32 +81,32 @@ func (t *Type) IsUntypedNumeric() bool {
 		return false
 	}
 
-	return t.Kind == KUntypedInt
+	return t.kind == KUntypedInt
 }
 
 func Int() *Type {
-	return &Type{Kind: KInt}
+	return &Type{kind: KInt}
 }
 
 func UntypedInt() *Type {
-	return &Type{Kind: KUntypedInt}
+	return &Type{kind: KUntypedInt}
 }
 
 func Function(inputs []*Type, output *Type) *Type {
 	return &Type{
-		Kind:   KFunction,
+		kind:   KFunction,
 		Inputs: inputs,
 		Output: output,
 	}
 }
 
 func Unit() *Type {
-	return &Type{Kind: KUnit}
+	return &Type{kind: KUnit}
 }
 
 // Size returns the type's size in bytes
 func (t *Type) Size() int {
-	switch t.Kind {
+	switch t.kind {
 	case KUnit:
 		return 0
 	case KInt:

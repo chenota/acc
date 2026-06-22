@@ -68,14 +68,12 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 }
 
 func (b *builder) genInt(expr *ir.Node) (*Value, error) {
-	switch expr.Type.Kind {
-	case types.KInt:
+	if types.Equal(expr.Type, types.Int()) {
 		v := b.targetFunc.appendValue(OpLiteral, types.Int(), b.currentBlock)
 		v.Value = int32(expr.Val.(*big.Int).Int64())
 		return v, nil
-	default:
-		return nil, diagnostic.NewError(expr.Pos, "unknown integer type: %v", expr.Type)
 	}
+	return nil, diagnostic.NewError(expr.Pos, "unknown integer type: %v", expr.Type)
 }
 
 func (b *builder) genBop(expr *ir.Node) (*Value, error) {

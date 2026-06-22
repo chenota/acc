@@ -25,14 +25,14 @@ func TestAnalyze_Basic(t *testing.T) {
 	fun := funcs[0]
 
 	require.NotNil(t, fun.Type)
-	assert.Equal(t, types.KFunction, fun.Type.Kind)
+	assert.Equal(t, types.Function(nil, types.Int()), fun.Type)
 
 	require.NotNil(t, fun.Sym)
 	assert.Equal(t, "main", fun.Sym.Name)
 
 	require.Len(t, fun.List, 1)
 	e := fun.List[0].List[0]
-	assert.Equal(t, types.KInt, e.Type.Kind)
+	assert.Equal(t, types.Int(), e.Type)
 }
 
 func TestAnalyze_Overflow(t *testing.T) {
@@ -60,14 +60,14 @@ func TestAnalyze_SimpleBop(t *testing.T) {
 	fun := funcs[0]
 
 	require.NotNil(t, fun.Type)
-	assert.Equal(t, types.KFunction, fun.Type.Kind)
+	assert.Equal(t, types.Function(nil, types.Int()), fun.Type)
 
 	require.Len(t, fun.List, 1)
 	bopExpr := fun.List[0].List[0]
 
-	assert.Equal(t, types.KInt, bopExpr.Type.Kind)
-	assert.Equal(t, types.KInt, bopExpr.List[0].Type.Kind)
-	assert.Equal(t, types.KInt, bopExpr.List[1].Type.Kind)
+	assert.Equal(t, types.Int(), bopExpr.Type)
+	assert.Equal(t, types.Int(), bopExpr.List[0].Type)
+	assert.Equal(t, types.Int(), bopExpr.List[1].Type)
 }
 
 func TestAnalyze_VariableDeclaration(t *testing.T) {
@@ -84,17 +84,17 @@ func TestAnalyze_VariableDeclaration(t *testing.T) {
 	fun := funcs[0]
 
 	require.NotNil(t, fun.Type)
-	assert.Equal(t, types.KFunction, fun.Type.Kind)
+	assert.Equal(t, types.Function(nil, types.Int()), fun.Type)
 
 	require.Len(t, fun.List, 2)
 	decl := fun.List[0]
 	require.NotNil(t, decl.Sym)
-	assert.Equal(t, types.KInt, decl.Sym.Type.Kind)
+	assert.Equal(t, types.Int(), decl.Sym.Type)
 	assert.Equal(t, "x", decl.Sym.Name)
 
 	e := decl.List[1]
 	require.NotNil(t, e)
-	assert.Equal(t, e.Type.Kind, types.KInt)
+	assert.Equal(t, types.Int(), e.Type)
 }
 
 func TestAnalyze_VariableDeclaration_Inference(t *testing.T) {
@@ -111,17 +111,17 @@ func TestAnalyze_VariableDeclaration_Inference(t *testing.T) {
 	fun := funcs[0]
 
 	require.NotNil(t, fun.Type)
-	assert.Equal(t, types.KFunction, fun.Type.Kind)
+	assert.Equal(t, types.Function(nil, types.Int()), fun.Type)
 
 	require.Len(t, fun.List, 2)
 	decl := fun.List[0]
 	require.NotNil(t, decl.Sym)
-	assert.Equal(t, types.KInt, decl.Sym.Type.Kind)
+	assert.Equal(t, types.Int(), decl.Sym.Type)
 	assert.Equal(t, "x", decl.Sym.Name)
 
 	e := decl.List[1]
 	require.NotNil(t, e)
-	assert.Equal(t, e.Type.Kind, types.KInt)
+	assert.Equal(t, types.Int(), e.Type)
 }
 
 func TestAnalyze_VariableDeclaration_Redeclare(t *testing.T) {
@@ -149,7 +149,7 @@ func TestAnalyze_VariableUsage(t *testing.T) {
 	fun := funcs[0]
 
 	require.NotNil(t, fun.Type)
-	assert.Equal(t, types.KFunction, fun.Type.Kind)
+	assert.Equal(t, types.Function(nil, types.Int()), fun.Type)
 
 	require.Len(t, fun.List, 2)
 	ret := fun.List[1]
@@ -159,7 +159,7 @@ func TestAnalyze_VariableUsage(t *testing.T) {
 	e := ret.List[0]
 
 	require.NotNil(t, e)
-	assert.Equal(t, e.Type.Kind, types.KInt)
+	assert.Equal(t, types.Int(), e.Type)
 	assert.Equal(t, fun.List[0].Sym, e.Sym)
 }
 
@@ -188,7 +188,7 @@ func TestAnalyze_Assignment(t *testing.T) {
 	fun := funcs[0]
 
 	require.NotNil(t, fun.Type)
-	assert.Equal(t, types.KFunction, fun.Type.Kind)
+	assert.Equal(t, types.Function(nil, types.Int()), fun.Type)
 
 	require.Len(t, fun.List, 3)
 	decl := fun.List[0]
