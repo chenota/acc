@@ -55,7 +55,7 @@ func analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 
 	// make sure the expression and wanted type match
 	if !types.Equal(n.Sym.Type, n.List[0].Type) {
-		return diagnostic.NewError(n.Pos, "variable declaration with mismatched types: want %v, got %v", n.Sym.Type, n.List[0].Type)
+		return diagnostic.NewError(n.Pos, "variable assignment with mismatched types: want %v, got %v", n.Sym.Type, n.List[0].Type)
 	}
 
 	return nil
@@ -80,14 +80,16 @@ func analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 	// we need a concrete type at this point to resolve any unknowns. must re-analyze with hint if type changes.
 	defaultType := e.Type.ToDefault()
 	if !types.Equal(defaultType, e.Type) {
-		hint = defaultType
-		if err := analyzeExpr(scope, e, hint); err != nil {
+		if err := analyzeExpr(scope, e, defaultType); err != nil {
 			return err
+		}
+		if !types.Equal(e.Type, defaultType) {
+			return diagnostic.NewError(n.Pos, "unable to resolve incomplete type: want %v, got %v", defaultType, e.Type)
 		}
 	}
 
 	// wanted type must equal got type
-	if !types.Equal(hint, e.Type) {
+	if hint != nil && !types.Equal(hint, e.Type) {
 		return diagnostic.NewError(n.Pos, "variable declaration with mismatched types: want %v, got %v", hint, e.Type)
 	}
 
