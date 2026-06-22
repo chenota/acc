@@ -30,3 +30,6 @@ go.work.sum
 
 # Executable
 bin/
+
+# Claude
+.claude/
