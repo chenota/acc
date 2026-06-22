@@ -17,7 +17,7 @@ func buildFunc(n *ir.Node) (*Func, error) {
 		Name: n.Sym.Name,
 	}
 
-	b := &builder{targetFunc: f}
+	b := &builder{targetFunc: f, vars: make(map[*ir.Sym]*Value)}
 
 	entry := f.newBlock()
 	f.Entry = entry
@@ -35,25 +35,86 @@ func buildFunc(n *ir.Node) (*Func, error) {
 type builder struct {
 	targetFunc   *Func
 	currentBlock *Block
+	vars         map[*ir.Sym]*Value
 }
 
 func (b *builder) genStatement(stmt *ir.Node) error {
 	switch stmt.Op {
 	case ir.OpReturn:
-		retVal, err := b.genExpr(stmt.List[0])
-		if err != nil {
-			return err
-		}
-
-		if b.currentBlock != nil && b.currentBlock.Kind == BlockUnset {
-			b.currentBlock.Kind = BlockRet
-			b.currentBlock.Control = retVal
-		}
-
-		return nil
+		return b.genReturn(stmt)
+	case ir.OpDeclaration:
+		return b.genDecl(stmt)
+	case ir.OpAssignment:
+		return b.genAssign(stmt)
 	default:
 		return diagnostic.NewError(stmt.Pos, "unknown statement operation: %d", stmt.Op)
 	}
+}
+
+func (b *builder) genReturn(n *ir.Node) error {
+	if len(n.List) != 1 {
+		return diagnostic.NewError(n.Pos, "return statement missing expression")
+	}
+
+	retVal, err := b.genExpr(n.List[0])
+	if err != nil {
+		return err
+	}
+
+	if b.currentBlock != nil && b.currentBlock.Kind == BlockUnset {
+		b.currentBlock.Kind = BlockRet
+		b.currentBlock.Control = retVal
+	}
+
+	return nil
+}
+
+func (b *builder) genDecl(n *ir.Node) error {
+	if len(n.List) != 2 {
+		return diagnostic.NewError(n.Pos, "variable declaration missing type or expression")
+	}
+
+	exprVal, err := b.genExpr(n.List[1])
+	if err != nil {
+		return err
+	}
+
+	// make sure this isn't already allocated
+	if _, ok := b.vars[n.Sym]; ok {
+		return diagnostic.NewError(n.Pos, "variable already allocated: %s", n.Name)
+	}
+
+	// come up with stack location for the new variable
+	alloca := b.targetFunc.newValue(OpAlloca, exprVal.Type, b.currentBlock)
+	b.vars[n.Sym] = alloca
+
+	// insert store operation into the new stack location
+	storeOp := b.targetFunc.insertValueAfter(exprVal, OpStore, exprVal.Type, exprVal.Block)
+	storeOp.Args = []*Value{exprVal, alloca}
+
+	return nil
+}
+
+func (b *builder) genAssign(n *ir.Node) error {
+	if len(n.List) != 1 {
+		return diagnostic.NewError(n.Pos, "variable assignment missing expression")
+	}
+
+	exprVal, err := b.genExpr(n.List[0])
+	if err != nil {
+		return err
+	}
+
+	alloca := b.vars[n.Sym]
+	if alloca == nil {
+		return diagnostic.NewError(n.Pos, "variable used before declared: %s", n.Name)
+	}
+
+	// insert store operation into stack location
+	storeOp := b.targetFunc.insertValueAfter(exprVal, OpStore, exprVal.Type, exprVal.Block)
+	storeOp.Args = []*Value{exprVal, alloca}
+
+	return nil
 }
 
 func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
@@ -62,9 +123,23 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 		return b.genInt(expr)
 	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
 		return b.genBop(expr)
+	case ir.OpIdent:
+		return b.genIdent(expr)
 	default:
 		return nil, diagnostic.NewError(expr.Pos, "unknown expression operation: %d", expr.Op)
 	}
+}
+
+func (b *builder) genIdent(expr *ir.Node) (*Value, error) {
+	alloca := b.vars[expr.Sym]
+	if alloca == nil {
+		return nil, diagnostic.NewError(expr.Pos, "variable used before declared: %s", expr.Name)
+	}
+
+	loadOp := b.targetFunc.appendValue(OpLoad, expr.Type, b.currentBlock)
+	loadOp.Args = []*Value{alloca}
+
+	return loadOp, nil
 }
 
 func (b *builder) genInt(expr *ir.Node) (*Value, error) {
