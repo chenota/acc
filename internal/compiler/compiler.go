@@ -46,7 +46,10 @@ func Compile(r FileDetail, w io.Writer, opts ...Option) error {
 		return err
 	}
 
-	stringInstructions := asmtxt.Stringify(instructions)
+	stringInstructions, err := asmtxt.Stringify(instructions)
+	if err != nil {
+		return err
+	}
 
 	if config.isAssembly {
 		for _, inst := range stringInstructions {

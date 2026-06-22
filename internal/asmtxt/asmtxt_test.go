@@ -14,8 +14,9 @@ func TestAsmTxt_OnlyDest(t *testing.T) {
 		{Op: "movl", Dest: codegen.Arg{Kind: codegen.KImmediate, Value: int32(10)}},
 	}
 
-	instrs := Stringify(cgInstrs)
+	instrs, err := Stringify(cgInstrs)
 
+	require.NoError(t, err)
 	require.Len(t, instrs, len(cgInstrs))
 	assert.Equal(t, "\tmovl $10", instrs[0])
 }
@@ -29,8 +30,9 @@ func TestAsmTxt_OneSrc(t *testing.T) {
 		},
 	}
 
-	instrs := Stringify(cgInstrs)
+	instrs, err := Stringify(cgInstrs)
 
+	require.NoError(t, err)
 	require.Len(t, instrs, len(cgInstrs))
 	assert.Equal(t, "\tmovq $10, %r10", instrs[0])
 }
@@ -45,8 +47,9 @@ func TestAsmTxt_TwoSrc(t *testing.T) {
 		},
 	}
 
-	instrs := Stringify(cgInstrs)
+	instrs, err := Stringify(cgInstrs)
 
+	require.NoError(t, err)
 	require.Len(t, instrs, len(cgInstrs))
 	assert.Equal(t, "\tmovl $10, -8(%rbp), %eax", instrs[0])
 }
@@ -54,8 +57,9 @@ func TestAsmTxt_TwoSrc(t *testing.T) {
 func TestAsmTxt_Label(t *testing.T) {
 	cgInstrs := []codegen.Inst{{Op: "great:"}}
 
-	instrs := Stringify(cgInstrs)
+	instrs, err := Stringify(cgInstrs)
 
+	require.NoError(t, err)
 	require.Len(t, instrs, len(cgInstrs))
 	assert.Equal(t, "great:", instrs[0])
 }
@@ -68,8 +72,9 @@ func TestAsmTxt_Directive(t *testing.T) {
 		},
 	}
 
-	instrs := Stringify(cgInstrs)
+	instrs, err := Stringify(cgInstrs)
 
+	require.NoError(t, err)
 	require.Len(t, instrs, len(cgInstrs))
 	assert.Equal(t, "\t.hello world", instrs[0])
 }

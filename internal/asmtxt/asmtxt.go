@@ -10,7 +10,7 @@ import (
 )
 
 // Stringify transforms a list of instructions into AT&T strings
-func Stringify(instrs []codegen.Inst) []string {
+func Stringify(instrs []codegen.Inst) ([]string, error) {
 	strs := make([]string, 0, len(instrs))
 
 	for _, instr := range instrs {
@@ -19,35 +19,63 @@ func Stringify(instrs []codegen.Inst) []string {
 			continue
 		}
 
-		src1 := argText(instr.Src1)
-		src2 := argText(instr.Src2)
-		dest := argText(instr.Dest)
+		src1, err := argText(instr.Src1)
+		if err != nil {
+			return nil, fmt.Errorf("instruction %q src1: %w", instr.Op, err)
+		}
+		src2, err := argText(instr.Src2)
+		if err != nil {
+			return nil, fmt.Errorf("instruction %q src2: %w", instr.Op, err)
+		}
+		dest, err := argText(instr.Dest)
+		if err != nil {
+			return nil, fmt.Errorf("instruction %q dest: %w", instr.Op, err)
+		}
 
 		if src1 == "" {
 			strs = append(strs, fmt.Sprintf("\t%s %s", instr.Op, dest))
-		} else if src1 != "" && src2 == "" {
+		} else if src2 == "" {
 			strs = append(strs, fmt.Sprintf("\t%s %s, %s", instr.Op, src1, dest))
-		} else if src1 != "" && src2 != "" {
+		} else {
 			strs = append(strs, fmt.Sprintf("\t%s %s, %s, %s", instr.Op, src1, src2, dest))
 		}
 	}
 
-	return strs
+	return strs, nil
 }
 
-func argText(arg codegen.Arg) string {
+func argText(arg codegen.Arg) (string, error) {
 	switch arg.Kind {
 	case codegen.KImmediate:
-		return "$" + strconv.FormatInt(int64(arg.Value.(int32)), 10)
+		v, ok := arg.Value.(int32)
+		if !ok {
+			return "", fmt.Errorf("immediate value has wrong type %T, want int32", arg.Value)
+		}
+		return "$" + strconv.FormatInt(int64(v), 10), nil
 	case codegen.KRegister:
-		return registerString(arg.Reg, arg.Value.(int))
+		size, ok := arg.Value.(int)
+		if !ok {
+			return "", fmt.Errorf("register size has wrong type %T, want int", arg.Value)
+		}
+		return registerString(arg.Reg, size)
 	case codegen.KStack:
-		rbpName := registerString(register.RegBP, 8)
-		return fmt.Sprintf("%d(%s)", arg.Value, rbpName)
+		offset, ok := arg.Value.(int)
+		if !ok {
+			return "", fmt.Errorf("stack offset has wrong type %T, want int", arg.Value)
+		}
+		rbpName, err := registerString(register.RegBP, 8)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%d(%s)", offset, rbpName), nil
 	case codegen.KText:
-		return arg.Value.(string)
+		v, ok := arg.Value.(string)
+		if !ok {
+			return "", fmt.Errorf("text value has wrong type %T, want string", arg.Value)
+		}
+		return v, nil
 	}
-	return ""
+	return "", nil
 }
 
 var classicRegs = map[register.Register][]string{
@@ -61,7 +89,7 @@ var classicRegs = map[register.Register][]string{
 	register.RegBP: {"bpl", "bp", "ebp", "rbp"},
 }
 
-func registerString(reg register.Register, size int) string {
+func registerString(reg register.Register, size int) (string, error) {
 	var regStr string
 
 	if reg >= register.RegA && reg <= register.RegBP {
@@ -74,10 +102,10 @@ func registerString(reg register.Register, size int) string {
 			regStr = classicRegs[reg][2]
 		case 8:
 			regStr = classicRegs[reg][3]
+		default:
+			return "", fmt.Errorf("unsupported size %d for register %d", size, reg)
 		}
-	}
-
-	if reg >= register.Reg8 && reg <= register.Reg15 {
+	} else if reg >= register.Reg8 && reg <= register.Reg15 {
 		switch size {
 		case 1:
 			regStr = fmt.Sprintf("r%db", reg)
@@ -87,11 +115,12 @@ func registerString(reg register.Register, size int) string {
 			regStr = fmt.Sprintf("r%dd", reg)
 		case 8:
 			regStr = fmt.Sprintf("r%d", reg)
+		default:
+			return "", fmt.Errorf("unsupported size %d for register %d", size, reg)
 		}
+	} else {
+		return "", fmt.Errorf("unknown register %d", reg)
 	}
 
-	if regStr != "" {
-		return "%" + regStr
-	}
-	return ""
+	return "%" + regStr, nil
 }
