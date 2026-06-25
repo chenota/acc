@@ -1,0 +1,8 @@
+fun main () -> int {
+    let x = 5;
+    x = x * 2;
+    
+    let y = x - 8;
+
+    return x / y / 2;
+}
