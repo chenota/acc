@@ -108,6 +108,18 @@ func TestGenSsa_Variable_Assignment(t *testing.T) {
 	assert.Equal(t, returnRegister, b.Control.Loc.Reg)
 }
 
+func TestGenSsa_Divide(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; let y = 2; return x / y; }`)
+
+	b := funcs[0].Blocks[0]
+
+	require.NotNil(t, b.Control)
+	assert.Equal(t, OpDivide, b.Control.Op)
+	// divide result is always pre-allocated to %eax by prepareDivides
+	assert.Equal(t, LocRegister, b.Control.Loc.Kind)
+	assert.Equal(t, register.RegA, b.Control.Loc.Reg)
+}
+
 func TestGenSsa_Variable_InExpression(t *testing.T) {
 	funcs := requireBuildSSA(t, `fun main () -> int { let x = 5; return x + 1; }`)
 

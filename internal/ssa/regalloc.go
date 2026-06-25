@@ -19,6 +19,7 @@ func regalloc(f *Func, registers registerGroup) {
 	r := newRegisterAllocater(registers)
 
 	r.prepareReturns(f)
+	prepareDivides(f)
 
 	for _, curr := range intervals {
 		r.expireOldIntervals(curr.Start)
@@ -26,6 +27,10 @@ func regalloc(f *Func, registers registerGroup) {
 		// current is pre-filled we must spill the existing value if something is using it
 		if curr.Value.Loc.Kind == LocRegister {
 			r.processPreAllocatedInterval(f, curr)
+			// idivl overwrites %edx so evict any value live there
+			if curr.Value.Op == OpDivide {
+				r.evictRegister(f, register.RegD)
+			}
 			continue
 		}
 
@@ -41,6 +46,14 @@ func regalloc(f *Func, registers registerGroup) {
 
 	// inject load and store operations given values that were evicted to the stack
 	r.injectLoadsAndStores(f)
+}
+
+func prepareDivides(f *Func) {
+	for _, v := range f.values() {
+		if v.Op == OpDivide {
+			v.Loc = NewReg(register.RegA) // divide always goes in register A
+		}
+	}
 }
 
 type registerAllocater struct {
@@ -115,12 +128,7 @@ func (r *registerAllocater) processPreAllocatedInterval(f *Func, i *interval) {
 	targetRegister := i.Value.Loc.Reg
 
 	// see if any currently active intervals hold that register
-	var theif *interval
-	for _, active := range r.active {
-		if active.Value.Loc.Kind == LocRegister && active.Value.Loc.Reg == targetRegister {
-			theif = active
-		}
-	}
+	theif := r.activeWithRegiser(targetRegister)
 
 	// nothing has that register; assign it and mark it as taken
 	if theif == nil {
@@ -130,6 +138,16 @@ func (r *registerAllocater) processPreAllocatedInterval(f *Func, i *interval) {
 
 	r.evictInterval(f, theif)
 	r.addActive(i)
+}
+
+func (r *registerAllocater) activeWithRegiser(reg register.Register) *interval {
+	for _, active := range r.active {
+		if active.Value.Loc.Kind == LocRegister && active.Value.Loc.Reg == reg {
+			return active
+		}
+	}
+
+	return nil
 }
 
 func (r *registerAllocater) injectLoadsAndStores(f *Func) {
@@ -169,6 +187,13 @@ func (r *registerAllocater) assignRegister(i *interval, reg register.Register) {
 	r.working[reg] = false
 	i.Value.Loc = NewReg(reg)
 	r.addActive(i)
+}
+
+func (r *registerAllocater) evictRegister(f *Func, reg register.Register) {
+	theif := r.activeWithRegiser(reg)
+	if theif != nil {
+		r.evictInterval(f, theif)
+	}
 }
 
 func (r *registerAllocater) evictInterval(f *Func, i *interval) {

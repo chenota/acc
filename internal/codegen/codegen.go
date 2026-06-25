@@ -144,9 +144,43 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateLoad(v))
 	case ssa.OpStore:
 		insts = append(insts, generateStore(v))
+	case ssa.OpAdd:
+		insts = append(insts, generateBop(v, addOp(v.Type.Size()))...)
+	case ssa.OpSubtract:
+		insts = append(insts, generateBop(v, subOp(v.Type.Size()))...)
+	case ssa.OpMultiply:
+		insts = append(insts, generateBop(v, mulOp(v.Type.Size()))...)
+	case ssa.OpDivide:
+		insts = append(insts, generateDiv(v)...)
 	}
 
 	return insts
+}
+
+func generateBop(v *ssa.Value, op string) []Inst {
+	return []Inst{
+		{
+			Op:   movOp(v.Type.Size()),
+			Src1: toArg(v.Args[0]),
+			Dest: toArg(v),
+		},
+		{
+			Op:   op,
+			Src1: toArg(v.Args[1]),
+			Dest: toArg(v),
+		},
+	}
+}
+
+func generateDiv(v *ssa.Value) []Inst {
+	size := v.Type.Size()
+	eax := Arg{Kind: KRegister, Reg: register.RegA, Value: size}
+	return []Inst{
+		{Op: movOp(size), Src1: toArg(v.Args[0]), Dest: eax},
+		{Op: cdqOp(size)},
+		{Op: idivOp(size), Dest: toArg(v.Args[1])},
+		{Op: movOp(size), Src1: eax, Dest: toArg(v)},
+	}
 }
 
 func generateConstInt(v *ssa.Value) Inst {
@@ -220,6 +254,67 @@ func movOp(size int) string {
 		op = "movq"
 	}
 	return op
+}
+
+func addOp(size int) string {
+	switch size {
+	case 1:
+		return "addb"
+	case 2:
+		return "addw"
+	case 4:
+		return "addl"
+	default:
+		return "addq"
+	}
+}
+
+func subOp(size int) string {
+	switch size {
+	case 1:
+		return "subb"
+	case 2:
+		return "subw"
+	case 4:
+		return "subl"
+	default:
+		return "subq"
+	}
+}
+
+func cdqOp(size int) string {
+	switch size {
+	case 4:
+		return "cdq"
+	default:
+		return "cqo"
+	}
+}
+
+func idivOp(size int) string {
+	switch size {
+	case 1:
+		return "idivb"
+	case 2:
+		return "idivw"
+	case 4:
+		return "idivl"
+	default:
+		return "idivq"
+	}
+}
+
+func mulOp(size int) string {
+	switch size {
+	case 1:
+		return "imulb"
+	case 2:
+		return "imulw"
+	case 4:
+		return "imull"
+	default:
+		return "imulq"
+	}
 }
 
 func text(v string) Arg {

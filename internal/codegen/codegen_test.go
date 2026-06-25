@@ -36,6 +36,19 @@ func TestCodegen_Directives(t *testing.T) {
 	assertContainsSeq(t, insts, ".text", ".globl")
 }
 
+func TestCodegen_Add(t *testing.T) {
+	insts := requireGeneratesProgram(t, `fun main () -> int { let x = 0; return x + 1; }`)
+
+	assertContainsSeq(t, insts, "movl", "addl")
+}
+
+func TestCodegen_Divide(t *testing.T) {
+	insts := requireGeneratesProgram(t, `fun main () -> int { let x = 10; let y = 2; return x / y; }`)
+
+	assertContainsSeq(t, insts, "movl", "cdq", "idivl")
+	assertContainsOpWithArgs(t, insts, "idivl", KUndefined, KUndefined, KRegister)
+}
+
 func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
 	t.Helper()
 
