@@ -119,6 +119,35 @@ func TestParser_Associativity(t *testing.T) {
 	assert.Equal(t, ir.OpInt, right.Op)
 }
 
+func TestParser_NegationPrecedence(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { return -x + 2; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	e := ret.List[0]
+
+	// top level should be addition
+	assert.Equal(t, ir.OpPlus, e.Op)
+
+	require.Len(t, e.List, 2)
+	left := e.List[0]
+	right := e.List[1]
+
+	assert.Equal(t, ir.OpNegate, left.Op)
+	assert.Equal(t, ir.OpInt, right.Op)
+
+	require.Len(t, left.List, 1)
+	assert.Equal(t, ir.OpIdent, left.List[0].Op)
+}
+
 func TestParser_PrecedenceWithParens(t *testing.T) {
 	tokens := requireTokenize(t, `fun main () -> int { return (1 + 1) * 2; }`)
 

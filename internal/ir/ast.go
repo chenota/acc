@@ -24,6 +24,7 @@ const (
 	OpIdent
 	OpDeclaration
 	OpAssignment
+	OpNegate
 )
 
 type Node struct {
