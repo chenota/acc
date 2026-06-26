@@ -47,7 +47,7 @@ var rules = []tokenRule{
 	{KDiv, mustAnchor(`/`)},
 	{KEqual, mustAnchor(`=`)},
 	{KSemicolon, mustAnchor(`;`)},
-	{KInteger, mustAnchor(`-?[0-9]+(_[0-9]+)*`)},
+	{KInteger, mustAnchor(`[0-9]+(_[0-9]+)*`)},
 	{KIdentifier, mustAnchor(`[a-zA-Z_][a-zA-Z0-9_]*`)},
 	{KNewLines, mustAnchor(`\n+`)},
 	{KWhitespace, mustAnchor(`[[:blank:]]+`)},

@@ -46,7 +46,6 @@ func TestLexer_Integer(t *testing.T) {
 		expected int64
 	}{
 		{"1", 1},
-		{"-123", -123},
 		{"1_000_000", 1000000},
 	}
 
