@@ -64,7 +64,7 @@ func associativeRoots(f *Func) []*Value {
 	roots := make([]*Value, 0)
 
 	for _, v := range f.values() {
-		if v.IsAssociativeOp() && !isArgInSameOp(v) {
+		if v.IsAssociativeOp() && !isSubOperation(v) {
 			roots = append(roots, v)
 		}
 	}
@@ -72,7 +72,8 @@ func associativeRoots(f *Func) []*Value {
 	return roots
 }
 
-func isArgInSameOp(v *Value) bool {
+// isSubOperation checks if this operation lives under another operation of the same type
+func isSubOperation(v *Value) bool {
 	for _, val := range v.Block.Values {
 		if val == v || val.Op != v.Op {
 			continue
