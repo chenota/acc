@@ -2,7 +2,7 @@ package ssa
 
 import "github.com/chenota/acc/internal/types"
 
-func foldConstants(f *Func) {
+func quickFold(f *Func) {
 	for _, v := range f.values() {
 		if !v.IsBinaryOp() {
 			continue

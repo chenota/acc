@@ -42,6 +42,10 @@ func (v *Value) IsConstant() bool {
 	return v.Op == OpLiteral
 }
 
+func (v *Value) IsAssociativeOp() bool {
+	return v.Op == OpAdd || v.Op == OpMultiply
+}
+
 type BlockKind int
 
 const (

@@ -129,6 +129,21 @@ func TestGenSsa_Variable_InExpression(t *testing.T) {
 	assert.Equal(t, OpAdd, b.Control.Op)
 }
 
+func TestGenSsa_Reassociate_FoldMixed(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let x = 5; return 2 + x + 2; }`)
+	b := funcs[0].Blocks[0]
+
+	require.NotNil(t, b.Control)
+	assert.Equal(t, OpAdd, b.Control.Op)
+
+	var litVals []int32
+	for _, lit := range findValues(b.Values, OpLiteral) {
+		litVals = append(litVals, lit.Value.(int32))
+	}
+	assert.Contains(t, litVals, int32(4), "expected 2+2 to fold into 4")
+	assert.NotContains(t, litVals, int32(2), "original 2s should be consumed by folding")
+}
+
 func requireBuildSSA(t *testing.T, src string, opts ...Option) []*Func {
 	t.Helper()
 	tokens, err := lexer.Tokenize(strings.NewReader(src))
