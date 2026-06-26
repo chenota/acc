@@ -82,7 +82,7 @@ Return an exit code from the result of an arithmetic expression; this is decepti
 <Integer>    := /[0-9]+/
 ```
 
-### Vertical Slice 3: Variables [Work in Progress]
+### Vertical Slice 3: Variables [Complete]
 
 `acc` at this point is still stuck with its only output being an exit code. I'd like to work towards being able to do file output via a format print, but to get to that point `acc` needs a couple of foundational constructs with variables being one of them. I've made the type in a declaration optional since the bidirectional type system naturally supports inference very well so it's not a huge lift to add support now.
 
@@ -100,10 +100,24 @@ Return an exit code from the result of an arithmetic expression; this is decepti
 <Atom> := <Ident>
 ```
 
-### Vertical Slice 4: Functions [Not Started]
+### Vertical Slice 4: Negative Numbers [Work in Progress]
+
+I want to get negative numbers out of the way now and they can help us introduce some foundational concepts like unary operations.
+
+#### Expression Grammar (CFG)
+
+```
+<Mul>   := <Mul> "*" <Atom>
+         | <Mul> "/" <Atom>
+         | <Unary>
+<Unary> := "-" <Atom>
+         | <Atom>
+```
+
+### Vertical Slice 5: Functions [Not Started]
 
 We can build on Vertical Slice 3 and add the last foundational construct we need before introducing a format print by adding functions.
 
-### Vertical Slice 5: String Literals and File Output [Not Started]
+### Vertical Slice 6: String Literals and File Output [Not Started]
 
 With functions and variables out of the way, we can finally add a format print which greatly expands the usefulness of the `acc` language.
