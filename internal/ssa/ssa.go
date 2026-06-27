@@ -36,6 +36,7 @@ func (s *ssaBuilder) optimizedAllocatedFunction(n *ir.Node) (*Func, error) {
 	if err != nil {
 		return nil, err
 	}
+	unaryFold(f)
 	quickFold(f)
 	associativeFold(f)
 	regalloc(f, s.registers)

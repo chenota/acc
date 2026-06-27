@@ -19,6 +19,7 @@ const (
 	OpSubtract
 	OpMultiply
 	OpDivide
+	OpNegate
 )
 
 type Value struct {
@@ -32,6 +33,10 @@ type Value struct {
 	Value any
 
 	Loc Location
+}
+
+func (v *Value) IsUnaryOp() bool {
+	return v.Op == OpNegate
 }
 
 func (v *Value) IsBinaryOp() bool {

@@ -144,6 +144,23 @@ func TestGenSsa_Reassociate_FoldMixed(t *testing.T) {
 	assert.NotContains(t, litVals, int32(2), "original 2s should be consumed by folding")
 }
 
+func TestGenSsa_Negate_Fold(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { return -10; }`)
+	b := funcs[0].Blocks[0]
+
+	require.NotNil(t, b.Control)
+	assert.Equal(t, OpLiteral, b.Control.Op)
+	assert.Equal(t, int32(-10), b.Control.Value.(int32))
+}
+
+func TestGenSsa_Negate_NoFold(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; return -x; }`)
+	b := funcs[0].Blocks[0]
+
+	require.NotNil(t, b.Control)
+	assert.Equal(t, OpNegate, b.Control.Op)
+}
+
 func requireBuildSSA(t *testing.T, src string, opts ...Option) []*Func {
 	t.Helper()
 	tokens, err := lexer.Tokenize(strings.NewReader(src))

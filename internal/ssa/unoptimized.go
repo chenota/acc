@@ -125,9 +125,28 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 		return b.genBop(expr)
 	case ir.OpIdent:
 		return b.genIdent(expr)
+	case ir.OpNegate:
+		return b.genNegate(expr)
 	default:
 		return nil, diagnostic.NewError(expr.Pos, "unknown expression operation: %d", expr.Op)
 	}
+}
+
+func (b *builder) genNegate(expr *ir.Node) (*Value, error) {
+	if len(expr.List) != 1 {
+		return nil, diagnostic.NewError(expr.Pos, "negation operator without one operand")
+	}
+
+	negateOp := b.targetFunc.appendValue(OpNegate, expr.Type, b.currentBlock)
+
+	e, err := b.genExpr(expr.List[0])
+	if err != nil {
+		return nil, err
+	}
+
+	negateOp.Args = []*Value{e}
+
+	return negateOp, nil
 }
 
 func (b *builder) genIdent(expr *ir.Node) (*Value, error) {
