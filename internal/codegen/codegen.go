@@ -152,9 +152,25 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateBop(v, mulOp(v.Type.Size()))...)
 	case ssa.OpDivide:
 		insts = append(insts, generateDiv(v)...)
+	case ssa.OpNegate:
+		insts = append(insts, generateNegate(v)...)
 	}
 
 	return insts
+}
+
+func generateNegate(v *ssa.Value) []Inst {
+	return []Inst{
+		{
+			Op:   movOp(v.Type.Size()),
+			Src1: toArg(v.Args[0]),
+			Dest: toArg(v),
+		},
+		{
+			Op:   negOp(v.Type.Size()),
+			Dest: toArg(v),
+		},
+	}
 }
 
 func generateBop(v *ssa.Value, op string) []Inst {
@@ -279,6 +295,19 @@ func subOp(size int) string {
 		return "subl"
 	default:
 		return "subq"
+	}
+}
+
+func negOp(size int) string {
+	switch size {
+	case 1:
+		return "negb"
+	case 2:
+		return "negw"
+	case 4:
+		return "negl"
+	default:
+		return "negq"
 	}
 }
 

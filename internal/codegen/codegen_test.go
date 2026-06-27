@@ -49,6 +49,12 @@ func TestCodegen_Divide(t *testing.T) {
 	assertContainsOpWithArgs(t, insts, "idivl", KUndefined, KUndefined, KRegister)
 }
 
+func TestCodegen_Negate(t *testing.T) {
+	insts := requireGeneratesProgram(t, `fun main () -> int { let x = 10; return -x; }`)
+
+	assertContainsSeq(t, insts, "movl", "negl")
+}
+
 func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
 	t.Helper()
 
