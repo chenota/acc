@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chenota/acc/internal/ir"
 	"github.com/chenota/acc/internal/lexer"
 	"github.com/chenota/acc/internal/parser"
 	"github.com/chenota/acc/internal/types"
@@ -12,12 +13,7 @@ import (
 )
 
 func TestAnalyze_Basic(t *testing.T) {
-	inputStr := `fun main () -> int { return 0; }`
-	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
-	require.NoError(t, err)
-
-	funcs, err := parser.ParseProgram(tokens)
-	require.NoError(t, err)
+	funcs := mustParse(t, `fun main () -> int { return 0; }`)
 
 	require.NoError(t, Analyze(funcs))
 
@@ -36,23 +32,13 @@ func TestAnalyze_Basic(t *testing.T) {
 }
 
 func TestAnalyze_Overflow(t *testing.T) {
-	inputStr := `fun main () -> int { return 2_147_483_648; }`
-	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
-	require.NoError(t, err)
-
-	funcs, err := parser.ParseProgram(tokens)
-	require.NoError(t, err)
+	funcs := mustParse(t, `fun main () -> int { return 2_147_483_648; }`)
 
 	assert.Error(t, Analyze(funcs))
 }
 
 func TestAnalyze_SimpleBop(t *testing.T) {
-	inputStr := `fun main () -> int { return 1 + 2 * 3; }`
-	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
-	require.NoError(t, err)
-
-	funcs, err := parser.ParseProgram(tokens)
-	require.NoError(t, err)
+	funcs := mustParse(t, `fun main () -> int { return 1 + 2 * 3; }`)
 
 	require.NoError(t, Analyze(funcs))
 
@@ -71,12 +57,7 @@ func TestAnalyze_SimpleBop(t *testing.T) {
 }
 
 func TestAnalyze_VariableDeclaration(t *testing.T) {
-	inputStr := `fun main () -> int { let x int = 10; return 0; }`
-	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
-	require.NoError(t, err)
-
-	funcs, err := parser.ParseProgram(tokens)
-	require.NoError(t, err)
+	funcs := mustParse(t, `fun main () -> int { let x int = 10; return 0; }`)
 
 	require.NoError(t, Analyze(funcs))
 
@@ -98,12 +79,7 @@ func TestAnalyze_VariableDeclaration(t *testing.T) {
 }
 
 func TestAnalyze_VariableDeclaration_Inference(t *testing.T) {
-	inputStr := `fun main () -> int { let x = 10; return 0; }`
-	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
-	require.NoError(t, err)
-
-	funcs, err := parser.ParseProgram(tokens)
-	require.NoError(t, err)
+	funcs := mustParse(t, `fun main () -> int { let x = 10; return 0; }`)
 
 	require.NoError(t, Analyze(funcs))
 
@@ -125,23 +101,13 @@ func TestAnalyze_VariableDeclaration_Inference(t *testing.T) {
 }
 
 func TestAnalyze_VariableDeclaration_Redeclare(t *testing.T) {
-	inputStr := `fun main () -> int { let x = 10; let x = 15; return 0; }`
-	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
-	require.NoError(t, err)
-
-	funcs, err := parser.ParseProgram(tokens)
-	require.NoError(t, err)
+	funcs := mustParse(t, `fun main () -> int { let x = 10; let x = 15; return 0; }`)
 
 	require.Error(t, Analyze(funcs))
 }
 
 func TestAnalyze_VariableUsage(t *testing.T) {
-	inputStr := `fun main () -> int { let x = 10; return x; }`
-	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
-	require.NoError(t, err)
-
-	funcs, err := parser.ParseProgram(tokens)
-	require.NoError(t, err)
+	funcs := mustParse(t, `fun main () -> int { let x = 10; return x; }`)
 
 	require.NoError(t, Analyze(funcs))
 
@@ -164,23 +130,13 @@ func TestAnalyze_VariableUsage(t *testing.T) {
 }
 
 func TestAnalyze_VariableUsage_BeforeDeclared(t *testing.T) {
-	inputStr := `fun main () -> int { return x; }`
-	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
-	require.NoError(t, err)
-
-	funcs, err := parser.ParseProgram(tokens)
-	require.NoError(t, err)
+	funcs := mustParse(t, `fun main () -> int { return x; }`)
 
 	require.Error(t, Analyze(funcs))
 }
 
 func TestAnalyze_Assignment(t *testing.T) {
-	inputStr := `fun main () -> int { let x int = 10; x = 15; return x; }`
-	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
-	require.NoError(t, err)
-
-	funcs, err := parser.ParseProgram(tokens)
-	require.NoError(t, err)
+	funcs := mustParse(t, `fun main () -> int { let x int = 10; x = 15; return x; }`)
 
 	require.NoError(t, Analyze(funcs))
 
@@ -197,23 +153,13 @@ func TestAnalyze_Assignment(t *testing.T) {
 }
 
 func TestAnalyze_Assignment_BeforeDeclared(t *testing.T) {
-	inputStr := `fun main () -> int { x = 15; return x; }`
-	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
-	require.NoError(t, err)
-
-	funcs, err := parser.ParseProgram(tokens)
-	require.NoError(t, err)
+	funcs := mustParse(t, `fun main () -> int { x = 15; return x; }`)
 
 	require.Error(t, Analyze(funcs))
 }
 
 func TestAnalyze_Negation(t *testing.T) {
-	inputStr := `fun main () -> int { let x = -10; return -x; }`
-	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
-	require.NoError(t, err)
-
-	funcs, err := parser.ParseProgram(tokens)
-	require.NoError(t, err)
+	funcs := mustParse(t, `fun main () -> int { let x = -10; return -x; }`)
 
 	require.NoError(t, Analyze(funcs))
 
@@ -229,4 +175,16 @@ func TestAnalyze_Negation(t *testing.T) {
 
 	require.NotNil(t, e)
 	assert.Equal(t, types.Int(), e.Type)
+}
+
+func mustParse(t *testing.T, inputStr string) []*ir.Node {
+	t.Helper()
+
+	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
+	require.NoError(t, err)
+
+	funcs, err := parser.ParseProgram(tokens)
+	require.NoError(t, err)
+
+	return funcs
 }
