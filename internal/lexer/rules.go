@@ -23,6 +23,10 @@ const (
 	KDiv
 	KLetKw
 	KEqual
+	KPlusEq
+	KMinusEq
+	KMulEq
+	KDivEq
 )
 
 type tokenRule struct {
@@ -37,6 +41,10 @@ var rules = []tokenRule{
 	{KLetKw, mustAnchor(`let`)},
 	{KComma, mustAnchor(`,`)},
 	{KArrow, mustAnchor(`->`)},
+	{KPlusEq, mustAnchor(`\+=`)},
+	{KMinusEq, mustAnchor(`-=`)},
+	{KMulEq, mustAnchor(`\*=`)},
+	{KDivEq, mustAnchor(`/=`)},
 	{KLBracket, mustAnchor(`{`)},
 	{KRBracket, mustAnchor(`}`)},
 	{KLParen, mustAnchor(`\(`)},
