@@ -161,6 +161,28 @@ func TestGenSsa_Negate_NoFold(t *testing.T) {
 	assert.Equal(t, OpNegate, b.Control.Op)
 }
 
+func TestGenSsa_NegSquash(t *testing.T) {
+	tests := []struct {
+		name   string
+		src    string
+		wantOp Op
+	}{
+		{"subtract", `fun main () -> int { let y = 5; return 0 - -y; }`, OpAdd},
+		{"add", `fun main () -> int { let y = 5; return 0 + -y; }`, OpSubtract},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			funcs := requireBuildSSA(t, tt.src)
+			b := funcs[0].Blocks[0]
+
+			require.NotNil(t, b.Control)
+			assert.Equal(t, tt.wantOp, b.Control.Op)
+			assert.Empty(t, findValues(b.Values, OpNegate), "negate should be squashed away")
+		})
+	}
+}
+
 func requireBuildSSA(t *testing.T, src string, opts ...Option) []*Func {
 	t.Helper()
 	tokens, err := lexer.Tokenize(strings.NewReader(src))
