@@ -206,3 +206,27 @@ func TestAnalyze_Assignment_BeforeDeclared(t *testing.T) {
 
 	require.Error(t, Analyze(funcs))
 }
+
+func TestAnalyze_Negation(t *testing.T) {
+	inputStr := `fun main () -> int { let x = -10; return -x; }`
+	tokens, err := lexer.Tokenize(strings.NewReader(inputStr))
+	require.NoError(t, err)
+
+	funcs, err := parser.ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 2)
+	ret := fun.List[1]
+
+	require.NotNil(t, ret)
+	require.Len(t, ret.List, 1)
+	e := ret.List[0]
+
+	require.NotNil(t, e)
+	assert.Equal(t, types.Int(), e.Type)
+}

@@ -113,9 +113,26 @@ func analyzeExpr(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 		return analyzeBop(scope, n, hint)
 	case ir.OpIdent:
 		return analyzeIdent(scope, n)
+	case ir.OpNegate:
+		return analyzeNegate(scope, n, hint)
 	default:
 		return diagnostic.NewError(n.Pos, "unknown expression operation: %d", n.Op)
 	}
+}
+
+func analyzeNegate(scope *ir.Table, n *ir.Node, hint *types.Type) error {
+	if len(n.List) != 1 {
+		return diagnostic.NewError(n.Pos, "negation without an argument")
+	}
+
+	// analyze sub-expression with hint
+	e := n.List[0]
+	analyzeExpr(scope, e, hint)
+
+	// steal type from sub-expression
+	n.Type = e.Type
+
+	return nil
 }
 
 func analyzeIdent(scope *ir.Table, n *ir.Node) error {
