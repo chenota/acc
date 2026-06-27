@@ -137,13 +137,12 @@ func (b *builder) genNegate(expr *ir.Node) (*Value, error) {
 		return nil, diagnostic.NewError(expr.Pos, "negation operator without one operand")
 	}
 
-	negateOp := b.targetFunc.appendValue(OpNegate, expr.Type, b.currentBlock)
-
 	e, err := b.genExpr(expr.List[0])
 	if err != nil {
 		return nil, err
 	}
 
+	negateOp := b.targetFunc.appendValue(OpNegate, expr.Type, b.currentBlock)
 	negateOp.Args = []*Value{e}
 
 	return negateOp, nil
