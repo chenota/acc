@@ -49,7 +49,7 @@ func TestProgram(t *testing.T) {
 				}
 
 				actualStatus := cmd.ProcessState.ExitCode()
-				verifyGoldenStatus(t, dirPath, actualStatus)
+				verifyGoldenStatus(t, dirPath, mainFile, actualStatus)
 			})
 		}
 	}
@@ -79,7 +79,7 @@ func compileProgram(t *testing.T, mainFile string) string {
 	return tmpBinary.Name()
 }
 
-func verifyGoldenStatus(t *testing.T, dirPath string, actualStatus int) {
+func verifyGoldenStatus(t *testing.T, dirPath, mainFile string, actualStatus int) {
 	t.Helper()
 
 	statusPath := filepath.Join(dirPath, "status.golden")
@@ -97,5 +97,38 @@ func verifyGoldenStatus(t *testing.T, dirPath string, actualStatus int) {
 	expectedStatus, err := strconv.Atoi(statusStr)
 	require.NoError(t, err)
 
+	if expectedStatus != actualStatus && printAsmOnFail() {
+		t.Logf("generated assembly for %s:\n%s", mainFile, compileAssembly(t, mainFile))
+	}
+
 	assert.Equal(t, expectedStatus, actualStatus, "actual status does not match golden status")
+}
+
+func printAsmOnFail() bool {
+	v := os.Getenv("PRINT_ASM_ON_FAIL")
+	return v == "1" || v == "true"
+}
+
+// compileAssembly compiles mainFile with the -S flag and returns the generated
+// assembly as a string, for diagnosing failed tests.
+func compileAssembly(t *testing.T, mainFile string) string {
+	t.Helper()
+
+	tmpAsm, err := os.CreateTemp("", "acc_*.s")
+	require.NoError(t, err)
+	tmpAsm.Close()
+	defer os.Remove(tmpAsm.Name())
+
+	root := cmd.NewRootCommand()
+	root.SetArgs([]string{
+		mainFile,
+		"-S",
+		"-o", tmpAsm.Name(),
+	})
+	require.NoError(t, root.Execute())
+
+	asmBytes, err := os.ReadFile(tmpAsm.Name())
+	require.NoError(t, err)
+
+	return string(asmBytes)
 }
