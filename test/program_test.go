@@ -17,8 +17,10 @@ func TestProgram(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	require.NoError(t, err)
 
-	wipEnv := os.Getenv("ACC_RUN_WIP")
-	runWip := (wipEnv == "1" || wipEnv == "true")
+	runWip := runWip()
+	if runWip {
+		t.Log("RUN_WIP is set, running WIP tests.")
+	}
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -32,7 +34,7 @@ func TestProgram(t *testing.T) {
 			isWip = true
 		}
 
-		if runWip || !isWip {
+		if isWip == runWip {
 			t.Run(entry.Name(), func(t *testing.T) {
 				mainFile := filepath.Join(dirPath, "main.acc")
 				require.FileExists(t, mainFile, "each source directory must contain a main file")
@@ -97,20 +99,24 @@ func verifyGoldenStatus(t *testing.T, dirPath, mainFile string, actualStatus int
 	expectedStatus, err := strconv.Atoi(statusStr)
 	require.NoError(t, err)
 
-	if expectedStatus != actualStatus && printAsmOnFail() {
+	if expectedStatus != actualStatus && asmOnFail() {
 		t.Logf("generated assembly for %s:\n%s", mainFile, compileAssembly(t, mainFile))
 	}
 
 	assert.Equal(t, expectedStatus, actualStatus, "actual status does not match golden status")
 }
 
-func printAsmOnFail() bool {
-	v := os.Getenv("PRINT_ASM_ON_FAIL")
+func asmOnFail() bool {
+	v := os.Getenv("ASM_ON_FAIL")
 	return v == "1" || v == "true"
 }
 
-// compileAssembly compiles mainFile with the -S flag and returns the generated
-// assembly as a string, for diagnosing failed tests.
+func runWip() bool {
+	v := os.Getenv("RUN_WIP")
+	return v == "1" || v == "true"
+}
+
+// compileAssembly compiles mainFile with the -S flag and returns the generated assembly as a string
 func compileAssembly(t *testing.T, mainFile string) string {
 	t.Helper()
 
