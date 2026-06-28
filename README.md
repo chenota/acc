@@ -132,28 +132,49 @@ Another low-hanging fruit I'd like to knock out is assignment operators since ev
 
 ### Vertical Slice 6: Functions [Work in Progress]
 
-We can build on Vertical Slice 3 and add the last foundational construct we need before introducing a format print by adding functions. I'm going crazy with this one; it's by far the largest vertical slice yet as it covers both globally-defined functions and closures.
+We can build on Vertical Slice 3 and add the last foundational construct we need before introducing a format print by adding functions. I'm going crazy with this one and it's by far my most ambitious vertical slice, so much so that I need a list for everything that's getting added!
+
+- Globally-defined functions
+- Closures
+- Higher-order functions
+- Smarter register allocation
 
 #### Program Grammar (PEG)
 
 ```
-<Program>   := <Function>+
-<Function>  := "fun" <Ident> "(" <Paramlist> ")" "->" <Type> <Block>
-<Block>     := "{" <Statement> "}"
-<Statement> := "return" <Expression> ";"
-             | "let" <Ident> <Type>? "=" <Expression> ";"
-             | <Ident> "=" <Expression> ";"
-             | <Ident> ("+=" | "-=" | "*=" | "/=") <Expression> ";"
-<Paramlist> := <Ident> <Type> "," <Paramlist>
-             | <Ident> <Type>
+<Program>    := <Function>+
+<Function>   := "fun" <Ident> "(" <Paramlist> ")" "->" <Type> <Block>
+<Block>      := "{" <Statement> "}"
+<Statement>  := "return" <Expression> ";"
+              | "let" <Ident> <Type>? "=" <Expression> ";"
+              | <Ident> "=" <Expression> ";"
+              | <Ident> ("+=" | "-=" | "*=" | "/=") <Expression> ";"
+<Paramlist>  := <Ident> <Type> <Paramlist'>
+              | nil
+<Paramlist'> := "," <Ident> <Type> <Paramlist'> 
+              | nil
 ```
 
 #### Expression Grammar (CFG)
 
 ```
-<Atom>      := "fun" "(" <Paramlist> ")" "->" <Type> <Block>
-<Paramlist> := <Ident> <Type> "," <Paramlist>
-             | <Ident> <Type>
+<Atom>       := "fun" <Ident>? "(" <Paramlist> ")" "->" <Type> <Block>
+<Paramlist>  := <Ident> <Type> <Paramlist'>
+              | nil
+<Paramlist'> := "," <Ident> <Type> <Paramlist'> 
+              | nil
+```
+
+#### Type Grammar (CFG)
+
+```
+<Type>      := <Atom> | <Function>
+<Function>  := "(" <Typelist> ")" "->" <Type>
+<Atom>      := "int"
+<Typelist>  := <Type> <Typelist'>
+             | nil
+<Typelist'> := "," <Type> <Typelist'>
+             | nil
 ```
 
 ### Vertical Slice 7: String Literals and File Output [Not Started]
