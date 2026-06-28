@@ -65,17 +65,17 @@ func (b *builder) genAssignOp(n *ir.Node) error {
 	}
 
 	// load variable value
-	loadOp := b.targetFunc.appendValue(OpLoad, n.Type, b.currentBlock)
+	loadOp := b.targetFunc.appendValue(OpLoad, n.Sym.Type, b.currentBlock)
 	loadOp.Args = []*Value{alloca}
 
-	// calculate expression value
+	// generate expression value
 	exprVal, err := b.genExpr(n.List[0])
 	if err != nil {
 		return err
 	}
 
 	// glue together with arithmetic bop
-	arithOp := b.targetFunc.insertValueAfter(exprVal, numericBopFrom(n), n.Type, exprVal.Block)
+	arithOp := b.targetFunc.insertValueAfter(exprVal, numericBopFrom(n), n.Sym.Type, exprVal.Block)
 	arithOp.Args = []*Value{loadOp, exprVal}
 
 	// insert store operation into stack location
