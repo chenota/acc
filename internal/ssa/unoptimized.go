@@ -46,9 +46,43 @@ func (b *builder) genStatement(stmt *ir.Node) error {
 		return b.genDecl(stmt)
 	case ir.OpAssignment:
 		return b.genAssign(stmt)
+	case ir.OpPlusEq, ir.OpMinusEq, ir.OpTimesEq, ir.OpDivEq:
+		return b.genAssignOp(stmt)
 	default:
 		return diagnostic.NewError(stmt.Pos, "unknown statement operation: %d", stmt.Op)
 	}
+}
+
+func (b *builder) genAssignOp(n *ir.Node) error {
+	if len(n.List) != 1 {
+		return diagnostic.NewError(n.Pos, "assignment operator missing expression")
+	}
+
+	// variable location
+	alloca := b.vars[n.Sym]
+	if alloca == nil {
+		return diagnostic.NewError(n.Pos, "variable used before declared: %s", n.Name)
+	}
+
+	// load variable value
+	loadOp := b.targetFunc.appendValue(OpLoad, n.Type, b.currentBlock)
+	loadOp.Args = []*Value{alloca}
+
+	// calculate expression value
+	exprVal, err := b.genExpr(n.List[0])
+	if err != nil {
+		return err
+	}
+
+	// glue together with arithmetic bop
+	arithOp := b.targetFunc.insertValueAfter(exprVal, numericBopFrom(n), n.Type, exprVal.Block)
+	arithOp.Args = []*Value{loadOp, exprVal}
+
+	// insert store operation into stack location
+	storeOp := b.targetFunc.insertValueAfter(arithOp, OpStore, exprVal.Type, exprVal.Block)
+	storeOp.Args = []*Value{arithOp, alloca}
+
+	return nil
 }
 
 func (b *builder) genReturn(n *ir.Node) error {
@@ -197,13 +231,13 @@ func (b *builder) genBop(expr *ir.Node) (*Value, error) {
 
 func numericBopFrom(n *ir.Node) Op {
 	switch n.Op {
-	case ir.OpPlus:
+	case ir.OpPlus, ir.OpPlusEq:
 		return OpAdd
-	case ir.OpMinus:
+	case ir.OpMinus, ir.OpMinusEq:
 		return OpSubtract
-	case ir.OpTimes:
+	case ir.OpTimes, ir.OpTimesEq:
 		return OpMultiply
-	case ir.OpDiv:
+	case ir.OpDiv, ir.OpDivEq:
 		return OpDivide
 	default:
 		return OpUnknown

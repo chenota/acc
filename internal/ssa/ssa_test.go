@@ -183,6 +183,23 @@ func TestGenSsa_NegSquash(t *testing.T) {
 	}
 }
 
+func TestGenSsa_Variable_Assignment_Operator(t *testing.T) {
+	returnRegister := register.RegA
+	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; x += 20; return x; }`, WithReturnRegister(returnRegister))
+
+	b := funcs[0].Blocks[0]
+
+	stores := findValues(b.Values, OpStore)
+	require.Len(t, stores, 2)
+	loads := findValues(b.Values, OpLoad)
+	require.Len(t, loads, 2)
+
+	require.NotNil(t, b.Control)
+	assert.Equal(t, OpLoad, b.Control.Op)
+	assert.Equal(t, LocRegister, b.Control.Loc.Kind)
+	assert.Equal(t, returnRegister, b.Control.Loc.Reg)
+}
+
 func requireBuildSSA(t *testing.T, src string, opts ...Option) []*Func {
 	t.Helper()
 	tokens, err := lexer.Tokenize(strings.NewReader(src))
