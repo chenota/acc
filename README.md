@@ -114,7 +114,7 @@ I want to get negative numbers out of the way now and they can help us introduce
          | <Atom>
 ```
 
-### Vertical Slice 5: Assignment Operators [Work in Progress]
+### Vertical Slice 5: Assignment Operators [Complete]
 
 Another low-hanging fruit I'd like to knock out is assignment operators since everything is pretty much in place for them already. Can you tell I'm putting off functions since those'll be difficult?
 
@@ -130,9 +130,31 @@ Another low-hanging fruit I'd like to knock out is assignment operators since ev
              | <Ident> ("+=" | "-=" | "*=" | "/=") <Expression> ";"
 ```
 
-### Vertical Slice 6: Functions [Not Started]
+### Vertical Slice 6: Functions [Work in Progress]
 
-We can build on Vertical Slice 3 and add the last foundational construct we need before introducing a format print by adding functions.
+We can build on Vertical Slice 3 and add the last foundational construct we need before introducing a format print by adding functions. I'm going crazy with this one; it's by far the largest vertical slice yet as it covers both globally-defined functions and closures.
+
+#### Program Grammar (PEG)
+
+```
+<Program>   := <Function>+
+<Function>  := "fun" <Ident> "(" <Paramlist> ")" "->" <Type> <Block>
+<Block>     := "{" <Statement> "}"
+<Statement> := "return" <Expression> ";"
+             | "let" <Ident> <Type>? "=" <Expression> ";"
+             | <Ident> "=" <Expression> ";"
+             | <Ident> ("+=" | "-=" | "*=" | "/=") <Expression> ";"
+<Paramlist> := <Ident> <Type> "," <Paramlist>
+             | <Ident> <Type>
+```
+
+#### Expression Grammar (CFG)
+
+```
+<Atom>      := "fun" "(" <Paramlist> ")" "->" <Type> <Block>
+<Paramlist> := <Ident> <Type> "," <Paramlist>
+             | <Ident> <Type>
+```
 
 ### Vertical Slice 7: String Literals and File Output [Not Started]
 
