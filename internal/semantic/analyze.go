@@ -31,6 +31,9 @@ func analyzeStmt(scope *ir.Table, n *ir.Node) error {
 		return analyzeDeclaration(scope, n)
 	case ir.OpAssignment:
 		return analyzeAssignment(scope, n)
+	case ir.OpPlusEq, ir.OpMinusEq, ir.OpDivEq, ir.OpTimesEq:
+		// assignment operators have same structure and use same typing rules as regular assignment
+		return analyzeAssignment(scope, n)
 	default:
 		return diagnostic.NewError(n.Pos, "unknown statement operation: %d", n.Op)
 	}

@@ -177,6 +177,20 @@ func TestAnalyze_Negation(t *testing.T) {
 	assert.Equal(t, types.Int(), e.Type)
 }
 
+func TestAnalyze_AssignmentOp(t *testing.T) {
+	funcs := mustParse(t, `fun main () -> int { let x int = 10; x += 15; return x; }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 3)
+	decl := fun.List[0]
+	assign := fun.List[1]
+	assert.Equal(t, decl.Sym, assign.Sym)
+}
+
 func mustParse(t *testing.T, inputStr string) []*ir.Node {
 	t.Helper()
 
