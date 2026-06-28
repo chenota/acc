@@ -278,6 +278,24 @@ func TestParser_StmtList(t *testing.T) {
 	assert.Len(t, fun.List, 3)
 }
 
+func TestParser_AssignmentOp(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { x += 10; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	decl := fun.List[0]
+	assert.Equal(t, ir.OpPlusEq, decl.Op)
+
+	require.Len(t, decl.List, 1)
+	expr := decl.List[0]
+	assert.Equal(t, ir.OpInt, expr.Op)
+}
+
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {
 	tokens, err := lexer.Tokenize(strings.NewReader(input))
 	require.NoError(t, err)

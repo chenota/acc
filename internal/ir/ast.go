@@ -25,6 +25,10 @@ const (
 	OpDeclaration
 	OpAssignment
 	OpNegate
+	OpPlusEq
+	OpMinusEq
+	OpTimesEq
+	OpDivEq
 )
 
 type Node struct {

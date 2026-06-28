@@ -88,7 +88,68 @@ func (p *parser) parseStmt() (*ir.Node, bool) {
 		return n, true
 	}
 
+	if n, ok := p.parseAssignmentOp(); ok {
+		return n, true
+	}
+
 	return p.parseReturn()
+}
+
+func (p *parser) parseAssignmentOp() (*ir.Node, bool) {
+	loc := p.t.Mark()
+
+	n := &ir.Node{
+		Pos: p.t.Pos(),
+	}
+
+	varName, ok := p.t.ExpectIdentifier()
+	if !ok {
+		p.markErr("expected identifier in assignment operation")
+		p.t.Restore(loc)
+		return nil, false
+	}
+	n.Name = varName
+
+	opToken, ok := p.t.Peek()
+	if !ok {
+		p.markErr("unexpected EOF")
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	var op ir.Op
+	switch opToken.Kind {
+	case lexer.KPlusEq:
+		op = ir.OpPlusEq
+	case lexer.KMinusEq:
+		op = ir.OpMinusEq
+	case lexer.KMulEq:
+		op = ir.OpTimesEq
+	case lexer.KDivEq:
+		op = ir.OpDivEq
+	default:
+		p.markErr("expected an assignment operator")
+		p.t.Restore(loc)
+		return nil, false
+	}
+	p.t.Advance()
+	n.Op = op
+
+	e, ok := p.parseExpr()
+	if !ok {
+		p.t.Restore(loc)
+		return nil, false
+	}
+	e.Parent = n
+	n.List = []*ir.Node{e}
+
+	if _, ok = p.t.Expect(lexer.KSemicolon); !ok {
+		p.markErr("expected semicolon")
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	return n, true
 }
 
 func (p *parser) parseDeclaration() (*ir.Node, bool) {
