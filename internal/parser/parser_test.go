@@ -296,6 +296,18 @@ func TestParser_AssignmentOp(t *testing.T) {
 	assert.Equal(t, ir.OpInt, expr.Op)
 }
 
+func TestParser_MultiGloblFunc(t *testing.T) {
+	tokens := requireTokenize(t, `fun test () -> int { return 10; } fun test2 () -> int { return 10; } fun main () -> int { return 15; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 3)
+	assert.Equal(t, "test", funcs[0].Name)
+	assert.Equal(t, "test2", funcs[1].Name)
+	assert.Equal(t, "main", funcs[2].Name)
+}
+
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {
 	tokens, err := lexer.Tokenize(strings.NewReader(input))
 	require.NoError(t, err)

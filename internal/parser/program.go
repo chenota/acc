@@ -14,9 +14,9 @@ func ParseProgram(t *lexer.TokenList) ([]*ir.Node, error) {
 		t: t,
 	}
 
-	// consume statements until we can't
+	// consume functions until we can't
 	for {
-		if s, ok := p.parseStmt(); ok {
+		if s, ok := p.parseGloblFunction(); ok {
 			globalStmts = append(globalStmts, s)
 		} else {
 			break
@@ -29,11 +29,6 @@ func ParseProgram(t *lexer.TokenList) ([]*ir.Node, error) {
 			return nil, errors.New("unknown parsing error: could not parse entire file")
 		}
 		return nil, p.err
-	}
-
-	// vertial slice check: for now we should have a single function called main
-	if len(globalStmts) != 1 || globalStmts[0].Op != ir.OpFunction {
-		return nil, errors.New("vertical slice error: should have a single function called 'main'")
 	}
 
 	return globalStmts, nil
@@ -76,10 +71,6 @@ func (p *parser) parseBlock() (*ir.Node, bool) {
 }
 
 func (p *parser) parseStmt() (*ir.Node, bool) {
-	if n, ok := p.parseFunction(); ok {
-		return n, true
-	}
-
 	if n, ok := p.parseDeclaration(); ok {
 		return n, true
 	}
@@ -275,7 +266,7 @@ func (p *parser) parseReturn() (*ir.Node, bool) {
 	return n, true
 }
 
-func (p *parser) parseFunction() (*ir.Node, bool) {
+func (p *parser) parseGloblFunction() (*ir.Node, bool) {
 	loc := p.t.Mark()
 
 	n := &ir.Node{
