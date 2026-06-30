@@ -23,8 +23,6 @@ func Analyze(functions []*ir.Node) error {
 
 func analyzeStmt(scope *ir.Table, n *ir.Node) error {
 	switch n.Op {
-	case ir.OpFunction:
-		return analyzeFunction(scope, n)
 	case ir.OpReturn:
 		return analyzeReturn(scope, n)
 	case ir.OpDeclaration:
