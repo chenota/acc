@@ -193,9 +193,12 @@ func analyzeBop(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 }
 
 func analyzeFunction(scope *ir.Table, f *ir.Node) error {
-	// set own type
+	// resolve parameter types and set own type
 	var paramTypes []*types.Type
 	for _, p := range f.Signature.Params {
+		if err := analyzeParam(p); err != nil {
+			return err
+		}
 		paramTypes = append(paramTypes, p.Type)
 	}
 	f.Type = types.Function(paramTypes, f.Signature.Result.Type)
@@ -210,12 +213,32 @@ func analyzeFunction(scope *ir.Table, f *ir.Node) error {
 	// need a child scope for function body
 	funScope := scope.NewChild()
 
+	// register parameters into the function scope so the body can reference them
+	for _, p := range f.Signature.Params {
+		sym := funScope.Register(p.Name, p.Type)
+		if sym == nil {
+			return diagnostic.NewError(p.Pos, "parameter '%s' already declared", p.Name)
+		}
+		p.Sym = sym
+	}
+
 	// analyze types of body statements
 	for _, s := range f.List {
 		if err := analyzeStmt(funScope, s); err != nil {
 			return err
 		}
 	}
+
+	return nil
+}
+
+func analyzeParam(p *ir.Node) error {
+	if len(p.List) != 1 {
+		return diagnostic.NewError(p.Pos, "parameter missing type")
+	}
+
+	// pull the resolved type from the type node up into the param node
+	p.Type = p.List[0].Type
 
 	return nil
 }

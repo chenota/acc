@@ -31,6 +31,31 @@ func TestAnalyze_Basic(t *testing.T) {
 	assert.Equal(t, types.Int(), e.Type)
 }
 
+func TestAnalyze_ParamTypes(t *testing.T) {
+	funcs := mustParse(t, `fun main (x int, y int) -> int { return 0; }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	// each param node should carry the type pulled up from its type node
+	require.Len(t, fun.Signature.Params, 2)
+	assert.True(t, types.Equal(types.Int(), fun.Signature.Params[0].Type))
+	assert.True(t, types.Equal(types.Int(), fun.Signature.Params[1].Type))
+
+	// and those types should be reflected in the function's own type
+	require.NotNil(t, fun.Type)
+	want := types.Function([]*types.Type{types.Int(), types.Int()}, types.Int())
+	assert.True(t, types.Equal(want, fun.Type))
+}
+
+func TestAnalyze_DuplicateParam(t *testing.T) {
+	funcs := mustParse(t, `fun main (x int, x int) -> int { return 0; }`)
+
+	assert.Error(t, Analyze(funcs))
+}
+
 func TestAnalyze_Overflow(t *testing.T) {
 	funcs := mustParse(t, `fun main () -> int { return 2_147_483_648; }`)
 
