@@ -70,6 +70,19 @@ func (p *parser) parseBlock() (*ir.Node, bool) {
 	return n, true
 }
 
+// parseIdent consumes an identifier token and wraps it in an OpIdent node
+func (p *parser) parseIdent() (*ir.Node, bool) {
+	tok, ok := p.t.Expect(lexer.KIdentifier)
+	if !ok {
+		return nil, false
+	}
+	return &ir.Node{
+		Op:  ir.OpIdent,
+		Pos: tok.Pos,
+		Val: tok.Text,
+	}, true
+}
+
 func (p *parser) parseStmt() (*ir.Node, bool) {
 	if n, ok := p.parseDeclaration(); ok {
 		return n, true
@@ -93,13 +106,13 @@ func (p *parser) parseAssignmentOp() (*ir.Node, bool) {
 		Pos: p.t.Pos(),
 	}
 
-	varName, ok := p.t.ExpectIdentifier()
+	// blindly parse the target as an expression; lvalue validity is enforced in semantic analysis
+	target, ok := p.parseExpr()
 	if !ok {
-		p.markErr("expected identifier in assignment operation")
 		p.t.Restore(loc)
 		return nil, false
 	}
-	n.Name = varName
+	target.Parent = n
 
 	opToken, ok := p.t.Peek()
 	if !ok {
@@ -132,7 +145,7 @@ func (p *parser) parseAssignmentOp() (*ir.Node, bool) {
 		return nil, false
 	}
 	e.Parent = n
-	n.List = []*ir.Node{e}
+	n.List = []*ir.Node{target, e}
 
 	if _, ok = p.t.Expect(lexer.KSemicolon); !ok {
 		p.markErr("expected semicolon")
@@ -149,7 +162,7 @@ func (p *parser) parseDeclaration() (*ir.Node, bool) {
 	n := &ir.Node{
 		Op:   ir.OpDeclaration,
 		Pos:  p.t.Pos(),
-		List: make([]*ir.Node, 2),
+		List: make([]*ir.Node, 3),
 	}
 
 	if _, ok := p.t.Expect(lexer.KLetKw); !ok {
@@ -158,19 +171,22 @@ func (p *parser) parseDeclaration() (*ir.Node, bool) {
 		return nil, false
 	}
 
-	varName, ok := p.t.ExpectIdentifier()
+	// first element of the list is the declared name
+	name, ok := p.parseIdent()
 	if !ok {
 		p.markErr("expected identifier in variable declaration")
 		p.t.Restore(loc)
 		return nil, false
 	}
-	n.Name = varName
+	name.Parent = n
+	n.List[0] = name
 
-	// first element of the list is either the declared type or nil if unspecified
+	// second element is either the declared type or nil if unspecified
 	if varType, ok := p.parseType(); ok {
-		n.List[0] = varType
+		varType.Parent = n
+		n.List[1] = varType
 	} else {
-		n.List[0] = nil
+		n.List[1] = nil
 	}
 
 	if _, ok := p.t.Expect(lexer.KEqual); !ok {
@@ -185,7 +201,7 @@ func (p *parser) parseDeclaration() (*ir.Node, bool) {
 		return nil, false
 	}
 	e.Parent = n
-	n.List[1] = e
+	n.List[2] = e
 
 	if _, ok = p.t.Expect(lexer.KSemicolon); !ok {
 		p.markErr("expected semicolon")
@@ -204,13 +220,13 @@ func (p *parser) parseAssignment() (*ir.Node, bool) {
 		Pos: p.t.Pos(),
 	}
 
-	varName, ok := p.t.ExpectIdentifier()
+	// blindly parse the target as an expression; lvalue validity is enforced in semantic analysis
+	target, ok := p.parseExpr()
 	if !ok {
-		p.markErr("expected identifier")
 		p.t.Restore(loc)
 		return nil, false
 	}
-	n.Name = varName
+	target.Parent = n
 
 	if _, ok := p.t.Expect(lexer.KEqual); !ok {
 		p.markErr("expected equal sign in variable assignment")
@@ -224,7 +240,7 @@ func (p *parser) parseAssignment() (*ir.Node, bool) {
 		return nil, false
 	}
 	e.Parent = n
-	n.List = []*ir.Node{e}
+	n.List = []*ir.Node{target, e}
 
 	if _, ok = p.t.Expect(lexer.KSemicolon); !ok {
 		p.markErr("expected semicolon")
@@ -282,13 +298,14 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 		return nil, false
 	}
 
-	name, ok := p.t.ExpectIdentifier()
+	name, ok := p.parseIdent()
 	if !ok {
 		p.markErr("expected identifier")
 		p.t.Restore(loc)
 		return nil, false
 	}
-	n.Name = name
+	name.Parent = n
+	n.Signature.Name = name
 
 	if _, ok := p.t.Expect(lexer.KLParen); !ok {
 		p.markErr("expected open parenthesis")
@@ -360,13 +377,13 @@ func (p *parser) parseParam() (*ir.Node, bool) {
 		Pos: p.t.Pos(),
 	}
 
-	name, ok := p.t.ExpectIdentifier()
+	name, ok := p.parseIdent()
 	if !ok {
 		p.markErr("expected identifier")
 		p.t.Restore(loc)
 		return nil, false
 	}
-	n.Name = name
+	name.Parent = n
 
 	paramType, ok := p.parseType()
 	if !ok {
@@ -374,7 +391,7 @@ func (p *parser) parseParam() (*ir.Node, bool) {
 		return nil, false
 	}
 	paramType.Parent = n
-	n.List = []*ir.Node{paramType}
+	n.List = []*ir.Node{name, paramType}
 
 	return n, true
 }

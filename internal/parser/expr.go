@@ -87,9 +87,9 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 		return e, nil
 	case lexer.KIdentifier:
 		return &ir.Node{
-			Op:   ir.OpIdent,
-			Pos:  left.Pos,
-			Name: left.Text,
+			Op:  ir.OpIdent,
+			Pos: left.Pos,
+			Val: left.Text,
 		}, nil
 	case lexer.KMinus:
 		e, err := p.expr(prefixBindingPower(left))

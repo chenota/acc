@@ -98,7 +98,7 @@ func TestAnalyze_VariableDeclaration(t *testing.T) {
 	assert.Equal(t, types.Int(), decl.Sym.Type)
 	assert.Equal(t, "x", decl.Sym.Name)
 
-	e := decl.List[1]
+	e := decl.List[2]
 	require.NotNil(t, e)
 	assert.Equal(t, types.Int(), e.Type)
 }
@@ -120,7 +120,7 @@ func TestAnalyze_VariableDeclaration_Inference(t *testing.T) {
 	assert.Equal(t, types.Int(), decl.Sym.Type)
 	assert.Equal(t, "x", decl.Sym.Name)
 
-	e := decl.List[1]
+	e := decl.List[2]
 	require.NotNil(t, e)
 	assert.Equal(t, types.Int(), e.Type)
 }
@@ -174,13 +174,31 @@ func TestAnalyze_Assignment(t *testing.T) {
 	require.Len(t, fun.List, 3)
 	decl := fun.List[0]
 	assign := fun.List[1]
-	assert.Equal(t, decl.Sym, assign.Sym)
+	assert.Equal(t, decl.Sym, assign.List[0].Sym)
 }
 
 func TestAnalyze_Assignment_BeforeDeclared(t *testing.T) {
 	funcs := mustParse(t, `fun main () -> int { x = 15; return x; }`)
 
 	require.Error(t, Analyze(funcs))
+}
+
+func TestAnalyze_Assignment_InvalidLvalue(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"integer literal", `fun main () -> int { 1 = 2; return 0; }`},
+		{"arithmetic expression", `fun main () -> int { let x int = 1; x + 1 = 2; return 0; }`},
+		{"negation", `fun main () -> int { let x int = 1; -x = 2; return 0; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			funcs := mustParse(t, tt.test)
+			assert.Error(t, Analyze(funcs))
+		})
+	}
 }
 
 func TestAnalyze_Negation(t *testing.T) {
@@ -213,7 +231,7 @@ func TestAnalyze_AssignmentOp(t *testing.T) {
 	require.Len(t, fun.List, 3)
 	decl := fun.List[0]
 	assign := fun.List[1]
-	assert.Equal(t, decl.Sym, assign.Sym)
+	assert.Equal(t, decl.Sym, assign.List[0].Sym)
 }
 
 func mustParse(t *testing.T, inputStr string) []*ir.Node {

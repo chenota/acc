@@ -40,7 +40,6 @@ type Node struct {
 
 	List []*Node
 
-	Name      string
 	Signature *Signature
 
 	Sym *Sym
@@ -49,8 +48,19 @@ type Node struct {
 }
 
 type Signature struct {
+	Name   *Node
 	Params []*Node
 	Result *Node
+}
+
+// Ident returns the identifier name carried by an OpIdent node.
+func (n *Node) Ident() string {
+	if n.Op != OpIdent {
+		return ""
+	}
+
+	name, _ := n.Val.(string)
+	return name
 }
 
 // Predecessor finds the node's closest predecessor with the given op type

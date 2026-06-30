@@ -54,28 +54,29 @@ func (b *builder) genStatement(stmt *ir.Node) error {
 }
 
 func (b *builder) genAssignOp(n *ir.Node) error {
-	if len(n.List) != 1 {
-		return diagnostic.NewError(n.Pos, "assignment operator missing expression")
+	if len(n.List) != 2 {
+		return diagnostic.NewError(n.Pos, "assignment operator missing target or expression")
 	}
+	target := n.List[0]
 
 	// variable location
-	alloca := b.vars[n.Sym]
+	alloca := b.vars[target.Sym]
 	if alloca == nil {
-		return diagnostic.NewError(n.Pos, "variable used before declared: %s", n.Name)
+		return diagnostic.NewError(target.Pos, "variable used before declared: %s", target.Ident())
 	}
 
 	// load variable value
-	loadOp := b.targetFunc.appendValue(OpLoad, n.Sym.Type, b.currentBlock)
+	loadOp := b.targetFunc.appendValue(OpLoad, target.Sym.Type, b.currentBlock)
 	loadOp.Args = []*Value{alloca}
 
 	// generate expression value
-	exprVal, err := b.genExpr(n.List[0])
+	exprVal, err := b.genExpr(n.List[1])
 	if err != nil {
 		return err
 	}
 
 	// glue together with arithmetic bop
-	arithOp := b.targetFunc.insertValueAfter(exprVal, numericBopFrom(n), n.Sym.Type, exprVal.Block)
+	arithOp := b.targetFunc.insertValueAfter(exprVal, numericBopFrom(n), target.Sym.Type, exprVal.Block)
 	arithOp.Args = []*Value{loadOp, exprVal}
 
 	// insert store operation into stack location
@@ -104,18 +105,18 @@ func (b *builder) genReturn(n *ir.Node) error {
 }
 
 func (b *builder) genDecl(n *ir.Node) error {
-	if len(n.List) != 2 {
+	if len(n.List) != 3 {
 		return diagnostic.NewError(n.Pos, "variable declaration missing type or expression")
 	}
 
-	exprVal, err := b.genExpr(n.List[1])
+	exprVal, err := b.genExpr(n.List[2])
 	if err != nil {
 		return err
 	}
 
 	// make sure this isn't already allocated
 	if _, ok := b.vars[n.Sym]; ok {
-		return diagnostic.NewError(n.Pos, "variable already allocated: %s", n.Name)
+		return diagnostic.NewError(n.Pos, "variable already allocated: %s", n.List[0].Ident())
 	}
 
 	// come up with stack location for the new variable
@@ -130,18 +131,19 @@ func (b *builder) genDecl(n *ir.Node) error {
 }
 
 func (b *builder) genAssign(n *ir.Node) error {
-	if len(n.List) != 1 {
-		return diagnostic.NewError(n.Pos, "variable assignment missing expression")
+	if len(n.List) != 2 {
+		return diagnostic.NewError(n.Pos, "variable assignment missing target or expression")
 	}
+	target := n.List[0]
 
-	exprVal, err := b.genExpr(n.List[0])
+	exprVal, err := b.genExpr(n.List[1])
 	if err != nil {
 		return err
 	}
 
-	alloca := b.vars[n.Sym]
+	alloca := b.vars[target.Sym]
 	if alloca == nil {
-		return diagnostic.NewError(n.Pos, "variable used before declared: %s", n.Name)
+		return diagnostic.NewError(target.Pos, "variable used before declared: %s", target.Ident())
 	}
 
 	// insert store operation into stack location
@@ -185,7 +187,7 @@ func (b *builder) genNegate(expr *ir.Node) (*Value, error) {
 func (b *builder) genIdent(expr *ir.Node) (*Value, error) {
 	alloca := b.vars[expr.Sym]
 	if alloca == nil {
-		return nil, diagnostic.NewError(expr.Pos, "variable used before declared: %s", expr.Name)
+		return nil, diagnostic.NewError(expr.Pos, "variable used before declared: %s", expr.Ident())
 	}
 
 	loadOp := b.targetFunc.appendValue(OpLoad, expr.Type, b.currentBlock)

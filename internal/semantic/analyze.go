@@ -38,36 +38,47 @@ func analyzeStmt(scope *ir.Table, n *ir.Node) error {
 }
 
 func analyzeAssignment(scope *ir.Table, n *ir.Node) error {
-	// need an existing symbol for this ident
-	existingSym := scope.Sym(n.Name)
-	if existingSym == nil {
-		return diagnostic.NewError(n.Pos, "variable used before declaration: %v", n.Name)
+	if len(n.List) != 2 {
+		return diagnostic.NewError(n.Pos, "variable assignment missing target or expression")
+	}
+	target := n.List[0]
+	e := n.List[1]
+
+	// the parser accepts any expression as a target; reject non-lvalues before resolving it
+	if !isLvalue(target) {
+		return diagnostic.NewError(target.Pos, "invalid assignment target: expression is not assignable")
 	}
 
-	n.Sym = existingSym
-
-	// analyze the expression with hint of existing type
-	if len(n.List) != 1 {
-		return diagnostic.NewError(n.Pos, "variable assignment missing expression")
-	}
-	if err := analyzeExpr(scope, n.List[0], n.Sym.Type); err != nil {
+	// resolve the target as an expression
+	if err := analyzeExpr(scope, target, nil); err != nil {
 		return err
 	}
 
-	// make sure the expression and wanted type match
-	if !types.Equal(n.Sym.Type, n.List[0].Type) {
-		return diagnostic.NewError(n.Pos, "variable assignment with mismatched types: want %v, got %v", n.Sym.Type, n.List[0].Type)
+	// analyze the expression with hint of the target's type
+	if err := analyzeExpr(scope, e, target.Type); err != nil {
+		return err
+	}
+
+	// make sure the expression and target type match
+	if !types.Equal(target.Type, e.Type) {
+		return diagnostic.NewError(n.Pos, "variable assignment with mismatched types: want %v, got %v", target.Type, e.Type)
 	}
 
 	return nil
 }
 
+// isLvalue reports whether an expression can appear as the target of an assignment.
+func isLvalue(n *ir.Node) bool {
+	return n.Op == ir.OpIdent
+}
+
 func analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
-	if len(n.List) != 2 {
+	if len(n.List) != 3 {
 		return diagnostic.NewError(n.Pos, "variable declaration missing components")
 	}
-	typeNode := n.List[0]
-	e := n.List[1]
+	nameNode := n.List[0]
+	typeNode := n.List[1]
+	e := n.List[2]
 
 	var hint *types.Type
 	if typeNode != nil {
@@ -95,9 +106,9 @@ func analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 	}
 
 	// register self in scope; will get nil if variable already exists in scope
-	sym := scope.Register(n.Name, e.Type)
+	sym := scope.Register(nameNode.Ident(), e.Type)
 	if sym == nil {
-		return diagnostic.NewError(n.Pos, "variable re-declared: %v", n.Name)
+		return diagnostic.NewError(nameNode.Pos, "variable re-declared: %v", nameNode.Ident())
 	}
 	n.Sym = sym
 
@@ -138,9 +149,9 @@ func analyzeNegate(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 
 func analyzeIdent(scope *ir.Table, n *ir.Node) error {
 	// need an existing symbol for this ident
-	existingSym := scope.Sym(n.Name)
+	existingSym := scope.Sym(n.Ident())
 	if existingSym == nil {
-		return diagnostic.NewError(n.Pos, "variable used before declaration: %v", n.Name)
+		return diagnostic.NewError(n.Pos, "variable used before declaration: %v", n.Ident())
 	}
 
 	n.Type = existingSym.Type
@@ -204,9 +215,10 @@ func analyzeFunction(scope *ir.Table, f *ir.Node) error {
 	f.Type = types.Function(paramTypes, f.Signature.Result.Type)
 
 	// register self onto scope
-	sym := scope.Register(f.Name, f.Type)
+	name := f.Signature.Name
+	sym := scope.Register(name.Ident(), f.Type)
 	if sym == nil {
-		return diagnostic.NewError(f.Pos, "symbol '%s' already declared", f.Name)
+		return diagnostic.NewError(name.Pos, "symbol '%s' already declared", name.Ident())
 	}
 	f.Sym = sym
 
@@ -215,9 +227,10 @@ func analyzeFunction(scope *ir.Table, f *ir.Node) error {
 
 	// register parameters into the function scope so the body can reference them
 	for _, p := range f.Signature.Params {
-		sym := funScope.Register(p.Name, p.Type)
+		pName := p.List[0]
+		sym := funScope.Register(pName.Ident(), p.Type)
 		if sym == nil {
-			return diagnostic.NewError(p.Pos, "parameter '%s' already declared", p.Name)
+			return diagnostic.NewError(pName.Pos, "parameter '%s' already declared", pName.Ident())
 		}
 		p.Sym = sym
 	}
@@ -233,12 +246,12 @@ func analyzeFunction(scope *ir.Table, f *ir.Node) error {
 }
 
 func analyzeParam(p *ir.Node) error {
-	if len(p.List) != 1 {
+	if len(p.List) != 2 {
 		return diagnostic.NewError(p.Pos, "parameter missing type")
 	}
 
-	// pull the resolved type from the type node up into the param node
-	p.Type = p.List[0].Type
+	// pull the resolved type from the type node (List[1], after the name) up into the param node
+	p.Type = p.List[1].Type
 
 	return nil
 }

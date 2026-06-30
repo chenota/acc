@@ -22,9 +22,10 @@ func TestParser_MainFunc(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	assert.Equal(t, fun.Name, "main")
-
 	require.NotNil(t, fun.Signature)
+	require.NotNil(t, fun.Signature.Name)
+	assert.Equal(t, "main", fun.Signature.Name.Ident())
+
 	require.NotNil(t, fun.Signature.Result)
 	assert.True(t, types.Equal(types.Int(), fun.Signature.Result.Type))
 
@@ -237,7 +238,7 @@ func TestParser_Ident(t *testing.T) {
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
 	assert.Equal(t, ir.OpIdent, e.Op)
-	assert.Equal(t, "_burger123", e.Name)
+	assert.Equal(t, "_burger123", e.Ident())
 }
 
 func TestParser_Declaration_WithType(t *testing.T) {
@@ -253,9 +254,12 @@ func TestParser_Declaration_WithType(t *testing.T) {
 	decl := fun.List[0]
 	assert.Equal(t, ir.OpDeclaration, decl.Op)
 
-	require.Len(t, decl.List, 2)
-	varType := decl.List[0]
-	expr := decl.List[1]
+	require.Len(t, decl.List, 3)
+	name := decl.List[0]
+	varType := decl.List[1]
+	expr := decl.List[2]
+	assert.Equal(t, ir.OpIdent, name.Op)
+	assert.Equal(t, "x", name.Ident())
 	assert.Equal(t, ir.OpType, varType.Op)
 	assert.Equal(t, ir.OpInt, expr.Op)
 }
@@ -273,9 +277,12 @@ func TestParser_Declaration_WithoutType(t *testing.T) {
 	decl := fun.List[0]
 	assert.Equal(t, ir.OpDeclaration, decl.Op)
 
-	require.Len(t, decl.List, 2)
-	varType := decl.List[0]
-	expr := decl.List[1]
+	require.Len(t, decl.List, 3)
+	name := decl.List[0]
+	varType := decl.List[1]
+	expr := decl.List[2]
+	assert.Equal(t, ir.OpIdent, name.Op)
+	assert.Equal(t, "x", name.Ident())
 	assert.Nil(t, varType)
 	assert.Equal(t, ir.OpInt, expr.Op)
 }
@@ -293,9 +300,31 @@ func TestParser_Assignment(t *testing.T) {
 	decl := fun.List[0]
 	assert.Equal(t, ir.OpAssignment, decl.Op)
 
-	require.Len(t, decl.List, 1)
-	expr := decl.List[0]
+	require.Len(t, decl.List, 2)
+	target := decl.List[0]
+	expr := decl.List[1]
+	assert.Equal(t, ir.OpIdent, target.Op)
+	assert.Equal(t, "x", target.Ident())
 	assert.Equal(t, ir.OpInt, expr.Op)
+}
+
+func TestParser_Assignment_NonIdentTarget(t *testing.T) {
+	// the parser blindly accepts any expression as an assignment target;
+	// lvalue validity is enforced later in semantic analysis
+	tokens := requireTokenize(t, `fun main () -> int { x + 1 = 5; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	assign := fun.List[0]
+	assert.Equal(t, ir.OpAssignment, assign.Op)
+
+	require.Len(t, assign.List, 2)
+	assert.Equal(t, ir.OpPlus, assign.List[0].Op)
 }
 
 func TestParser_StmtList(t *testing.T) {
@@ -323,8 +352,11 @@ func TestParser_AssignmentOp(t *testing.T) {
 	decl := fun.List[0]
 	assert.Equal(t, ir.OpPlusEq, decl.Op)
 
-	require.Len(t, decl.List, 1)
-	expr := decl.List[0]
+	require.Len(t, decl.List, 2)
+	target := decl.List[0]
+	expr := decl.List[1]
+	assert.Equal(t, ir.OpIdent, target.Op)
+	assert.Equal(t, "x", target.Ident())
 	assert.Equal(t, ir.OpInt, expr.Op)
 }
 
@@ -335,9 +367,9 @@ func TestParser_MultiGloblFunc(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, funcs, 3)
-	assert.Equal(t, "test", funcs[0].Name)
-	assert.Equal(t, "test2", funcs[1].Name)
-	assert.Equal(t, "main", funcs[2].Name)
+	assert.Equal(t, "test", funcs[0].Signature.Name.Ident())
+	assert.Equal(t, "test2", funcs[1].Signature.Name.Ident())
+	assert.Equal(t, "main", funcs[2].Signature.Name.Ident())
 }
 
 func TestParser_NoParams(t *testing.T) {
@@ -367,12 +399,13 @@ func TestParser_SingleParam(t *testing.T) {
 
 	param := fun.Signature.Params[0]
 	assert.Equal(t, ir.OpParam, param.Op)
-	assert.Equal(t, "x", param.Name)
 	assert.Equal(t, fun, param.Parent)
 
-	require.Len(t, param.List, 1)
-	assert.Equal(t, ir.OpType, param.List[0].Op)
-	assert.True(t, types.Equal(types.Int(), param.List[0].Type))
+	require.Len(t, param.List, 2)
+	assert.Equal(t, ir.OpIdent, param.List[0].Op)
+	assert.Equal(t, "x", param.List[0].Ident())
+	assert.Equal(t, ir.OpType, param.List[1].Op)
+	assert.True(t, types.Equal(types.Int(), param.List[1].Type))
 }
 
 func TestParser_MultipleParams(t *testing.T) {
@@ -387,16 +420,17 @@ func TestParser_MultipleParams(t *testing.T) {
 	require.NotNil(t, fun.Signature)
 	require.Len(t, fun.Signature.Params, 3)
 
-	for i, name := range []string{"x", "y", "z"} {
-		param := fun.Signature.Params[i]
-		assert.Equal(t, ir.OpParam, param.Op)
-		assert.Equal(t, name, param.Name)
-		assert.Equal(t, fun, param.Parent)
+	assert.Equal(t, ir.OpParam, fun.Signature.Params[0].Op)
+	assert.Equal(t, "x", fun.Signature.Params[0].List[0].Ident())
+	assert.True(t, types.Equal(types.Int(), fun.Signature.Params[0].List[1].Type))
 
-		require.Len(t, param.List, 1)
-		assert.Equal(t, ir.OpType, param.List[0].Op)
-		assert.True(t, types.Equal(types.Int(), param.List[0].Type))
-	}
+	assert.Equal(t, ir.OpParam, fun.Signature.Params[1].Op)
+	assert.Equal(t, "y", fun.Signature.Params[1].List[0].Ident())
+	assert.True(t, types.Equal(types.Int(), fun.Signature.Params[1].List[1].Type))
+
+	assert.Equal(t, ir.OpParam, fun.Signature.Params[2].Op)
+	assert.Equal(t, "z", fun.Signature.Params[2].List[0].Ident())
+	assert.True(t, types.Equal(types.Int(), fun.Signature.Params[2].List[1].Type))
 }
 
 func TestParser_ParamErr(t *testing.T) {
