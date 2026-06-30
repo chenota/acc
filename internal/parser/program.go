@@ -16,7 +16,7 @@ func ParseProgram(t *lexer.TokenList) ([]*ir.Node, error) {
 
 	// consume functions until we can't
 	for {
-		if s, ok := p.parseGloblFunction(); ok {
+		if s, ok := p.parseFunction(); ok {
 			globalStmts = append(globalStmts, s)
 		} else {
 			break
@@ -266,7 +266,7 @@ func (p *parser) parseReturn() (*ir.Node, bool) {
 	return n, true
 }
 
-func (p *parser) parseGloblFunction() (*ir.Node, bool) {
+func (p *parser) parseFunction() (*ir.Node, bool) {
 	loc := p.t.Mark()
 
 	n := &ir.Node{
