@@ -38,7 +38,7 @@ func TestParser_MainFunc(t *testing.T) {
 	assert.NotNil(t, e.Val.(*big.Int))
 }
 
-func TestParser_Err(t *testing.T) {
+func TestParser_FunctionErr(t *testing.T) {
 	tests := []struct {
 		name string
 		test string
@@ -50,14 +50,46 @@ func TestParser_Err(t *testing.T) {
 		{"missing bracket 2", `fun main () -> int return 0; }`},
 		{"missing fun keyword", `main () -> int { return 0; }`},
 		{"missing fun name", `fun () -> int { return 0; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := requireTokenize(t, tt.test)
+			_, err := ParseProgram(tokens)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestParser_StmtErr(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
 		{"missing semicolon", `fun main () -> int { return 0 }`},
+		{"let without equals", `fun main () -> int { let x 10; }`},
+		{"assignment without expression", `fun main () -> int { x = ; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := requireTokenize(t, tt.test)
+			_, err := ParseProgram(tokens)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestParser_ExprErr(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
 		{"missing int", `fun main () -> int { return ; }`},
 		{"extra int", `fun main () -> int { return 0 0; }`},
 		{"missing right operand", `fun main () -> int { return 4 + ;}`},
 		{"missing left operand", `fun main () -> int { return / 5; }`},
 		{"operator by itself", `fun main () -> int { return *; }`},
-		{"let without equals", `fun main () -> int { let x 10; }`},
-		{"assignment without expression", `fun main () -> int { x = ; }`},
 	}
 
 	for _, tt := range tests {
