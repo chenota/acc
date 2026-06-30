@@ -290,12 +290,33 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 	}
 	n.Name = name
 
-	// expect zero arguments for now
 	if _, ok := p.t.Expect(lexer.KLParen); !ok {
 		p.markErr("expected open parenthesis")
 		p.t.Restore(loc)
 		return nil, false
 	}
+
+	var params []*ir.Node
+	if param, ok := p.parseParam(); ok {
+		param.Parent = n
+		params = append(params, param)
+
+		for {
+			if _, ok := p.t.Expect(lexer.KComma); !ok {
+				break
+			}
+			if param, ok := p.parseParam(); ok {
+				param.Parent = n
+				params = append(params, param)
+			} else {
+				p.markErr("expected function parameter following comma")
+				p.t.Restore(loc)
+				return nil, false
+			}
+		}
+	}
+	n.Signature.Params = params
+
 	if _, ok := p.t.Expect(lexer.KRParen); !ok {
 		p.markErr("expected closing parenthesis to match open parenthesis")
 		p.t.Restore(loc)
@@ -327,6 +348,33 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 	for _, child := range n.List {
 		child.Parent = n
 	}
+
+	return n, true
+}
+
+func (p *parser) parseParam() (*ir.Node, bool) {
+	loc := p.t.Mark()
+
+	n := &ir.Node{
+		Op:  ir.OpParam,
+		Pos: p.t.Pos(),
+	}
+
+	name, ok := p.t.ExpectIdentifier()
+	if !ok {
+		p.markErr("expected identifier")
+		p.t.Restore(loc)
+		return nil, false
+	}
+	n.Name = name
+
+	paramType, ok := p.parseType()
+	if !ok {
+		p.t.Restore(loc)
+		return nil, false
+	}
+	paramType.Parent = n
+	n.List = []*ir.Node{paramType}
 
 	return n, true
 }

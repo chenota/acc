@@ -26,7 +26,7 @@ func TestParser_MainFunc(t *testing.T) {
 
 	require.NotNil(t, fun.Signature)
 	require.NotNil(t, fun.Signature.Result)
-	assert.Equal(t, types.Int(), fun.Signature.Result.Type)
+	assert.True(t, types.Equal(types.Int(), fun.Signature.Result.Type))
 
 	require.Len(t, fun.List, 1)
 	ret := fun.List[0]
@@ -306,6 +306,88 @@ func TestParser_MultiGloblFunc(t *testing.T) {
 	assert.Equal(t, "test", funcs[0].Name)
 	assert.Equal(t, "test2", funcs[1].Name)
 	assert.Equal(t, "main", funcs[2].Name)
+}
+
+func TestParser_NoParams(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { return 0; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.NotNil(t, fun.Signature)
+	assert.Empty(t, fun.Signature.Params)
+}
+
+func TestParser_SingleParam(t *testing.T) {
+	tokens := requireTokenize(t, `fun main (x int) -> int { return 0; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.NotNil(t, fun.Signature)
+	require.Len(t, fun.Signature.Params, 1)
+
+	param := fun.Signature.Params[0]
+	assert.Equal(t, ir.OpParam, param.Op)
+	assert.Equal(t, "x", param.Name)
+	assert.Equal(t, fun, param.Parent)
+
+	require.Len(t, param.List, 1)
+	assert.Equal(t, ir.OpType, param.List[0].Op)
+	assert.True(t, types.Equal(types.Int(), param.List[0].Type))
+}
+
+func TestParser_MultipleParams(t *testing.T) {
+	tokens := requireTokenize(t, `fun main (x int, y int, z int) -> int { return 0; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.NotNil(t, fun.Signature)
+	require.Len(t, fun.Signature.Params, 3)
+
+	for i, name := range []string{"x", "y", "z"} {
+		param := fun.Signature.Params[i]
+		assert.Equal(t, ir.OpParam, param.Op)
+		assert.Equal(t, name, param.Name)
+		assert.Equal(t, fun, param.Parent)
+
+		require.Len(t, param.List, 1)
+		assert.Equal(t, ir.OpType, param.List[0].Op)
+		assert.True(t, types.Equal(types.Int(), param.List[0].Type))
+	}
+}
+
+func TestParser_ParamErr(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"trailing comma", `fun main (x int,) -> int { return 0; }`},
+		{"leading comma", `fun main (, x int) -> int { return 0; }`},
+		{"double comma", `fun main (x int,, y int) -> int { return 0; }`},
+		{"missing comma", `fun main (x int y int) -> int { return 0; }`},
+		{"missing param type", `fun main (x) -> int { return 0; }`},
+		{"missing param name", `fun main (int) -> int { return 0; }`},
+		{"comma only", `fun main (,) -> int { return 0; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := requireTokenize(t, tt.test)
+			_, err := ParseProgram(tokens)
+			assert.Error(t, err)
+		})
+	}
 }
 
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {
