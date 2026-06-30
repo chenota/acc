@@ -130,14 +130,9 @@ Another low-hanging fruit I'd like to knock out is assignment operators since ev
              | <Ident> ("+=" | "-=" | "*=" | "/=") <Expression> ";"
 ```
 
-### Vertical Slice 6: Functions [Work in Progress]
+### Vertical Slice 6: Global Functions [Work in Progress]
 
-We can build on Vertical Slice 3 and add the last foundational construct we need before introducing a format print by adding functions. I'm going crazy with this one and it's by far my most ambitious vertical slice, so much so that I need a list for everything that's getting added!
-
-- Globally-defined functions
-- Closures
-- Higher-order functions
-- Smarter register allocation
+We can build on Vertical Slice 3 and add the last foundational construct we need before introducing a format print by adding functions.
 
 #### Program Grammar (PEG)
 
@@ -149,34 +144,21 @@ We can build on Vertical Slice 3 and add the last foundational construct we need
               | "let" <Ident> <Type>? "=" <Expression> ";"
               | <Ident> "=" <Expression> ";"
               | <Ident> ("+=" | "-=" | "*=" | "/=") <Expression> ";"
-<Paramlist>  := <Ident> <Type> <Paramlist'>
-              | nil
-<Paramlist'> := "," <Ident> <Type> <Paramlist'> 
-              | nil
 ```
 
 #### Expression Grammar (CFG)
 
 ```
-<Atom>       := "fun" <Ident>? "(" <Paramlist> ")" "->" <Type> <Block>
-<Paramlist>  := <Ident> <Type> <Paramlist'>
-              | nil
-<Paramlist'> := "," <Ident> <Type> <Paramlist'> 
-              | nil
+<Unary>      := "-" <Call>
+              | <Call>
+<Call>       := <Atom> "(" <Exprlist> ")"
+              | <Atom>
 ```
 
-#### Type Grammar (CFG)
+### Vertical Slice 7: Lambda Functions [Not Started]
 
-```
-<Type>      := <Atom> | <Function>
-<Function>  := "(" <Typelist> ")" "->" <Type>
-<Atom>      := "int"
-<Typelist>  := <Type> <Typelist'>
-             | nil
-<Typelist'> := "," <Type> <Typelist'>
-             | nil
-```
+Lambda functions let `acc` use functions as values.
 
-### Vertical Slice 7: String Literals and File Output [Not Started]
+### Vertical Slice 8: String Literals and File Output [Not Started]
 
 With functions and variables out of the way, we can finally add a format print which greatly expands the usefulness of the `acc` language.
