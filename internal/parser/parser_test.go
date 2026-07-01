@@ -456,6 +456,144 @@ func TestParser_ParamErr(t *testing.T) {
 	}
 }
 
+func TestParser_Call_NoArgs(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { return f(); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	call := ret.List[0]
+	assert.Equal(t, ir.OpCall, call.Op)
+
+	// list holds only the callee when there are no arguments
+	require.Len(t, call.List, 1)
+	assert.Equal(t, ir.OpIdent, call.List[0].Op)
+	assert.Equal(t, "f", call.List[0].Ident())
+}
+
+func TestParser_Call_OneArg(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { return f(1); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	call := fun.List[0].List[0]
+	assert.Equal(t, ir.OpCall, call.Op)
+
+	require.Len(t, call.List, 2)
+	assert.Equal(t, ir.OpIdent, call.List[0].Op)
+	assert.Equal(t, "f", call.List[0].Ident())
+	assert.Equal(t, ir.OpInt, call.List[1].Op)
+}
+
+func TestParser_Call_MultipleArgs(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { return f(1, 2, 3); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	call := fun.List[0].List[0]
+	assert.Equal(t, ir.OpCall, call.Op)
+
+	require.Len(t, call.List, 4)
+	assert.Equal(t, "f", call.List[0].Ident())
+	assert.Equal(t, ir.OpInt, call.List[1].Op)
+	assert.Equal(t, ir.OpInt, call.List[2].Op)
+	assert.Equal(t, ir.OpInt, call.List[3].Op)
+}
+
+func TestParser_Call_Chained(t *testing.T) {
+	// calls are left-associative
+	tokens := requireTokenize(t, `fun main () -> int { return f()(); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	call := fun.List[0].List[0]
+	assert.Equal(t, ir.OpCall, call.Op)
+
+	require.Len(t, call.List, 1)
+	inner := call.List[0]
+	assert.Equal(t, ir.OpCall, inner.Op)
+	require.Len(t, inner.List, 1)
+	assert.Equal(t, "f", inner.List[0].Ident())
+}
+
+func TestParser_Call_NegationPrecedence(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { return -f(); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	e := fun.List[0].List[0]
+	assert.Equal(t, ir.OpNegate, e.Op)
+
+	require.Len(t, e.List, 1)
+	assert.Equal(t, ir.OpCall, e.List[0].Op)
+}
+
+func TestParser_Call_BinaryPrecedence(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { return a + f(); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	e := fun.List[0].List[0]
+	assert.Equal(t, ir.OpPlus, e.Op)
+
+	require.Len(t, e.List, 2)
+	assert.Equal(t, ir.OpIdent, e.List[0].Op)
+	assert.Equal(t, ir.OpCall, e.List[1].Op)
+}
+
+func TestParser_CallErr(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"trailing comma", `fun main () -> int { return f(1,); }`},
+		{"leading comma", `fun main () -> int { return f(,1); }`},
+		{"double comma", `fun main () -> int { return f(1,,2); }`},
+		{"missing comma", `fun main () -> int { return f(1 2); }`},
+		{"unclosed paren", `fun main () -> int { return f(1; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := requireTokenize(t, tt.test)
+			_, err := ParseProgram(tokens)
+			assert.Error(t, err)
+		})
+	}
+}
+
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {
 	tokens, err := lexer.Tokenize(strings.NewReader(input))
 	require.NoError(t, err)

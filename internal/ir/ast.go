@@ -29,6 +29,7 @@ const (
 	OpMinusEq
 	OpTimesEq
 	OpDivEq
+	OpCall
 )
 
 type Node struct {

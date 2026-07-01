@@ -108,7 +108,8 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 }
 
 func (p *parser) led(left *ir.Node, op lexer.Token) (*ir.Node, error) {
-	if bopFrom(op) != ir.OpUnknown {
+	switch {
+	case bopFrom(op) != ir.OpUnknown:
 		var rightBindingPower int
 		if isRightAssociative(op) {
 			rightBindingPower = bindingPower(op) - 1
@@ -126,9 +127,37 @@ func (p *parser) led(left *ir.Node, op lexer.Token) (*ir.Node, error) {
 			List: []*ir.Node{left, right},
 			Pos:  left.Pos,
 		}, nil
-	}
+	case op.Kind == lexer.KLParen:
+		n := &ir.Node{
+			Op:   ir.OpCall,
+			Pos:  left.Pos,
+			List: []*ir.Node{left},
+		}
 
-	return nil, diagnostic.NewError(op.Pos, "expected infix operator")
+		// skip args if we encounter an rparen
+		if next, ok := p.t.Peek(); ok && next.Kind != lexer.KRParen {
+			for {
+				arg, err := p.expr(0)
+				if err != nil {
+					return nil, err
+				}
+				arg.Parent = n
+				n.List = append(n.List, arg)
+				if _, ok := p.t.Expect(lexer.KComma); !ok {
+					break
+				}
+			}
+		}
+
+		// expect matching rparen
+		if _, ok := p.t.Expect(lexer.KRParen); !ok {
+			return nil, diagnostic.NewError(p.t.Pos(), "expected matching right parenthisis")
+		}
+
+		return n, nil
+	default:
+		return nil, diagnostic.NewError(op.Pos, "expected infix operator")
+	}
 }
 
 func (p *parser) nextTokenBindingPower() int {
@@ -143,7 +172,7 @@ func isRightAssociative(lexer.Token) bool {
 }
 
 func isOperator(t lexer.Token) bool {
-	return bopFrom(t) != ir.OpUnknown
+	return bopFrom(t) != ir.OpUnknown || t.Kind == lexer.KLParen
 }
 
 func bindingPower(t lexer.Token) int {
@@ -152,6 +181,8 @@ func bindingPower(t lexer.Token) int {
 		return 10
 	case lexer.KStar, lexer.KDiv:
 		return 20
+	case lexer.KLParen:
+		return 40
 	default:
 		return 0
 	}
