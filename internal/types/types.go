@@ -19,8 +19,8 @@ type Type struct {
 	kind Kind // making this private so outside callers are forced to use Equal.
 
 	// for KFunction
-	Inputs []*Type
-	Output *Type
+	params []*Type
+	result *Type
 }
 
 func Equal(a *Type, b *Type) bool {
@@ -30,14 +30,14 @@ func Equal(a *Type, b *Type) bool {
 
 	// function comparison
 	if a.kind == KFunction && b.kind == KFunction {
-		if !Equal(a.Output, b.Output) {
+		if !Equal(a.result, b.result) {
 			return false
 		}
-		if len(a.Inputs) != len(b.Inputs) {
+		if len(a.params) != len(b.params) {
 			return false
 		}
-		for i := range a.Inputs {
-			if !Equal(a.Inputs[i], b.Inputs[i]) {
+		for i := range a.params {
+			if !Equal(a.params[i], b.params[i]) {
 				return false
 			}
 		}
@@ -65,12 +65,12 @@ func (t *Type) String() string {
 	case KInt:
 		return "int"
 	case KFunction:
-		params := make([]string, len(t.Inputs))
-		for i := range t.Inputs {
-			params[i] = t.Inputs[i].String()
+		params := make([]string, len(t.params))
+		for i := range t.params {
+			params[i] = t.params[i].String()
 		}
 
-		return fmt.Sprintf("(%s) -> %v", strings.Join(params, ","), t.Output)
+		return fmt.Sprintf("(%s) -> %v", strings.Join(params, ","), t.result)
 	default:
 		return "unknown"
 	}
@@ -84,6 +84,30 @@ func (t *Type) IsUntypedNumeric() bool {
 	return t.kind == KUntypedInt
 }
 
+func (t *Type) IsFunction() bool {
+	if t == nil {
+		return false
+	}
+
+	return t.kind == KFunction
+}
+
+func (t *Type) Params() []*Type {
+	if t == nil || t.kind != KFunction {
+		return nil
+	}
+
+	return t.params
+}
+
+func (t *Type) Result() *Type {
+	if t == nil || t.kind != KFunction {
+		return nil
+	}
+
+	return t.result
+}
+
 func Int() *Type {
 	return &Type{kind: KInt}
 }
@@ -92,11 +116,11 @@ func UntypedInt() *Type {
 	return &Type{kind: KUntypedInt}
 }
 
-func Function(inputs []*Type, output *Type) *Type {
+func Function(params []*Type, result *Type) *Type {
 	return &Type{
 		kind:   KFunction,
-		Inputs: inputs,
-		Output: output,
+		params: params,
+		result: result,
 	}
 }
 

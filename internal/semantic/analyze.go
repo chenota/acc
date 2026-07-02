@@ -12,6 +12,13 @@ import (
 func Analyze(functions []*ir.Node) error {
 	globalScope := ir.NewTable()
 
+	// register every global function's signature first
+	for _, f := range functions {
+		if err := registerFunction(globalScope, f); err != nil {
+			return err
+		}
+	}
+
 	for _, f := range functions {
 		if err := analyzeFunction(globalScope, f); err != nil {
 			return err
@@ -117,8 +124,6 @@ func analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 
 func analyzeExpr(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 	switch n.Op {
-	case ir.OpFunction:
-		return analyzeFunction(scope, n)
 	case ir.OpInt:
 		return analyzeInt(n, hint)
 	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
@@ -127,9 +132,55 @@ func analyzeExpr(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 		return analyzeIdent(scope, n)
 	case ir.OpNegate:
 		return analyzeNegate(scope, n, hint)
+	case ir.OpCall:
+		return analyzeCall(scope, n)
 	default:
 		return diagnostic.NewError(n.Pos, "unknown expression operation: %d", n.Op)
 	}
+}
+
+func analyzeCall(scope *ir.Table, n *ir.Node) error {
+	if len(n.List) < 1 {
+		return diagnostic.NewError(n.Pos, "call without a callee")
+	}
+
+	// analyze the expression being called
+	callee := n.List[0]
+	if err := analyzeExpr(scope, callee, nil); err != nil {
+		return err
+	}
+
+	// make sure the callee is a function
+	if !callee.Type.IsFunction() {
+		return diagnostic.NewError(n.Pos, "function call on non-function")
+	}
+
+	args := n.List[1:]
+	params := callee.Type.Params()
+
+	// should have same number of params and args
+	if len(params) != len(args) {
+		return diagnostic.NewError(n.Pos, "mismatched number of arguments: wanted %d, got %d", len(params), len(args))
+	}
+
+	// analyze each argument and make sure its type lines up with that of the matching parameter
+	for i := range args {
+		arg := args[i]
+		param := params[i]
+
+		if err := analyzeExpr(scope, arg, param); err != nil {
+			return err
+		}
+
+		if !types.Equal(param, arg.Type) {
+			return diagnostic.NewError(arg.Pos, "type mismatch for call argument: wanted %v, got %v", param, arg.Type)
+		}
+	}
+
+	// now that we know all is good mark type of call expression as function result
+	n.Type = callee.Type.Result()
+
+	return nil
 }
 
 func analyzeNegate(scope *ir.Table, n *ir.Node, hint *types.Type) error {
@@ -203,7 +254,7 @@ func analyzeBop(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 	return nil
 }
 
-func analyzeFunction(scope *ir.Table, f *ir.Node) error {
+func registerFunction(scope *ir.Table, f *ir.Node) error {
 	// resolve parameter types and set own type
 	var paramTypes []*types.Type
 	for _, p := range f.Signature.Params {
@@ -222,6 +273,10 @@ func analyzeFunction(scope *ir.Table, f *ir.Node) error {
 	}
 	f.Sym = sym
 
+	return nil
+}
+
+func analyzeFunction(scope *ir.Table, f *ir.Node) error {
 	// need a child scope for function body
 	funScope := scope.NewChild()
 
@@ -264,7 +319,7 @@ func analyzeReturn(scope *ir.Table, r *ir.Node) error {
 	if currentFunc == nil {
 		return diagnostic.NewError(r.Pos, "return statement appears outside of a function definition")
 	}
-	expectedOut := currentFunc.Type.Output
+	expectedOut := currentFunc.Type.Result()
 
 	// determine type of sub-expression
 	e := r.List[0]

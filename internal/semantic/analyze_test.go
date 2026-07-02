@@ -234,6 +234,94 @@ func TestAnalyze_AssignmentOp(t *testing.T) {
 	assert.Equal(t, decl.Sym, assign.List[0].Sym)
 }
 
+func TestAnalyze_Call(t *testing.T) {
+	funcs := mustParse(t, `fun f (x int) -> int { return x; } fun main () -> int { return f(1); }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 2)
+	f := funcs[0]
+	main := funcs[1]
+
+	require.Len(t, main.List, 1)
+	ret := main.List[0]
+	require.Len(t, ret.List, 1)
+	call := ret.List[0]
+	assert.Equal(t, ir.OpCall, call.Op)
+
+	// the call expression takes the callee's result type
+	assert.True(t, types.Equal(types.Int(), call.Type))
+
+	// callee resolves to the function's symbol and function type
+	require.Len(t, call.List, 2)
+	callee := call.List[0]
+	require.NotNil(t, callee.Sym)
+	assert.Equal(t, f.Sym, callee.Sym)
+	assert.True(t, types.Equal(types.Function([]*types.Type{types.Int()}, types.Int()), callee.Type))
+
+	// the untyped literal argument is resolved to the parameter type
+	assert.True(t, types.Equal(types.Int(), call.List[1].Type))
+}
+
+func TestAnalyze_Call_ZeroArgs(t *testing.T) {
+	funcs := mustParse(t, `fun f () -> int { return 0; } fun main () -> int { return f(); }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 2)
+	main := funcs[1]
+
+	require.Len(t, main.List, 1)
+	call := main.List[0].List[0]
+	assert.Equal(t, ir.OpCall, call.Op)
+
+	require.Len(t, call.List, 1)
+	assert.True(t, types.Equal(types.Int(), call.Type))
+}
+
+func TestAnalyze_CallErr(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"non-function callee", `fun main () -> int { let x int = 1; return x(1); }`},
+		{"too few args", `fun f (x int) -> int { return x; } fun main () -> int { return f(); }`},
+		{"too many args", `fun f (x int) -> int { return x; } fun main () -> int { return f(1, 2); }`},
+		{"undefined callee", `fun main () -> int { return g(1); }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			funcs := mustParse(t, tt.test)
+			assert.Error(t, Analyze(funcs))
+		})
+	}
+}
+
+func TestAnalyze_ForwardReference(t *testing.T) {
+	// main calls f, which is declared after main
+	funcs := mustParse(t, `fun main () -> int { return f(1); } fun f (x int) -> int { return x; }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 2)
+	main := funcs[0]
+	f := funcs[1]
+
+	// the forward call actually resolved to the later function's symbol
+	require.Len(t, main.List, 1)
+	call := main.List[0].List[0]
+	require.Equal(t, ir.OpCall, call.Op)
+	require.Len(t, call.List, 2)
+	assert.Equal(t, f.Sym, call.List[0].Sym)
+}
+
+func TestAnalyze_DuplicateFunction(t *testing.T) {
+	funcs := mustParse(t, `fun f () -> int { return 0; } fun f () -> int { return 1; } fun main () -> int { return 0; }`)
+
+	require.Error(t, Analyze(funcs))
+}
+
 func mustParse(t *testing.T, inputStr string) []*ir.Node {
 	t.Helper()
 
