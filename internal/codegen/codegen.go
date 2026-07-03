@@ -154,9 +154,19 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateDiv(v)...)
 	case ssa.OpNegate:
 		insts = append(insts, generateNegate(v)...)
+	case ssa.OpCopy:
+		insts = append(insts, generateCopy(v))
 	}
 
 	return insts
+}
+
+func generateCopy(v *ssa.Value) Inst {
+	return Inst{
+		Op:   movOp(v.Type.Size()),
+		Src1: toArg(v.Args[0]),
+		Dest: toArg(v),
+	}
 }
 
 func generateNegate(v *ssa.Value) []Inst {

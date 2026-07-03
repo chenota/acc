@@ -31,18 +31,18 @@ func regalloc(f *Func) {
 	r := newRegisterAllocater(registerFile)
 
 	r.prepareReturns(f)
-	prepareDivides(f)
+	lowerDivides(f)
 
 	for _, curr := range intervals {
 		r.expireOldIntervals(curr.Start)
 
+		for _, reg := range curr.Value.Clobbers {
+			r.evictRegister(f, reg)
+		}
+
 		// current is pre-filled we must spill the existing value if something is using it
 		if curr.Value.Loc.Kind == LocRegister {
 			r.processPreAllocatedInterval(f, curr)
-			// idivl overwrites %edx so evict any value live there
-			if curr.Value.Op == OpDivide {
-				r.evictRegister(f, register.RegD)
-			}
 			continue
 		}
 
@@ -60,10 +60,19 @@ func regalloc(f *Func) {
 	r.injectLoadsAndStores(f)
 }
 
-func prepareDivides(f *Func) {
-	for _, v := range f.OrderedValues() {
-		if v.Op == OpDivide {
-			v.Loc = NewReg(register.RegA) // divide always goes in register A
+func lowerDivides(f *Func) {
+	for _, b := range f.Blocks {
+		for _, v := range slices.Clone(b.Values) {
+			if v.Op != OpDivide {
+				continue
+			}
+
+			copy := f.insertValueBefore(v, OpCopy, v.Args[0].Type, b)
+			copy.Args = []*Value{v.Args[0]}
+			v.Args[0] = copy
+
+			v.Loc = NewReg(register.RegA)
+			v.Clobbers = []register.Register{register.RegD}
 		}
 	}
 }
