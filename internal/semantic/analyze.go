@@ -52,7 +52,7 @@ func analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 	e := n.List[1]
 
 	// the parser accepts any expression as a target; reject non-lvalues before resolving it
-	if !isLvalue(target) {
+	if !target.IsLValue() {
 		return diagnostic.NewError(target.Pos, "invalid assignment target: expression is not assignable")
 	}
 
@@ -72,11 +72,6 @@ func analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 	}
 
 	return nil
-}
-
-// isLvalue reports whether an expression can appear as the target of an assignment.
-func isLvalue(n *ir.Node) bool {
-	return n.Op == ir.OpIdent
 }
 
 func analyzeDeclaration(scope *ir.Table, n *ir.Node) error {

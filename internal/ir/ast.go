@@ -80,3 +80,11 @@ func (n *Node) Predecessor(op Op) *Node {
 
 	return nil
 }
+
+func (n *Node) IsLValue() bool {
+	if n == nil {
+		return false
+	}
+
+	return n.Op == OpIdent
+}
