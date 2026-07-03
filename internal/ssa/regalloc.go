@@ -12,11 +12,23 @@ type interval struct {
 	End   int
 }
 
-func regalloc(f *Func, registers registerGroup) {
+type registerGroup struct {
+	working      []register.Register
+	scratch      []register.Register
+	returnTarget register.Register
+}
+
+var registerFile = registerGroup{
+	working:      []register.Register{register.Reg8, register.Reg9, register.Reg10, register.Reg11, register.Reg12, register.Reg13},
+	scratch:      []register.Register{register.Reg14, register.Reg15},
+	returnTarget: register.RegA,
+}
+
+func regalloc(f *Func) {
 	timeline := f.values()
 	intervals := computeLiveIntervals(timeline)
 
-	r := newRegisterAllocater(registers)
+	r := newRegisterAllocater(registerFile)
 
 	r.prepareReturns(f)
 	prepareDivides(f)

@@ -16,8 +16,7 @@ import (
 )
 
 func TestGenSsa_Basic(t *testing.T) {
-	returnRegister := register.RegA
-	funcs := requireBuildSSA(t, `fun main () -> int { return 0; }`, WithReturnRegister(returnRegister))
+	funcs := requireBuildSSA(t, `fun main () -> int { return 0; }`)
 
 	require.Len(t, funcs, 1)
 	f := funcs[0]
@@ -30,7 +29,7 @@ func TestGenSsa_Basic(t *testing.T) {
 	assert.Equal(t, OpLiteral, b.Control.Op)
 	assert.Equal(t, types.Int(), b.Control.Type)
 	assert.Equal(t, LocRegister, b.Control.Loc.Kind)
-	assert.Equal(t, returnRegister, b.Control.Loc.Reg)
+	assert.Equal(t, register.RegA, b.Control.Loc.Reg)
 }
 
 func TestGenSsa_ConstantFolding(t *testing.T) {
@@ -66,8 +65,7 @@ func TestGenSsa_AdditionOverflow(t *testing.T) {
 }
 
 func TestGenSsa_Variable(t *testing.T) {
-	returnRegister := register.RegA
-	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; return x; }`, WithReturnRegister(returnRegister))
+	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; return x; }`)
 
 	b := funcs[0].Blocks[0]
 
@@ -87,12 +85,11 @@ func TestGenSsa_Variable(t *testing.T) {
 
 	assert.Equal(t, loads[0], b.Control)
 	assert.Equal(t, LocRegister, b.Control.Loc.Kind)
-	assert.Equal(t, returnRegister, b.Control.Loc.Reg)
+	assert.Equal(t, register.RegA, b.Control.Loc.Reg)
 }
 
 func TestGenSsa_Variable_Assignment(t *testing.T) {
-	returnRegister := register.RegA
-	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; x = 20; return x; }`, WithReturnRegister(returnRegister))
+	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; x = 20; return x; }`)
 
 	b := funcs[0].Blocks[0]
 
@@ -105,7 +102,7 @@ func TestGenSsa_Variable_Assignment(t *testing.T) {
 	require.NotNil(t, b.Control)
 	assert.Equal(t, OpLoad, b.Control.Op)
 	assert.Equal(t, LocRegister, b.Control.Loc.Kind)
-	assert.Equal(t, returnRegister, b.Control.Loc.Reg)
+	assert.Equal(t, register.RegA, b.Control.Loc.Reg)
 }
 
 func TestGenSsa_Divide(t *testing.T) {
@@ -185,7 +182,7 @@ func TestGenSsa_NegSquash(t *testing.T) {
 
 func TestGenSsa_Variable_Assignment_Operator(t *testing.T) {
 	returnRegister := register.RegA
-	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; x += 20; return x; }`, WithReturnRegister(returnRegister))
+	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; x += 20; return x; }`)
 
 	b := funcs[0].Blocks[0]
 
@@ -200,14 +197,14 @@ func TestGenSsa_Variable_Assignment_Operator(t *testing.T) {
 	assert.Equal(t, returnRegister, b.Control.Loc.Reg)
 }
 
-func requireBuildSSA(t *testing.T, src string, opts ...Option) []*Func {
+func requireBuildSSA(t *testing.T, src string) []*Func {
 	t.Helper()
 	tokens, err := lexer.Tokenize(strings.NewReader(src))
 	require.NoError(t, err)
 	funcs, err := parser.ParseProgram(tokens)
 	require.NoError(t, err)
 	require.NoError(t, semantic.Analyze(funcs))
-	result, err := BuildAndAllocate(funcs, opts...)
+	result, err := BuildAndAllocate(funcs)
 	require.NoError(t, err)
 	return result
 }
