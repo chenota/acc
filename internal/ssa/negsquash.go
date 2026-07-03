@@ -20,7 +20,7 @@ func negSquash(f *Func) {
 func squashableValues(f *Func) []*Value {
 	vals := make([]*Value, 0)
 
-	for _, value := range f.values() {
+	for _, value := range f.OrderedValues() {
 		// want to squash x + -y or x - -y
 		if (value.Op == OpAdd || value.Op == OpSubtract) && value.Args[1].Op == OpNegate {
 			vals = append(vals, value)

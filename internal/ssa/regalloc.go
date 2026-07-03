@@ -25,7 +25,7 @@ var registerFile = registerGroup{
 }
 
 func regalloc(f *Func) {
-	timeline := f.values()
+	timeline := f.OrderedValues()
 	intervals := computeLiveIntervals(timeline)
 
 	r := newRegisterAllocater(registerFile)
@@ -61,7 +61,7 @@ func regalloc(f *Func) {
 }
 
 func prepareDivides(f *Func) {
-	for _, v := range f.values() {
+	for _, v := range f.OrderedValues() {
 		if v.Op == OpDivide {
 			v.Loc = NewReg(register.RegA) // divide always goes in register A
 		}

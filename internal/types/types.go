@@ -150,3 +150,8 @@ func (t *Type) ToDefault() *Type {
 		return t
 	}
 }
+
+func (t *Type) IsScalar() bool {
+	// every type is a scalar right now
+	return true
+}

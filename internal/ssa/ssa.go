@@ -23,6 +23,7 @@ func optimizedAllocatedFunction(n *ir.Node) (*Func, error) {
 	if err != nil {
 		return nil, err
 	}
+	mem2reg(f)
 	unaryFold(f)
 	quickFold(f)
 	associativeFold(f)

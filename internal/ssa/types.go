@@ -1,6 +1,8 @@
 package ssa
 
 import (
+	"iter"
+	"maps"
 	"slices"
 
 	"github.com/chenota/acc/internal/register"
@@ -49,6 +51,10 @@ func (v *Value) IsConstant() bool {
 
 func (v *Value) IsAssociativeOp() bool {
 	return v.Op == OpAdd || v.Op == OpMultiply
+}
+
+func (v *Value) ArgIndex(arg *Value) int {
+	return slices.Index(v.Args, arg)
 }
 
 type BlockKind int
@@ -116,12 +122,31 @@ func (f *Func) OrderedBlocks() []*Block {
 	return order
 }
 
-func (f *Func) values() []*Value {
+func (f *Func) OrderedValues() []*Value {
 	var vals []*Value
 	for _, b := range f.OrderedBlocks() {
 		vals = append(vals, b.Values...)
 	}
 	return vals
+}
+
+func (f *Func) UnorderedValues() iter.Seq[*Value] {
+	var vals []*Value
+	for _, b := range f.Blocks {
+		vals = append(vals, b.Values...)
+	}
+	return slices.Values(vals)
+}
+
+// Args returns all unique values used as arguments in function f
+func (f *Func) Args() iter.Seq[*Value] {
+	args := make(map[*Value]struct{})
+	for v := range f.UnorderedValues() {
+		for _, a := range v.Args {
+			args[a] = struct{}{}
+		}
+	}
+	return maps.Keys(args)
 }
 
 func (f *Func) newValue(op Op, t *types.Type, b *Block) *Value {
