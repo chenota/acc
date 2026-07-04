@@ -23,6 +23,8 @@ const (
 	OpDivide
 	OpNegate
 	OpCopy
+	OpCall
+	OpGlobalRef
 )
 
 type Value struct {

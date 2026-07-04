@@ -163,9 +163,38 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 		return b.genIdent(expr)
 	case ir.OpNegate:
 		return b.genNegate(expr)
+	case ir.OpCall:
+		return b.genCall(expr)
 	default:
 		return nil, diagnostic.NewError(expr.Pos, "unknown expression operation: %d", expr.Op)
 	}
+}
+
+func (b *builder) genCall(expr *ir.Node) (*Value, error) {
+	if len(expr.List) < 1 {
+		return nil, diagnostic.NewError(expr.Pos, "call without a callee")
+	}
+
+	// analyze the expression being called
+	callee, err := b.genExpr(expr.List[0])
+	if err != nil {
+		return nil, err
+	}
+
+	args := expr.List[1:]
+	var argVals []*Value
+	for _, arg := range args {
+		argVal, err := b.genExpr(arg)
+		if err != nil {
+			return nil, err
+		}
+		argVals = append(argVals, argVal)
+	}
+
+	v := b.targetFunc.appendValue(OpCall, expr.Type, b.currentBlock)
+	v.Args = append([]*Value{callee}, argVals...)
+
+	return v, nil
 }
 
 func (b *builder) genNegate(expr *ir.Node) (*Value, error) {
@@ -185,15 +214,20 @@ func (b *builder) genNegate(expr *ir.Node) (*Value, error) {
 }
 
 func (b *builder) genIdent(expr *ir.Node) (*Value, error) {
-	alloca := b.vars[expr.Sym]
-	if alloca == nil {
-		return nil, diagnostic.NewError(expr.Pos, "variable used before declared: %s", expr.Ident())
+	switch expr.Sym.Kind {
+	case ir.SymGlobal:
+		v := b.targetFunc.appendValue(OpGlobalRef, expr.Type, b.currentBlock)
+		v.Value = expr.Sym.Name
+		return v, nil
+	default:
+		alloca := b.vars[expr.Sym]
+		if alloca == nil {
+			return nil, diagnostic.NewError(expr.Pos, "variable used before declared: %s", expr.Ident())
+		}
+		loadOp := b.targetFunc.appendValue(OpLoad, expr.Type, b.currentBlock)
+		loadOp.Args = []*Value{alloca}
+		return loadOp, nil
 	}
-
-	loadOp := b.targetFunc.appendValue(OpLoad, expr.Type, b.currentBlock)
-	loadOp.Args = []*Value{alloca}
-
-	return loadOp, nil
 }
 
 func (b *builder) genInt(expr *ir.Node) (*Value, error) {

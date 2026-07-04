@@ -7,9 +7,17 @@ type Table struct {
 	entries map[string]*Sym
 }
 
+type SymKind int
+
+const (
+	SymLocal SymKind = iota
+	SymGlobal
+)
+
 type Sym struct {
 	Name string
 	Type *types.Type
+	Kind SymKind
 }
 
 func NewTable() *Table {
@@ -33,9 +41,15 @@ func (t *Table) Register(name string, symType *types.Type) *Sym {
 		return nil
 	}
 
+	kind := SymLocal
+	if t.parent == nil {
+		kind = SymGlobal
+	}
+
 	t.entries[name] = &Sym{
 		Name: name,
 		Type: symType,
+		Kind: kind,
 	}
 
 	return t.entries[name]
