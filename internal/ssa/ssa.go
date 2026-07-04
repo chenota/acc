@@ -28,6 +28,8 @@ func optimizedAllocatedFunction(n *ir.Node) (*Func, error) {
 	quickFold(f)
 	associativeFold(f)
 	negSquash(f)
+	lowerConstraints(f)
+	spill(f)
 	regalloc(f)
 	layoutFrame(f)
 

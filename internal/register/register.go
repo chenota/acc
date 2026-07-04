@@ -1,5 +1,7 @@
 package register
 
+import "math/bits"
+
 type Register int
 
 const (
@@ -19,6 +21,8 @@ const (
 	Reg13
 	Reg14
 	Reg15
+
+	numRegisters
 )
 
 // Mask returns a mask containing just the Register
@@ -35,6 +39,16 @@ func NewMask(regs ...Register) Mask {
 		m |= r.Mask()
 	}
 	return m
+}
+
+// Complement returns the registers not in m
+func (m Mask) Complement() Mask {
+	return (^m) & ((1 << numRegisters) - 1)
+}
+
+// Count returns the count of registers in m
+func (m Mask) Count() int {
+	return bits.OnesCount64(uint64(m))
 }
 
 var (
