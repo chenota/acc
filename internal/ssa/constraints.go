@@ -8,6 +8,15 @@ import (
 
 func lowerConstraints(f *Func) {
 	lowerDivides(f)
+	lowerReturns(f)
+}
+
+func lowerReturns(f *Func) {
+	for _, b := range f.Blocks {
+		if b.Kind == BlockRet && b.Control != nil {
+			b.Control.Loc = NewReg(register.ReturnTarget)
+		}
+	}
 }
 
 func lowerDivides(f *Func) {

@@ -30,7 +30,9 @@ func optimizedAllocatedFunction(n *ir.Node) (*Func, error) {
 	negSquash(f)
 	lowerConstraints(f)
 	spill(f)
-	regalloc(f)
+	if err := regalloc(f); err != nil {
+		return nil, err
+	}
 	layoutFrame(f)
 
 	return f, nil

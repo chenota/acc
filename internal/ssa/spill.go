@@ -74,7 +74,7 @@ func (s *spiller) resident(v *Value) bool {
 // makeRoom evicts a resident value if the register file is full
 func (s *spiller) makeRoom(f *Func, before *Value, p int) {
 	// if there are available regs then don't do anything
-	if len(s.inReg) < register.Reserved.Complement().Count() {
+	if len(s.inReg) < register.Allocatable.Count() {
 		return
 	}
 
@@ -111,7 +111,10 @@ func (s *spiller) nextUse(v *Value, after int) int {
 	return math.MaxInt
 }
 
-// needsRegister reports whether a value needs a physical register
+// needsRegister reports whether a value produces a result that occupies a
+// physical register. Allocas are addresses (placed on the stack by layoutFrame)
+// and stores have no result; everything else -- including literals, which this
+// backend materializes into a register -- needs one.
 func needsRegister(v *Value) bool {
-	return v.Op != OpLiteral && v.Op != OpAlloca
+	return v.Op != OpAlloca && v.Op != OpStore
 }
