@@ -132,6 +132,7 @@ func computeLiveIntervals(f *Func) []*liveInterval {
 func computeRegIntervals(timeline []*liveInterval) []*regInterval {
 	var intervals []*regInterval
 	for _, iv := range timeline {
+		// a precolored value occupies its register for its whole live range
 		if iv.Value.Loc.Kind == LocRegister {
 			intervals = append(intervals, &regInterval{
 				Reg:   iv.Value.Loc.Reg,
@@ -139,10 +140,18 @@ func computeRegIntervals(timeline []*liveInterval) []*regInterval {
 				End:   iv.End,
 			})
 		}
+		// route live values around a clobber
+		for _, reg := range iv.Value.Clobbers {
+			intervals = append(intervals, &regInterval{
+				Reg:   reg,
+				Start: iv.Start,
+				End:   iv.Start + 1,
+			})
+		}
 	}
 	return intervals
 }
 
 func overlap(start1 int, end1 int, start2 int, end2 int) bool {
-	return (start1 >= start2 && start1 < end2) || (end1 > start2 && end1 <= end2)
+	return start1 < end2 && start2 < end1
 }
