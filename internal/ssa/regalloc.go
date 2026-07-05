@@ -7,19 +7,26 @@ import (
 	"github.com/chenota/acc/internal/register"
 )
 
-type interval struct {
+type liveInterval struct {
 	Value *Value
+	Start int
+	End   int
+}
+
+type regInterval struct {
+	Reg   register.Register
 	Start int
 	End   int
 }
 
 // regalloc colors SSA values with physical registers
 func regalloc(f *Func) error {
-	intervals := computeLiveIntervals(f)
+	liveIntervals := computeLiveIntervals(f)
+	regIntervals := computeRegIntervals(liveIntervals)
 
-	c := newColorer()
+	c := newColorer(regIntervals)
 
-	for _, iv := range intervals {
+	for _, iv := range liveIntervals {
 		c.expire(iv.Start)
 
 		// skip precolored values
@@ -27,7 +34,7 @@ func regalloc(f *Func) error {
 			continue
 		}
 
-		newReg, err := c.take()
+		newReg, err := c.take(iv)
 		if err != nil {
 			return err
 		}
@@ -40,19 +47,21 @@ func regalloc(f *Func) error {
 }
 
 type colorer struct {
-	free   register.Mask
-	active []*interval
+	free      register.Mask
+	active    []*liveInterval
+	preColors []*regInterval
 }
 
-func newColorer() *colorer {
+func newColorer(regs []*regInterval) *colorer {
 	return &colorer{
-		free: register.Allocatable,
+		free:      register.Allocatable,
+		preColors: regs,
 	}
 }
 
 // expire frees the registers of intervals ending at or before cutoff
 func (c *colorer) expire(cutoff int) {
-	var kept []*interval
+	var kept []*liveInterval
 	for _, iv := range c.active {
 		if iv.End <= cutoff {
 			c.free = c.free.Include(iv.Value.Loc.Reg)
@@ -63,8 +72,15 @@ func (c *colorer) expire(cutoff int) {
 	c.active = kept
 }
 
-func (c *colorer) take() (register.Register, error) {
-	reg, ok := c.free.One()
+func (c *colorer) take(iv *liveInterval) (register.Register, error) {
+	free := c.free
+	// exclude pre-colored registers that overlap with iv
+	for _, rv := range c.preColors {
+		if overlap(rv.Start, rv.End, iv.Start, iv.End) {
+			free = free.Remove(rv.Reg)
+		}
+	}
+	reg, ok := free.One()
 	if !ok {
 		return 0, errors.New("regalloc: out of registers something has gone very wrong lol")
 	}
@@ -72,13 +88,13 @@ func (c *colorer) take() (register.Register, error) {
 	return reg, nil
 }
 
-func (c *colorer) hold(iv *interval) {
+func (c *colorer) hold(iv *liveInterval) {
 	c.active = append(c.active, iv)
 }
 
-func computeLiveIntervals(f *Func) []*interval {
+func computeLiveIntervals(f *Func) []*liveInterval {
 	timeline := f.OrderedValues()
-	intervals := make(map[int]*interval)
+	intervals := make(map[int]*liveInterval)
 
 	// walk backwards through timeline to deal with loop shenanigans
 	for tick := len(timeline) - 1; tick >= 0; tick-- {
@@ -87,12 +103,12 @@ func computeLiveIntervals(f *Func) []*interval {
 		if inter, exists := intervals[v.Id]; exists {
 			inter.Start = tick
 		} else {
-			intervals[v.Id] = &interval{Value: v, Start: tick, End: tick}
+			intervals[v.Id] = &liveInterval{Value: v, Start: tick, End: tick}
 		}
 
 		for _, arg := range v.Args {
 			if _, exists := intervals[arg.Id]; !exists {
-				intervals[arg.Id] = &interval{
+				intervals[arg.Id] = &liveInterval{
 					Value: arg,
 					End:   tick,
 				}
@@ -100,15 +116,33 @@ func computeLiveIntervals(f *Func) []*interval {
 		}
 	}
 
-	var sortedIntervals []*interval
+	var sortedIntervals []*liveInterval
 	for _, interval := range intervals {
 		sortedIntervals = append(sortedIntervals, interval)
 	}
 
 	// sort intervals by start tick ascending
-	slices.SortFunc(sortedIntervals, func(a, b *interval) int {
+	slices.SortFunc(sortedIntervals, func(a, b *liveInterval) int {
 		return a.Start - b.Start
 	})
 
 	return sortedIntervals
+}
+
+func computeRegIntervals(timeline []*liveInterval) []*regInterval {
+	var intervals []*regInterval
+	for _, iv := range timeline {
+		if iv.Value.Loc.Kind == LocRegister {
+			intervals = append(intervals, &regInterval{
+				Reg:   iv.Value.Loc.Reg,
+				Start: iv.Start,
+				End:   iv.End,
+			})
+		}
+	}
+	return intervals
+}
+
+func overlap(start1 int, end1 int, start2 int, end2 int) bool {
+	return (start1 >= start2 && start1 < end2) || (end1 > start2 && end1 <= end2)
 }
