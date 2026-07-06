@@ -156,6 +156,8 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateNegate(v)...)
 	case ssa.OpCopy:
 		insts = append(insts, generateCopy(v))
+	case ssa.OpSignExtend:
+		insts = append(insts, generateSignExtend(v))
 	}
 
 	return insts
@@ -202,11 +204,13 @@ func generateDiv(v *ssa.Value) []Inst {
 	size := v.Type.Size()
 	eax := Arg{Kind: KRegister, Reg: register.RegA, Value: size}
 	return []Inst{
-		{Op: movOp(size), Src1: toArg(v.Args[0]), Dest: eax},
-		{Op: cdqOp(size)},
 		{Op: idivOp(size), Dest: toArg(v.Args[1])},
 		{Op: movOp(size), Src1: eax, Dest: toArg(v)},
 	}
+}
+
+func generateSignExtend(v *ssa.Value) Inst {
+	return Inst{Op: cdqOp(v.Type.Size())}
 }
 
 func generateConstInt(v *ssa.Value) Inst {

@@ -25,6 +25,7 @@ const (
 	OpCopy
 	OpCall
 	OpGlobalRef
+	OpSignExtend // sign-extends the accumulator into the high register (cdq/cqo)
 )
 
 type Value struct {
