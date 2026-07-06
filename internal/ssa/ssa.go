@@ -46,5 +46,7 @@ func optimizeAndAllocate(f *Func) error {
 	}
 	calleeSaved(f)
 	layoutFrame(f)
+	redundantCopies(f)
+
 	return nil
 }

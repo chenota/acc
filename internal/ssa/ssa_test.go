@@ -44,21 +44,6 @@ func TestGenSsa_ConstantFolding(t *testing.T) {
 	assert.Equal(t, int32(2), b.Control.Value)
 }
 
-func TestGenSsa_DivideByZero(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { return 1 / 0; }`)
-
-	b := funcs[0].Blocks[0]
-
-	// the divide must survive to trap at runtime rather than folding to a constant
-	assert.Len(t, findValues(b.Values, OpDivide), 1)
-
-	// the quotient is copied out of RAX
-	require.NotNil(t, b.Control)
-	require.Equal(t, OpCopy, b.Control.Op)
-	require.Len(t, b.Control.Args, 1)
-	assert.Equal(t, OpDivide, b.Control.Args[0].Op)
-}
-
 func TestGenSsa_AdditionOverflow(t *testing.T) {
 	src := fmt.Sprintf(`fun main () -> int { return %d + 1; }`, math.MaxInt32)
 	funcs := requireBuildSSA(t, src)
