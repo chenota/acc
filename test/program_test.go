@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/chenota/acc/cmd"
@@ -51,6 +52,12 @@ func TestProgram(t *testing.T) {
 				}
 
 				actualStatus := cmd.ProcessState.ExitCode()
+				// translate -1 exit code to shell's 128 + signal convention
+				if actualStatus == -1 {
+					if ws, ok := cmd.ProcessState.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+						actualStatus = 128 + int(ws.Signal())
+					}
+				}
 				verifyGoldenStatus(t, dirPath, mainFile, actualStatus)
 			})
 		}
