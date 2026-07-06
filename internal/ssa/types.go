@@ -61,6 +61,10 @@ func (v *Value) ArgIndex(arg *Value) int {
 	return slices.Index(v.Args, arg)
 }
 
+func (v *Value) NeedsRegister() bool {
+	return v.Op != OpLiteral && v.Op != OpAlloca
+}
+
 type BlockKind int
 
 const (

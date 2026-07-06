@@ -33,7 +33,7 @@ func spill(f *Func) {
 
 		// reload every spilled operand
 		for i, a := range v.Args {
-			if !needsRegister(a) || s.resident(a) {
+			if !a.NeedsRegister() || s.resident(a) {
 				continue
 			}
 			s.makeRoom(f, v, p)
@@ -52,7 +52,7 @@ func spill(f *Func) {
 		}
 
 		// this value becomes resident
-		if needsRegister(v) {
+		if v.NeedsRegister() {
 			s.makeRoom(f, v, p)
 			s.inReg[v] = struct{}{}
 		}
@@ -109,12 +109,4 @@ func (s *spiller) nextUse(v *Value, after int) int {
 		}
 	}
 	return math.MaxInt
-}
-
-// needsRegister reports whether a value produces a result that occupies a
-// physical register. Allocas are addresses (placed on the stack by layoutFrame)
-// and stores have no result; everything else -- including literals, which this
-// backend materializes into a register -- needs one.
-func needsRegister(v *Value) bool {
-	return v.Op != OpAlloca && v.Op != OpStore
 }

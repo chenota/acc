@@ -30,7 +30,7 @@ func regalloc(f *Func) error {
 		c.expire(iv.Start)
 
 		// skip precolored values
-		if iv.Value.Loc.Kind == LocRegister || !needsRegister(iv.Value) {
+		if iv.Value.Loc.Kind == LocRegister || !iv.Value.NeedsRegister() {
 			continue
 		}
 
