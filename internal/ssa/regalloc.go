@@ -140,14 +140,6 @@ func computeRegIntervals(timeline []*liveInterval) []*regInterval {
 				End:   iv.End,
 			})
 		}
-		// route live values around a clobber
-		for _, reg := range iv.Value.Clobbers {
-			intervals = append(intervals, &regInterval{
-				Reg:   reg,
-				Start: iv.Start,
-				End:   iv.Start + 1,
-			})
-		}
 	}
 	return intervals
 }

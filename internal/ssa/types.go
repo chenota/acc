@@ -39,8 +39,6 @@ type Value struct {
 	Value any
 
 	Loc Location
-
-	Clobbers []register.Register // registers this op destroys
 }
 
 func (v *Value) IsUnaryOp() bool {
