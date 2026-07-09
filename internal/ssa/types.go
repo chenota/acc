@@ -61,8 +61,9 @@ func (v *Value) ArgIndex(arg *Value) int {
 	return slices.Index(v.Args, arg)
 }
 
+// NeedsRegister reports whether a value produces a result that occupies a physical register.
 func (v *Value) NeedsRegister() bool {
-	return v.Op != OpLiteral && v.Op != OpAlloca
+	return v.Op != OpAlloca && v.Op != OpStore
 }
 
 type BlockKind int
