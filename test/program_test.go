@@ -19,9 +19,7 @@ func TestProgram(t *testing.T) {
 	require.NoError(t, err)
 
 	runWip := runWip()
-	if runWip {
-		t.Log("RUN_WIP is set, running WIP tests.")
-	}
+	asmOnFail := asmOnFail()
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -39,6 +37,15 @@ func TestProgram(t *testing.T) {
 			t.Run(entry.Name(), func(t *testing.T) {
 				mainFile := filepath.Join(dirPath, "main.acc")
 				require.FileExists(t, mainFile, "each source directory must contain a main file")
+
+				// on failure dump the assembly acc generated so it's debuggable
+				if asmOnFail {
+					defer func() {
+						if t.Failed() {
+							dumpAssembly(t, mainFile)
+						}
+					}()
+				}
 
 				binaryPath := compileProgram(t, mainFile)
 				defer os.Remove(binaryPath)
@@ -58,7 +65,7 @@ func TestProgram(t *testing.T) {
 						actualStatus = 128 + int(ws.Signal())
 					}
 				}
-				verifyGoldenStatus(t, dirPath, mainFile, actualStatus)
+				verifyGoldenStatus(t, dirPath, actualStatus)
 			})
 		}
 	}
@@ -82,13 +89,12 @@ func compileProgram(t *testing.T, mainFile string) string {
 		"-o", tmpBinary.Name(),
 	})
 
-	// for now we're only doing happy path tests so don't need to worry about compilation failures
-	require.NoError(t, root.Execute())
+	require.NoError(t, root.Execute(), "failed to compile program")
 
 	return tmpBinary.Name()
 }
 
-func verifyGoldenStatus(t *testing.T, dirPath, mainFile string, actualStatus int) {
+func verifyGoldenStatus(t *testing.T, dirPath string, actualStatus int) {
 	t.Helper()
 
 	statusPath := filepath.Join(dirPath, "status.golden")
@@ -106,10 +112,6 @@ func verifyGoldenStatus(t *testing.T, dirPath, mainFile string, actualStatus int
 	expectedStatus, err := strconv.Atoi(statusStr)
 	require.NoError(t, err)
 
-	if expectedStatus != actualStatus && asmOnFail() {
-		t.Logf("generated assembly for %s:\n%s", mainFile, compileAssembly(t, mainFile))
-	}
-
 	assert.Equal(t, expectedStatus, actualStatus, "actual status does not match golden status")
 }
 
@@ -123,12 +125,16 @@ func runWip() bool {
 	return v == "1" || v == "true"
 }
 
-// compileAssembly compiles mainFile with the -S flag and returns the generated assembly as a string
-func compileAssembly(t *testing.T, mainFile string) string {
+// dumpAssembly makes a best-effort attempt to log the assembly acc generates for mainFile with the -S flag.
+// if it can't just print out the error preventing assembly generation.
+func dumpAssembly(t *testing.T, mainFile string) {
 	t.Helper()
 
 	tmpAsm, err := os.CreateTemp("", "acc_*.s")
-	require.NoError(t, err)
+	if err != nil {
+		t.Logf("could not create temp file for assembly: %v", err)
+		return
+	}
 	tmpAsm.Close()
 	defer os.Remove(tmpAsm.Name())
 
@@ -138,10 +144,16 @@ func compileAssembly(t *testing.T, mainFile string) string {
 		"-S",
 		"-o", tmpAsm.Name(),
 	})
-	require.NoError(t, root.Execute())
+	if err := root.Execute(); err != nil {
+		t.Logf("could not generate assembly for %s: %v", mainFile, err)
+		return
+	}
 
 	asmBytes, err := os.ReadFile(tmpAsm.Name())
-	require.NoError(t, err)
+	if err != nil {
+		t.Logf("could not read generated assembly for %s: %v", mainFile, err)
+		return
+	}
 
-	return string(asmBytes)
+	t.Logf("generated assembly for %s:\n%s", mainFile, string(asmBytes))
 }
