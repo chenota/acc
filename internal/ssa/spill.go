@@ -3,12 +3,13 @@ package ssa
 import (
 	"math"
 
+	"github.com/chenota/acc/internal/iterutil"
 	"github.com/chenota/acc/internal/register"
 )
 
 // spill lowers register pressure using MIN algorithm
 func spill(f *Func) {
-	timeline := f.OrderedValues()
+	timeline := iterutil.Enumerate(f.OrderedValues())
 
 	// every position where a value is read as an operand
 	uses := make(map[*Value][]int)

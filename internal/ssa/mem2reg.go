@@ -9,7 +9,7 @@ func mem2reg(f *Func) {
 	for alloca := range promotableAllocas(f) {
 		var currentDef *Value
 
-		for _, v := range f.OrderedValues() {
+		for v := range f.OrderedValues() {
 			if v.Op == OpStore && v.ArgIndex(alloca) > -1 {
 				// capture the most recent value stored to this alloca and delete the store operation
 				currentDef = v.Args[0]

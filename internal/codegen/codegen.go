@@ -97,7 +97,7 @@ func generateFunction(f *ssa.Func) []Inst {
 		})
 	}
 
-	for _, b := range f.OrderedBlocks() {
+	for b := range f.OrderedBlocks() {
 		insts = append(insts, generateBlock(b)...)
 	}
 

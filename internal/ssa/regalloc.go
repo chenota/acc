@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/chenota/acc/internal/iterutil"
 	"github.com/chenota/acc/internal/register"
 )
 
@@ -93,13 +94,10 @@ func (c *colorer) hold(iv *liveInterval) {
 }
 
 func computeLiveIntervals(f *Func) []*liveInterval {
-	timeline := f.OrderedValues()
 	intervals := make(map[int]*liveInterval)
 
 	// walk backwards through timeline to deal with loop shenanigans
-	for tick := len(timeline) - 1; tick >= 0; tick-- {
-		v := timeline[tick]
-
+	for tick, v := range iterutil.Reverse2(iterutil.Enumerate(f.OrderedValues())) {
 		if inter, exists := intervals[v.Id]; exists {
 			inter.Start = tick
 		} else {

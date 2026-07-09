@@ -3,7 +3,7 @@ package ssa
 import "github.com/chenota/acc/internal/types"
 
 func unaryFold(f *Func) {
-	for _, v := range f.OrderedValues() {
+	for v := range f.OrderedValues() {
 		if !v.IsUnaryOp() {
 			continue
 		}

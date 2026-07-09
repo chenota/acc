@@ -63,7 +63,7 @@ func rewireMixedChain(f *Func, root *Value, foldedValue any, cores []*Value, var
 func associativeRoots(f *Func) []*Value {
 	roots := make([]*Value, 0)
 
-	for _, v := range f.OrderedValues() {
+	for v := range f.OrderedValues() {
 		if v.IsAssociativeOp() && !isSubOperation(v) {
 			roots = append(roots, v)
 		}

@@ -105,7 +105,7 @@ type Func struct {
 }
 
 // OrderedBlocks flattens a function's blocks using reverse post-order traversal
-func (f *Func) OrderedBlocks() []*Block {
+func (f *Func) OrderedBlocks() iter.Seq[*Block] {
 	var order []*Block
 	visited := make(map[int]struct{})
 
@@ -127,17 +127,19 @@ func (f *Func) OrderedBlocks() []*Block {
 
 	slices.Reverse(order)
 
-	return order
+	return slices.Values(order)
 }
 
-func (f *Func) OrderedValues() []*Value {
+// OrderedValues returns all values in Func f in RPO order
+func (f *Func) OrderedValues() iter.Seq[*Value] {
 	var vals []*Value
-	for _, b := range f.OrderedBlocks() {
+	for b := range f.OrderedBlocks() {
 		vals = append(vals, b.Values...)
 	}
-	return vals
+	return slices.Values(vals)
 }
 
+// UnorderedValues returns all values in Func f in an arbitrary order
 func (f *Func) UnorderedValues() iter.Seq[*Value] {
 	var vals []*Value
 	for _, b := range f.Blocks {
