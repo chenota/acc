@@ -1,6 +1,10 @@
 package register
 
-import "math/bits"
+import (
+	"iter"
+	"math/bits"
+	"slices"
+)
 
 type Register int
 
@@ -60,6 +64,20 @@ func (m Mask) One() (Register, bool) {
 	return Register(bits.TrailingZeros64(uint64(m))), true
 }
 
+// All returns all registers from mask m
+func (m Mask) All() iter.Seq[Register] {
+	var regs []Register
+	for m > 0 {
+		pos := bits.TrailingZeros64(uint64(m))
+		regs = append(regs, Register(pos))
+
+		// clear lowest bit
+		m = m & (m - 1)
+	}
+
+	return slices.Values(regs)
+}
+
 // Include adds a register to the mask
 func (m Mask) Include(r Register) Mask {
 	return m | r.Mask()
@@ -70,10 +88,16 @@ func (m Mask) Remove(r Register) Mask {
 	return m & ^r.Mask()
 }
 
+// Contains checks if a register is contained in the mask
+func (m Mask) Contains(r Register) bool {
+	return m&r.Mask() != 0
+}
+
 var (
 	CallerSaved  = NewMask(RegA, RegC, RegD, RegSI, RegDI, Reg8, Reg9, Reg10, Reg11)
 	CalleeSaved  = NewMask(RegB, Reg12, Reg13, Reg14, Reg15)
 	Reserved     = NewMask(RegSP, RegBP)
 	Allocatable  = Reserved.Complement()
 	ReturnTarget = RegA
+	Args         = []Register{RegDI, RegSI, RegD, RegC, Reg8, Reg9} // order matters here so putting in a list
 )

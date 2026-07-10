@@ -33,6 +33,7 @@ func optimizedAllocatedFunction(n *ir.Node) (*Func, error) {
 	if err := regalloc(f); err != nil {
 		return nil, err
 	}
+	calleeSaved(f)
 	layoutFrame(f)
 
 	return f, nil

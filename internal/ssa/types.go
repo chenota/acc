@@ -26,6 +26,8 @@ const (
 	OpCall
 	OpGlobalRef
 	OpSignExtend // sign-extends the accumulator into the high register (cdq/cqo)
+	OpPush
+	OpPop
 )
 
 type Value struct {
@@ -39,6 +41,8 @@ type Value struct {
 	Value any
 
 	Loc Location
+
+	Clobbers []register.Register // registers this op destroys
 }
 
 func (v *Value) IsUnaryOp() bool {
@@ -254,6 +258,17 @@ func (f *Func) removeValue(v *Value) {
 
 func (f *Func) FrameSize() int {
 	return f.frameSize
+}
+
+// UsedRegisters returns the set of physical registers assigned to values in f.
+func (f *Func) UsedRegisters() register.Mask {
+	var m register.Mask
+	for v := range f.UnorderedValues() {
+		if v.Loc.Kind == LocRegister {
+			m = m.Include(v.Loc.Reg)
+		}
+	}
+	return m
 }
 
 type LocationKind int

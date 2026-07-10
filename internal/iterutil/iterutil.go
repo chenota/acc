@@ -1,6 +1,8 @@
 package iterutil
 
-import "iter"
+import (
+	"iter"
+)
 
 // Reverse2 reverses an iter.Seq2
 func Reverse2[T1, T2 any](seq iter.Seq2[T1, T2]) iter.Seq2[T1, T2] {

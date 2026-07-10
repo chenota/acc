@@ -3,6 +3,7 @@ package ssa
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -145,6 +146,50 @@ func TestGenSsa_Variable_Assignment_Operator(t *testing.T) {
 	assert.Equal(t, register.RegA, b.Control.Loc.Reg)
 }
 
+func TestLowerCalls_ArgRegisters(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun target (a int, b int, c int) -> int { return 0; }
+		fun main () -> int { return target(1, 2, 3); }
+	`)
+
+	call := requireCall(t, funcs, "main")
+
+	// Args[0] is the callee; the three arguments follow
+	require.Len(t, call.Args, 4)
+
+	assert.Equal(t, LocRegister, call.Args[1].Loc.Kind)
+	assert.Equal(t, register.RegDI, call.Args[1].Loc.Reg)
+
+	assert.Equal(t, LocRegister, call.Args[2].Loc.Kind)
+	assert.Equal(t, register.RegSI, call.Args[2].Loc.Reg)
+
+	assert.Equal(t, LocRegister, call.Args[3].Loc.Kind)
+	assert.Equal(t, register.RegD, call.Args[3].Loc.Reg)
+}
+
+func TestLowerCalls_ResultInRAX(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun target (a int) -> int { return 0; }
+		fun main () -> int { return target(7); }
+	`)
+
+	call := requireCall(t, funcs, "main")
+
+	assert.Equal(t, LocRegister, call.Loc.Kind)
+	assert.Equal(t, register.RegA, call.Loc.Reg)
+}
+
+func TestLowerCalls_ClobbersCallerSaved(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun target (a int) -> int { return 0; }
+		fun main () -> int { return target(7); }
+	`)
+
+	call := requireCall(t, funcs, "main")
+
+	assert.ElementsMatch(t, slices.Collect(register.CallerSaved.All()), call.Clobbers)
+}
+
 func requireBuildSSA(t *testing.T, src string) []*Func {
 	t.Helper()
 	tokens, err := lexer.Tokenize(strings.NewReader(src))
@@ -165,4 +210,24 @@ func findValues(values []*Value, op Op) []*Value {
 		}
 	}
 	return result
+}
+
+func requireFunc(t *testing.T, funcs []*Func, name string) *Func {
+	t.Helper()
+	for _, f := range funcs {
+		if f.Name == name {
+			return f
+		}
+	}
+	require.Failf(t, "function not found", "no function named %q", name)
+	return nil
+}
+
+// requireCall returns the single OpCall value in the named function.
+func requireCall(t *testing.T, funcs []*Func, funcName string) *Value {
+	t.Helper()
+	f := requireFunc(t, funcs, funcName)
+	calls := findValues(f.Entry.Values, OpCall)
+	require.Len(t, calls, 1)
+	return calls[0]
 }
