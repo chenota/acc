@@ -75,13 +75,21 @@ func (c *colorer) expire(cutoff int) {
 
 func (c *colorer) take(iv *liveInterval) (register.Register, error) {
 	free := c.free
+
 	// exclude pre-colored registers that overlap with iv
 	for _, rv := range c.preColors {
 		if overlap(rv.Start, rv.End, iv.Start, iv.End) {
 			free = free.Remove(rv.Reg)
 		}
 	}
-	reg, ok := free.One()
+
+	// prefer caller-saved registers
+	pick := free & register.CallerSaved
+	if pick.Count() == 0 {
+		pick = free
+	}
+
+	reg, ok := pick.One()
 	if !ok {
 		return 0, errors.New("regalloc: out of registers something has gone very wrong lol")
 	}
