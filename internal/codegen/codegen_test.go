@@ -6,6 +6,7 @@ import (
 
 	"github.com/chenota/acc/internal/lexer"
 	"github.com/chenota/acc/internal/parser"
+	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/semantic"
 	"github.com/chenota/acc/internal/ssa"
 	"github.com/stretchr/testify/assert"
@@ -36,6 +37,28 @@ func TestCodegen_Directives(t *testing.T) {
 	assertContainsSeq(t, insts, ".text", ".globl")
 }
 
+func TestCodegen_Call_TargetsCalleeLabel(t *testing.T) {
+	insts := requireGeneratesProgram(t, `
+		fun target (a int) -> int { return 0; }
+		fun main () -> int { return target(7); }
+	`)
+
+	// the call must reference the callee's mangled label, not its source name
+	assertCallsLabel(t, insts, "_target")
+}
+
+func TestCodegen_Call_ArgsInRegisters(t *testing.T) {
+	insts := requireGeneratesProgram(t, `
+		fun target (a int, b int, c int) -> int { return 0; }
+		fun main () -> int { return target(1, 2, 3); }
+	`)
+
+	// arguments are materialized into the System V argument registers, in order
+	assertMovesImmediateToReg(t, insts, 1, register.RegDI)
+	assertMovesImmediateToReg(t, insts, 2, register.RegSI)
+	assertMovesImmediateToReg(t, insts, 3, register.RegD)
+}
+
 func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
 	t.Helper()
 
@@ -60,6 +83,28 @@ func assertContainsOpWithArgs(t *testing.T, insts []Inst, op string, src1, src2,
 		}
 	}
 	assert.Fail(t, "instructions list does not contain specified operation with arguments", op, src1, src2, dest)
+}
+
+func assertCallsLabel(t *testing.T, insts []Inst, label string) {
+	t.Helper()
+	for _, inst := range insts {
+		if inst.Op == "call" && inst.Dest.Kind == KText && inst.Dest.Value == label {
+			return
+		}
+	}
+	assert.Fail(t, "instructions list does not call the specified label", label)
+}
+
+func assertMovesImmediateToReg(t *testing.T, insts []Inst, imm int32, reg register.Register) {
+	t.Helper()
+	for _, inst := range insts {
+		if inst.Op == "movl" &&
+			inst.Src1.Kind == KImmediate && inst.Src1.Value == imm &&
+			inst.Dest.Kind == KRegister && inst.Dest.Reg == reg {
+			return
+		}
+	}
+	assert.Fail(t, "instructions list does not move the immediate into the register", "imm=%d reg=%d", imm, reg)
 }
 
 func requireGeneratesProgram(t *testing.T, src string) []Inst {
