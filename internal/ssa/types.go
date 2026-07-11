@@ -24,7 +24,7 @@ const (
 	OpNegate
 	OpCopy
 	OpCall
-	OpGlobalRef
+	OpFuncRef // the address of a function; payload (Value) is the referenced *Func
 	OpSignExtend // sign-extends the accumulator into the high register (cdq/cqo)
 	OpPush
 	OpPop
@@ -67,7 +67,9 @@ func (v *Value) ArgIndex(arg *Value) int {
 
 // NeedsRegister reports whether a value produces a result that occupies a physical register.
 func (v *Value) NeedsRegister() bool {
-	return v.Op != OpAlloca && v.Op != OpStore
+	// OpFuncRef is a direct function address materialized as an immediate call
+	// operand, so it never occupies a register.
+	return v.Op != OpAlloca && v.Op != OpStore && v.Op != OpFuncRef
 }
 
 type BlockKind int
@@ -211,6 +213,8 @@ func (f *Func) IsMain() bool {
 	return f.Name == "main"
 }
 
+// Label is the single source of truth for a function's assembly symbol. Callees
+// reference the *Func and read this, so definitions and call sites can't drift.
 func (f *Func) Label() string {
 	return "_" + f.Name
 }

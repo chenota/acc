@@ -158,9 +158,44 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateCopy(v))
 	case ssa.OpSignExtend:
 		insts = append(insts, generateSignExtend(v))
+	case ssa.OpPop:
+		insts = append(insts, generatePop(v))
+	case ssa.OpPush:
+		insts = append(insts, generatePush(v))
+	case ssa.OpCall:
+		insts = append(insts, generateCall(v))
 	}
 
 	return insts
+}
+
+func generateCall(v *ssa.Value) Inst {
+	return Inst{
+		Op:   "call",
+		Dest: toArg(v.Args[0]), // callee is in first arg
+	}
+}
+
+func generatePop(v *ssa.Value) Inst {
+	return Inst{
+		Op: "popq",
+		Dest: Arg{
+			Kind:  KRegister,
+			Reg:   v.Loc.Reg,
+			Value: 8, // always use largest register size
+		},
+	}
+}
+
+func generatePush(v *ssa.Value) Inst {
+	return Inst{
+		Op: "pushq",
+		Dest: Arg{
+			Kind:  KRegister,
+			Reg:   v.Loc.Reg,
+			Value: 8, // always use largest register size
+		},
+	}
 }
 
 func generateCopy(v *ssa.Value) Inst {
@@ -247,6 +282,10 @@ func blockLabel(b *ssa.Block) string {
 }
 
 func toArg(v *ssa.Value) Arg {
+	if v.Op == ssa.OpFuncRef {
+		return text(v.Value.(*ssa.Func).Label())
+	}
+
 	switch v.Loc.Kind {
 	case ssa.LocRegister:
 		return Arg{

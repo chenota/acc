@@ -154,8 +154,13 @@ func TestLowerCalls_ArgRegisters(t *testing.T) {
 
 	call := requireCall(t, funcs, "main")
 
-	// Args[0] is the callee; the three arguments follow
+	// Args[0] is the callee reference; the three arguments follow
 	require.Len(t, call.Args, 4)
+
+	require.Equal(t, OpFuncRef, call.Args[0].Op)
+	callee, ok := call.Args[0].Value.(*Func)
+	require.True(t, ok, "callee payload should be a *Func")
+	assert.Equal(t, "target", callee.Name)
 
 	assert.Equal(t, LocRegister, call.Args[1].Loc.Kind)
 	assert.Equal(t, register.RegDI, call.Args[1].Loc.Reg)

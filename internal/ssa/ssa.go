@@ -1,28 +1,39 @@
 package ssa
 
 import (
+	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/ir"
 )
 
 func BuildAndAllocate(program []*ir.Node) ([]*Func, error) {
-	var compiledFuncs []*Func
+	m := newModule()
 
+	// declare every top-level function for forward-reference capabaility
 	for _, n := range program {
-		f, err := optimizedAllocatedFunction(n)
-		if err != nil {
+		if n.Op != ir.OpFunction {
+			return nil, diagnostic.NewError(n.Pos, "expected function node")
+		}
+		m.declare(n.Sym.Name)
+	}
+
+	// build every body. this is looking ahead a bit but basically this will eventually allow all lambdas to get added to the module
+	for _, n := range program {
+		if err := m.buildFuncBody(n); err != nil {
 			return nil, err
 		}
-		compiledFuncs = append(compiledFuncs, f)
 	}
 
-	return compiledFuncs, nil
+	// optimize and allocate every function in the now-complete pool
+	for _, f := range m.Funcs {
+		if err := optimizeAndAllocate(f); err != nil {
+			return nil, err
+		}
+	}
+
+	return m.Funcs, nil
 }
 
-func optimizedAllocatedFunction(n *ir.Node) (*Func, error) {
-	f, err := buildFunc(n)
-	if err != nil {
-		return nil, err
-	}
+func optimizeAndAllocate(f *Func) error {
 	mem2reg(f)
 	unaryFold(f)
 	quickFold(f)
@@ -31,10 +42,9 @@ func optimizedAllocatedFunction(n *ir.Node) (*Func, error) {
 	lowerConstraints(f)
 	spill(f)
 	if err := regalloc(f); err != nil {
-		return nil, err
+		return err
 	}
 	calleeSaved(f)
 	layoutFrame(f)
-
-	return f, nil
+	return nil
 }

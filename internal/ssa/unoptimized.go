@@ -8,16 +8,15 @@ import (
 	"github.com/chenota/acc/internal/types"
 )
 
-func buildFunc(n *ir.Node) (*Func, error) {
-	if n.Op != ir.OpFunction {
-		return nil, diagnostic.NewError(n.Pos, "expected function node")
+// buildFuncBody fills in the pre-created shell f from its AST node n.
+func (m *Module) buildFuncBody(n *ir.Node) error {
+	// look up function in module
+	f := m.lookup(n.Sym.Name)
+	if f == nil {
+		return diagnostic.NewError(n.Pos, "could not find function in module")
 	}
 
-	f := &Func{
-		Name: n.Sym.Name,
-	}
-
-	b := &builder{targetFunc: f, vars: make(map[*ir.Sym]*Value)}
+	b := &builder{targetFunc: f, module: m, vars: make(map[*ir.Sym]*Value)}
 
 	entry := f.newBlock()
 	f.Entry = entry
@@ -25,15 +24,16 @@ func buildFunc(n *ir.Node) (*Func, error) {
 
 	for _, stmt := range n.List {
 		if err := b.genStatement(stmt); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	return f, nil
+	return nil
 }
 
 type builder struct {
 	targetFunc   *Func
+	module       *Module
 	currentBlock *Block
 	vars         map[*ir.Sym]*Value
 }
@@ -216,8 +216,12 @@ func (b *builder) genNegate(expr *ir.Node) (*Value, error) {
 func (b *builder) genIdent(expr *ir.Node) (*Value, error) {
 	switch expr.Sym.Kind {
 	case ir.SymGlobal:
-		v := b.targetFunc.appendValue(OpGlobalRef, expr.Type, b.currentBlock)
-		v.Value = expr.Sym.Name
+		callee := b.module.lookup(expr.Sym.Name)
+		if callee == nil {
+			return nil, diagnostic.NewError(expr.Pos, "reference to unknown function: %s", expr.Sym.Name)
+		}
+		v := b.targetFunc.appendValue(OpFuncRef, expr.Type, b.currentBlock)
+		v.Value = callee
 		return v, nil
 	default:
 		alloca := b.vars[expr.Sym]
