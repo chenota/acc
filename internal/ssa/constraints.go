@@ -65,6 +65,11 @@ func lowerDivides(f *Func) {
 
 		v.Args = []*Value{lo, divisor, hi}
 		v.Loc = NewReg(register.RegA)
+
+		// copy out fixed rax return value to new unconstrained value
+		result := f.insertValueAfter(v, OpCopy, v.Type, v.Block)
+		f.redirectUses(v, result)
+		result.Args = []*Value{v}
 	}
 }
 

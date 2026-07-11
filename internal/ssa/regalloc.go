@@ -121,6 +121,11 @@ func computeLiveIntervals(f *Func) []*liveInterval {
 		for _, arg := range v.Args {
 			touch(arg, tick)
 		}
+
+		// ensure the right operand of a bop is live alongside the result so they don't get mapped to the same place
+		if v.IsBinaryOp() {
+			touch(v.Args[1], tick+1)
+		}
 	}
 
 	// extend a block's control value to live though the block's entire lifecycle

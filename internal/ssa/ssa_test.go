@@ -49,8 +49,14 @@ func TestGenSsa_DivideByZero(t *testing.T) {
 
 	b := funcs[0].Blocks[0]
 
+	// the divide must survive to trap at runtime rather than folding to a constant
+	assert.Len(t, findValues(b.Values, OpDivide), 1)
+
+	// the quotient is copied out of RAX
 	require.NotNil(t, b.Control)
-	assert.Equal(t, OpDivide, b.Control.Op)
+	require.Equal(t, OpCopy, b.Control.Op)
+	require.Len(t, b.Control.Args, 1)
+	assert.Equal(t, OpDivide, b.Control.Args[0].Op)
 }
 
 func TestGenSsa_AdditionOverflow(t *testing.T) {
