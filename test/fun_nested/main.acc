@@ -1,0 +1,19 @@
+fun double(x int) -> int {
+    return x * 2;
+}
+
+fun add(x int, y int) -> int {
+    return x + y;
+}
+
+fun doubleAdd(x int, y int) -> int {
+    return double(add(ident(x), ident(y)));
+}
+
+fun ident(x int) -> int {
+    return x;
+}
+
+fun main () -> int {
+    return doubleAdd(2, 5);
+}

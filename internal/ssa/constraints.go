@@ -9,8 +9,9 @@ import (
 func lowerConstraints(f *Func) {
 	lowerParams(f)
 	lowerDivides(f)
-	lowerReturns(f)
 	lowerCalls(f)
+	// important that lowerReturns runs after lowerCalls so it targets the correct value
+	lowerReturns(f)
 }
 
 func lowerParams(f *Func) {
@@ -76,7 +77,11 @@ func lowerCalls(f *Func) {
 		for i, arg := range v.Args[1:] {
 			// first 6 args go in registers
 			if i < len(register.Args) {
-				arg.Loc = NewReg(register.Args[i])
+				// copy the argument into its register
+				copy := f.insertValueBefore(v, OpCopy, arg.Type, v.Block)
+				copy.Args = []*Value{arg}
+				copy.Loc = NewReg(register.Args[i])
+				v.Args[i+1] = copy
 				continue
 			}
 			// TODO: args in the stack go into special area in the stack
@@ -84,5 +89,10 @@ func lowerCalls(f *Func) {
 
 		v.Loc = NewReg(register.RegA)
 		v.Clobbers = slices.Collect(register.CallerSaved.All())
+
+		// copy out RAX return value to new unconstrained value
+		result := f.insertValueAfter(v, OpCopy, v.Type, v.Block)
+		f.redirectUses(v, result)
+		result.Args = []*Value{v}
 	}
 }

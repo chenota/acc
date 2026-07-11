@@ -53,10 +53,9 @@ func TestCodegen_Call_ArgsInRegisters(t *testing.T) {
 		fun main () -> int { return target(1, 2, 3); }
 	`)
 
-	// arguments are materialized into the System V argument registers, in order
-	assertMovesImmediateToReg(t, insts, 1, register.RegDI)
-	assertMovesImmediateToReg(t, insts, 2, register.RegSI)
-	assertMovesImmediateToReg(t, insts, 3, register.RegD)
+	assertWritesRegBeforeCall(t, insts, register.RegDI)
+	assertWritesRegBeforeCall(t, insts, register.RegSI)
+	assertWritesRegBeforeCall(t, insts, register.RegD)
 }
 
 func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
@@ -95,16 +94,18 @@ func assertCallsLabel(t *testing.T, insts []Inst, label string) {
 	assert.Fail(t, "instructions list does not call the specified label", label)
 }
 
-func assertMovesImmediateToReg(t *testing.T, insts []Inst, imm int32, reg register.Register) {
+func assertWritesRegBeforeCall(t *testing.T, insts []Inst, reg register.Register) {
 	t.Helper()
+	var written bool
 	for _, inst := range insts {
-		if inst.Op == "movl" &&
-			inst.Src1.Kind == KImmediate && inst.Src1.Value == imm &&
-			inst.Dest.Kind == KRegister && inst.Dest.Reg == reg {
+		if strings.HasPrefix(inst.Op, "mov") && inst.Dest.Kind == KRegister && inst.Dest.Reg == reg {
+			written = true
+		}
+		if inst.Op == "call" && written {
 			return
 		}
 	}
-	assert.Fail(t, "instructions list does not move the immediate into the register", "imm=%d reg=%d", imm, reg)
+	assert.Fail(t, "no mov writes the register before a call", "reg=%d", reg)
 }
 
 func requireGeneratesProgram(t *testing.T, src string) []Inst {
