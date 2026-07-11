@@ -55,9 +55,7 @@ func lowerDivides(f *Func) {
 		dividend := v.Args[0]
 		divisor := v.Args[1]
 
-		lo := f.insertValueBefore(v, OpCopy, dividend.Type, v.Block)
-		lo.Args = []*Value{dividend}
-		lo.Loc = NewReg(register.RegA)
+		lo := copyIn(f, v, dividend, register.RegA)
 
 		hi := f.insertValueBefore(v, OpSignExtend, dividend.Type, v.Block)
 		hi.Args = []*Value{lo}
@@ -66,10 +64,7 @@ func lowerDivides(f *Func) {
 		v.Args = []*Value{lo, divisor, hi}
 		v.Loc = NewReg(register.RegA)
 
-		// copy out fixed rax return value to new unconstrained value
-		result := f.insertValueAfter(v, OpCopy, v.Type, v.Block)
-		f.redirectUses(v, result)
-		result.Args = []*Value{v}
+		copyOut(f, v)
 	}
 }
 
@@ -82,11 +77,7 @@ func lowerCalls(f *Func) {
 		for i, arg := range v.Args[1:] {
 			// first 6 args go in registers
 			if i < len(register.Args) {
-				// copy the argument into its register
-				copy := f.insertValueBefore(v, OpCopy, arg.Type, v.Block)
-				copy.Args = []*Value{arg}
-				copy.Loc = NewReg(register.Args[i])
-				v.Args[i+1] = copy
+				v.Args[i+1] = copyIn(f, v, arg, register.Args[i])
 				continue
 			}
 			// TODO: args in the stack go into special area in the stack
@@ -95,9 +86,23 @@ func lowerCalls(f *Func) {
 		v.Loc = NewReg(register.RegA)
 		v.Clobbers = slices.Collect(register.CallerSaved.All())
 
-		// copy out RAX return value to new unconstrained value
-		result := f.insertValueAfter(v, OpCopy, v.Type, v.Block)
-		f.redirectUses(v, result)
-		result.Args = []*Value{v}
+		copyOut(f, v)
 	}
+}
+
+// copyIn inserts a copy of arg pinned to reg just before v.
+func copyIn(f *Func, v *Value, arg *Value, reg register.Register) *Value {
+	in := f.insertValueBefore(v, OpCopy, arg.Type, v.Block)
+	in.Args = []*Value{arg}
+	in.Loc = NewReg(reg)
+	return in
+}
+
+// copyOut inserts an unconstrained copy of v's result just after v and points v's users at it.
+func copyOut(f *Func, v *Value) *Value {
+	out := f.insertValueAfter(v, OpCopy, v.Type, v.Block)
+	// redirect before wiring up the arg so the copy does not point at itself
+	f.redirectUses(v, out)
+	out.Args = []*Value{v}
+	return out
 }
