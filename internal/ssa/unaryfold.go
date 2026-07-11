@@ -23,7 +23,7 @@ func unaryFold(f *Func) {
 		constOp.Value = foldedVal
 
 		// replace the top-level value with the new constant
-		f.substituteValue(v, constOp)
+		f.replaceValue(v, constOp)
 		// remove sub value
 		f.removeValue(sub)
 	}

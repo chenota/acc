@@ -195,6 +195,53 @@ func TestLowerCalls_ClobbersCallerSaved(t *testing.T) {
 	assert.ElementsMatch(t, slices.Collect(register.CallerSaved.All()), call.Clobbers)
 }
 
+func TestGenSsa_Params_PinnedToArgRegisters(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun target (a int, b int, c int) -> int { return 0; }`)
+
+	f := requireFunc(t, funcs, "target")
+	params := findValues(f.Entry.Values, OpParam)
+	require.Len(t, params, 3)
+
+	// each incoming parameter is pinned to its System V argument register, in order
+	assert.Equal(t, LocRegister, params[0].Loc.Kind)
+	assert.Equal(t, register.RegDI, params[0].Loc.Reg)
+
+	assert.Equal(t, LocRegister, params[1].Loc.Kind)
+	assert.Equal(t, register.RegSI, params[1].Loc.Reg)
+
+	assert.Equal(t, LocRegister, params[2].Loc.Kind)
+	assert.Equal(t, register.RegD, params[2].Loc.Reg)
+}
+
+func TestGenSsa_Param_FlowsToReturn(t *testing.T) {
+	// returning a parameter used to fail with "variable used before declared"
+	funcs := requireBuildSSA(t, `fun identity (x int) -> int { return x; }`)
+
+	f := requireFunc(t, funcs, "identity")
+
+	// the parameter is copied out of its argument register into the return register
+	ctrl := f.Entry.Control
+	require.NotNil(t, ctrl)
+	require.Equal(t, OpCopy, ctrl.Op)
+	assert.Equal(t, register.RegA, ctrl.Loc.Reg)
+
+	require.Len(t, ctrl.Args, 1)
+	assert.Equal(t, OpParam, ctrl.Args[0].Op)
+	assert.Equal(t, register.RegDI, ctrl.Args[0].Loc.Reg)
+}
+
+func TestGenSsa_Param_Reassigned(t *testing.T) {
+	// a parameter is a mutable local - reassigning it before use discards the incoming value
+	funcs := requireBuildSSA(t, `fun f (x int) -> int { x = 55; return x; }`)
+
+	f := requireFunc(t, funcs, "f")
+
+	ctrl := f.Entry.Control
+	require.NotNil(t, ctrl)
+	assert.Equal(t, OpLiteral, ctrl.Op)
+	assert.Equal(t, int32(55), ctrl.Value)
+}
+
 func requireBuildSSA(t *testing.T, src string) []*Func {
 	t.Helper()
 	tokens, err := lexer.Tokenize(strings.NewReader(src))

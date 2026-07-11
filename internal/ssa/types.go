@@ -14,7 +14,7 @@ type Op int
 const (
 	OpUnknown Op = iota
 	OpLiteral
-	OpAlloca
+	OpAlloca // virtual stack allocation - more of a placeholder for a location than an acutal value in its own right
 	OpLoad
 	OpStore
 	OpAdd
@@ -24,10 +24,11 @@ const (
 	OpNegate
 	OpCopy
 	OpCall
-	OpFuncRef // the address of a function; payload (Value) is the referenced *Func
+	OpFuncRef    // the address of a function
 	OpSignExtend // sign-extends the accumulator into the high register (cdq/cqo)
 	OpPush
 	OpPop
+	OpParam // incoming function argument - more of a placeholder for a location than an acutal value in its own right
 )
 
 type Value struct {
@@ -67,8 +68,6 @@ func (v *Value) ArgIndex(arg *Value) int {
 
 // NeedsRegister reports whether a value produces a result that occupies a physical register.
 func (v *Value) NeedsRegister() bool {
-	// OpFuncRef is a direct function address materialized as an immediate call
-	// operand, so it never occupies a register.
 	return v.Op != OpAlloca && v.Op != OpStore && v.Op != OpFuncRef
 }
 
@@ -213,20 +212,15 @@ func (f *Func) IsMain() bool {
 	return f.Name == "main"
 }
 
-// Label is the single source of truth for a function's assembly symbol. Callees
-// reference the *Func and read this, so definitions and call sites can't drift.
+// Label returns the function's assembly symbol.
+// TODO: this will need expanded for anonymous functions.
 func (f *Func) Label() string {
 	return "_" + f.Name
 }
 
-func (f *Func) substituteValue(old, new *Value) {
+// redirectUses points every reference to old at new - does not touch the instruction stream itself.
+func (f *Func) redirectUses(old, new *Value) {
 	for _, block := range f.Blocks {
-		for i, v := range block.Values {
-			if v == old {
-				block.Values[i] = new
-			}
-		}
-
 		for _, value := range block.Values {
 			for i := range value.Args {
 				if value.Args[i] == old {
@@ -239,6 +233,17 @@ func (f *Func) substituteValue(old, new *Value) {
 			block.Control = new
 		}
 	}
+}
+
+// replaceValue old with new in the instruction stream and redirects uses of old to new.
+func (f *Func) replaceValue(old, new *Value) {
+	for _, block := range f.Blocks {
+		if i := block.indexOf(old); i >= 0 {
+			block.Values[i] = new
+		}
+	}
+
+	f.redirectUses(old, new)
 }
 
 func (f *Func) removeValue(v *Value) {

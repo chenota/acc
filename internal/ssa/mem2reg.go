@@ -15,8 +15,8 @@ func mem2reg(f *Func) {
 				currentDef = v.Args[0]
 				f.removeValue(v)
 			} else if v.Op == OpLoad && v.ArgIndex(alloca) > -1 {
-				// replace load with direct use and remove old load operation
-				f.substituteValue(v, currentDef)
+				// point users at the new value and delete the load
+				f.redirectUses(v, currentDef)
 				f.removeValue(v)
 			}
 		}

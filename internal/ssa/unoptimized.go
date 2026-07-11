@@ -22,6 +22,8 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 	f.Entry = entry
 	b.currentBlock = entry
 
+	b.bindParams(n.Signature.Params)
+
 	for _, stmt := range n.List {
 		if err := b.genStatement(stmt); err != nil {
 			return err
@@ -29,6 +31,35 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 	}
 
 	return nil
+}
+
+// bindParams materializes incoming arguments at the top of the entry block. Each
+// parameter arrives in a fixed ABI register (an OpParam, pinned later in
+// constraints); we immediately copy it into an unconstrained value so the body
+// can hold it across clobbers like a call. The copy is bound through an alloca
+// so it behaves as an ordinary mutable local (mem2reg promotes it away).
+//
+// All OpParams are defined first, before any copy, so every argument register
+// stays reserved until its value is safely copied out -- otherwise an early
+// copy's destination could reuse a register still holding a later argument.
+func (b *builder) bindParams(params []*ir.Node) {
+	incoming := make([]*Value, len(params))
+	for i, p := range params {
+		v := b.targetFunc.appendValue(OpParam, p.Type, b.currentBlock)
+		v.Value = i
+		incoming[i] = v
+	}
+
+	for i, p := range params {
+		param := b.targetFunc.appendValue(OpCopy, p.Type, b.currentBlock)
+		param.Args = []*Value{incoming[i]}
+
+		alloca := b.targetFunc.newValue(OpAlloca, p.Type, b.currentBlock)
+		b.vars[p.Sym] = alloca
+
+		store := b.targetFunc.appendValue(OpStore, p.Type, b.currentBlock)
+		store.Args = []*Value{param, alloca}
+	}
 }
 
 type builder struct {

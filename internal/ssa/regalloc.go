@@ -2,6 +2,7 @@ package ssa
 
 import (
 	"errors"
+	"maps"
 	"slices"
 
 	"github.com/chenota/acc/internal/iterutil"
@@ -104,35 +105,37 @@ func (c *colorer) hold(iv *liveInterval) {
 func computeLiveIntervals(f *Func) []*liveInterval {
 	intervals := make(map[int]*liveInterval)
 
-	// walk backwards through timeline to deal with loop shenanigans
-	for tick, v := range iterutil.Reverse2(iterutil.Enumerate(f.OrderedValues())) {
-		if inter, exists := intervals[v.Id]; exists {
-			inter.Start = tick
-		} else {
-			intervals[v.Id] = &liveInterval{Value: v, Start: tick, End: tick}
+	// touch records that v is live at a certain tick
+	touch := func(v *Value, tick int) {
+		if iv, ok := intervals[v.Id]; ok {
+			iv.Start = min(iv.Start, tick)
+			iv.End = max(iv.End, tick)
+			return
 		}
+		intervals[v.Id] = &liveInterval{Value: v, Start: tick, End: tick}
+	}
 
+	// every value is live at its definition and at each point it is used
+	for tick, v := range iterutil.Enumerate(f.OrderedValues()) {
+		touch(v, tick)
 		for _, arg := range v.Args {
-			if _, exists := intervals[arg.Id]; !exists {
-				intervals[arg.Id] = &liveInterval{
-					Value: arg,
-					End:   tick,
-				}
-			}
+			touch(arg, tick)
 		}
 	}
 
-	var sortedIntervals []*liveInterval
-	for _, interval := range intervals {
-		sortedIntervals = append(sortedIntervals, interval)
+	// extend a block's control value to live though the block's entire lifecycle
+	for _, b := range f.Blocks {
+		if b.Control == nil || len(b.Values) == 0 {
+			continue
+		}
+		last := b.Values[len(b.Values)-1]
+		touch(b.Control, intervals[last.Id].End+1)
 	}
 
-	// sort intervals by start tick ascending
-	slices.SortFunc(sortedIntervals, func(a, b *liveInterval) int {
+	// order by start tick ascending
+	return slices.SortedFunc(maps.Values(intervals), func(a, b *liveInterval) int {
 		return a.Start - b.Start
 	})
-
-	return sortedIntervals
 }
 
 func computeRegIntervals(timeline []*liveInterval) []*regInterval {

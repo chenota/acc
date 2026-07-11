@@ -24,7 +24,7 @@ func quickFold(f *Func) {
 		constOp.Value = foldedVal
 
 		// replace the top-level value with the new constant
-		f.substituteValue(v, constOp)
+		f.replaceValue(v, constOp)
 		// remove left and right constant operands
 		f.removeValue(left)
 		f.removeValue(right)

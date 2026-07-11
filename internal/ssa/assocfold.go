@@ -29,7 +29,7 @@ func associativeFold(f *Func) {
 func foldConstantChain(f *Func, root *Value, foldedValue any, cores []*Value) {
 	newConst := f.newValue(OpLiteral, root.Type, root.Block)
 	newConst.Value = foldedValue
-	f.substituteValue(root, newConst)
+	f.replaceValue(root, newConst)
 	for _, c := range cores[1:] {
 		f.removeValue(c)
 	}

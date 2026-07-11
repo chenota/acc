@@ -7,9 +7,26 @@ import (
 )
 
 func lowerConstraints(f *Func) {
+	lowerParams(f)
 	lowerDivides(f)
 	lowerReturns(f)
 	lowerCalls(f)
+}
+
+func lowerParams(f *Func) {
+	for v := range f.UnorderedValues() {
+		if v.Op != OpParam {
+			continue
+		}
+
+		i := v.Value.(int)
+		// first 6 args arrive in registers
+		if i < len(register.Args) {
+			v.Loc = NewReg(register.Args[i])
+			continue
+		}
+		// TODO: args beyond the register count arrive on the stack
+	}
 }
 
 func lowerReturns(f *Func) {
