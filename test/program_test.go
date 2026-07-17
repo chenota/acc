@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,11 +9,14 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/chenota/acc/cmd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+const timeout = time.Second
 
 func TestProgram(t *testing.T) {
 	entries, err := os.ReadDir(".")
@@ -50,9 +54,15 @@ func TestProgram(t *testing.T) {
 				binaryPath := compileProgram(t, mainFile)
 				defer os.Remove(binaryPath)
 
-				cmd := exec.Command(binaryPath)
+				ctx, cancel := context.WithTimeout(t.Context(), timeout)
+				defer cancel()
 
+				cmd := exec.CommandContext(ctx, binaryPath)
 				err := cmd.Run()
+
+				// make sure context did not time out
+				require.NotErrorIs(t, ctx.Err(), context.DeadlineExceeded, "test timeout")
+
 				if err != nil {
 					var exitErr *exec.ExitError
 					require.ErrorAs(t, err, &exitErr, "unexpected runtime error", err.Error())
