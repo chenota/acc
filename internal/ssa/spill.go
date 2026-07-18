@@ -38,7 +38,7 @@ func spill(f *Func) {
 				continue
 			}
 			s.makeRoom(f, v, p)
-			reload := f.insertValueBefore(v, OpLoad, a.Type, v.Block)
+			reload := f.insertValueBefore(v, OpCopy, a.Type, v.Block)
 			reload.Args = []*Value{s.slot[a]}
 			v.Args[i] = reload
 			s.inReg[reload] = struct{}{}

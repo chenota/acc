@@ -15,7 +15,6 @@ const (
 	OpUnknown Op = iota
 	OpLiteral
 	OpAlloca // virtual stack allocation - more of a placeholder for a location than an acutal value in its own right
-	OpLoad
 	OpStore
 	OpAdd
 	OpSubtract

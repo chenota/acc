@@ -96,8 +96,8 @@ func (b *builder) genAssignOp(n *ir.Node) error {
 		return diagnostic.NewError(target.Pos, "variable used before declared: %s", target.Ident())
 	}
 
-	// load variable value
-	loadOp := b.targetFunc.appendValue(OpLoad, target.Sym.Type, b.currentBlock)
+	// load variable value (a copy from its alloca)
+	loadOp := b.targetFunc.appendValue(OpCopy, target.Sym.Type, b.currentBlock)
 	loadOp.Args = []*Value{alloca}
 
 	// generate expression value
@@ -259,7 +259,7 @@ func (b *builder) genIdent(expr *ir.Node) (*Value, error) {
 		if alloca == nil {
 			return nil, diagnostic.NewError(expr.Pos, "variable used before declared: %s", expr.Ident())
 		}
-		loadOp := b.targetFunc.appendValue(OpLoad, expr.Type, b.currentBlock)
+		loadOp := b.targetFunc.appendValue(OpCopy, expr.Type, b.currentBlock)
 		loadOp.Args = []*Value{alloca}
 		return loadOp, nil
 	}

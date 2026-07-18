@@ -14,8 +14,8 @@ func mem2reg(f *Func) {
 				// capture the most recent value stored to this alloca and delete the store operation
 				currentDef = v.Args[0]
 				f.removeValue(v)
-			} else if v.Op == OpLoad && v.ArgIndex(alloca) > -1 {
-				// point users at the new value and delete the load
+			} else if v.Op == OpCopy && v.ArgIndex(alloca) > -1 {
+				// point users at the new value and delete it
 				f.redirectUses(v, currentDef)
 				f.removeValue(v)
 			}
@@ -35,13 +35,13 @@ func promotableAllocas(f *Func) iter.Seq[*Value] {
 			if !v.Type.IsScalar() {
 				continue
 			}
-			// v must only be used as an argument to load or store
+			// v must only be used as a load or as a store destination
 			for user := range f.UnorderedValues() {
 				i := user.ArgIndex(v)
 				if i == -1 {
 					continue
 				}
-				if !(user.Op == OpLoad || (user.Op == OpStore && i == 1)) {
+				if !(user.Op == OpCopy || (user.Op == OpStore && i == 1)) {
 					continue ArgsLoop
 				}
 			}

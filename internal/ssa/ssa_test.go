@@ -64,7 +64,6 @@ func TestGenSsa_Variable(t *testing.T) {
 	// mem2reg promotes x, so no memory operations survive
 	assert.Empty(t, findValues(b.Values, OpAlloca), "alloca should be promoted away")
 	assert.Empty(t, findValues(b.Values, OpStore), "store should be promoted away")
-	assert.Empty(t, findValues(b.Values, OpLoad), "load should be promoted away")
 
 	// the stored value flows directly into the return
 	require.NotNil(t, b.Control)
@@ -79,8 +78,8 @@ func TestGenSsa_Variable_Assignment(t *testing.T) {
 
 	b := funcs[0].Blocks[0]
 
+	assert.Empty(t, findValues(b.Values, OpAlloca), "alloca should be promoted away")
 	assert.Empty(t, findValues(b.Values, OpStore), "stores should be promoted away")
-	assert.Empty(t, findValues(b.Values, OpLoad), "loads should be promoted away")
 
 	// the most recent definition (20) reaches the return
 	require.NotNil(t, b.Control)
@@ -126,8 +125,8 @@ func TestGenSsa_Variable_Assignment_Operator(t *testing.T) {
 
 	b := funcs[0].Blocks[0]
 
+	assert.Empty(t, findValues(b.Values, OpAlloca), "alloca should be promoted away")
 	assert.Empty(t, findValues(b.Values, OpStore), "stores should be promoted away")
-	assert.Empty(t, findValues(b.Values, OpLoad), "loads should be promoted away")
 
 	// x += 20 promotes and folds to 30
 	require.NotNil(t, b.Control)
