@@ -7,12 +7,7 @@ import (
 
 // movElim eliminates redundant mov instructions
 func movElim(insts []Inst) []Inst {
-	return slices.DeleteFunc(insts, isRedundantMove)
-}
-
-func isRedundantMove(inst Inst) bool {
-	if !strings.HasPrefix(inst.Op, "mov") {
-		return false
-	}
-	return inst.Src1.Kind != KUndefined && inst.Src1 == inst.Dest
+	return slices.DeleteFunc(insts, func(v Inst) bool {
+		return strings.HasPrefix(v.Op, "mov") && v.Src1 == v.Dest
+	})
 }
