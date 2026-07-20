@@ -40,6 +40,9 @@ func GenerateProgram(program []*ssa.Func) ([]Inst, error) {
 		insts = append(insts, generateFunction(f)...)
 	}
 
+	// remove all redundant mov instructions
+	insts = movElim(insts)
+
 	return insts, nil
 }
 

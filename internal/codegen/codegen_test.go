@@ -58,6 +58,15 @@ func TestCodegen_Call_ArgsInRegisters(t *testing.T) {
 	assertWritesRegBeforeCall(t, insts, register.RegD)
 }
 
+func TestCodegen_RedundantMoves(t *testing.T) {
+	insts := requireGeneratesProgram(t, `
+		fun double (x int) -> int { return x * 2; }
+		fun main () -> int { return double(4); }
+	`)
+
+	assertNoSelfMoves(t, insts)
+}
+
 func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
 	t.Helper()
 
@@ -106,6 +115,15 @@ func assertWritesRegBeforeCall(t *testing.T, insts []Inst, reg register.Register
 		}
 	}
 	assert.Fail(t, "no mov writes the register before a call", "reg=%d", reg)
+}
+
+func assertNoSelfMoves(t *testing.T, insts []Inst) {
+	t.Helper()
+	for _, inst := range insts {
+		if strings.HasPrefix(inst.Op, "mov") && inst.Src1.Kind != KUndefined && inst.Src1 == inst.Dest {
+			assert.Fail(t, "a mov onto its own location survived codegen", "%+v", inst)
+		}
+	}
 }
 
 func requireGeneratesProgram(t *testing.T, src string) []Inst {
