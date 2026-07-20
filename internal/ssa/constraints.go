@@ -95,6 +95,7 @@ func copyIn(f *Func, v *Value, arg *Value, reg register.Register) *Value {
 	in := f.insertValueBefore(v, OpCopy, arg.Type, v.Block)
 	in.Args = []*Value{arg}
 	in.Loc = NewReg(reg)
+	arg.RecordHint(reg) // try to put arg where v is to make this copy redundant
 	return in
 }
 
@@ -104,5 +105,8 @@ func copyOut(f *Func, v *Value) *Value {
 	// redirect before wiring up the arg so the copy does not point at itself
 	f.redirectUses(v, out)
 	out.Args = []*Value{v}
+	if v.Loc.Kind == LocRegister {
+		out.RecordHint(v.Loc.Reg) // try to put out where v is to make this copy redundant
+	}
 	return out
 }

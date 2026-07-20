@@ -42,6 +42,8 @@ type Value struct {
 
 	Loc Location
 
+	hints map[register.Register]int // hints stores the number of hints this value has per register
+
 	Clobbers []register.Register // registers this op destroys
 }
 
@@ -68,6 +70,43 @@ func (v *Value) ArgIndex(arg *Value) int {
 // NeedsRegister reports whether a value produces a result that occupies a physical register.
 func (v *Value) NeedsRegister() bool {
 	return v.Op != OpAlloca && v.Op != OpStore && v.Op != OpFuncRef
+}
+
+// RecordHint records that this value was hinted for a register
+func (v *Value) RecordHint(r register.Register) {
+	if v.hints == nil {
+		v.hints = make(map[register.Register]int)
+	}
+
+	v.hints[r] += 1
+}
+
+// Hints returns a sequence of all hints this value has recorded in order of frequency, descending
+func (v *Value) Hints() iter.Seq[register.Register] {
+	type kv struct {
+		key   register.Register
+		value int
+	}
+
+	var hints []kv
+	for k, v := range v.hints {
+		hints = append(hints, kv{k, v})
+	}
+
+	slices.SortFunc(hints, func(a, b kv) int {
+		if c := b.value - a.value; c != 0 {
+			return c
+		}
+		// tie break on register number for determinism
+		return int(a.key) - int(b.key)
+	})
+
+	var result []register.Register
+	for _, hint := range hints {
+		result = append(result, hint.key)
+	}
+
+	return slices.Values(result)
 }
 
 type BlockKind int

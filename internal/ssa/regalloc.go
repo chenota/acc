@@ -84,15 +84,24 @@ func (c *colorer) take(iv *liveInterval) (register.Register, error) {
 		}
 	}
 
+	// first try to pick the hinted-at register
+	for h := range iv.Value.Hints() {
+		if free.Contains(h) {
+			c.free = c.free.Remove(h)
+			return h, nil
+		}
+	}
+
 	// prefer caller-saved registers
 	pick := free & register.CallerSaved
 	if pick.Count() == 0 {
 		pick = free
 	}
 
+	// last resort pick a random available register
 	reg, ok := pick.One()
 	if !ok {
-		return 0, errors.New("regalloc: out of registers something has gone very wrong lol")
+		return 0, errors.New("regalloc: out of registers something has gone very wrong :D")
 	}
 	c.free = c.free.Remove(reg)
 	return reg, nil
