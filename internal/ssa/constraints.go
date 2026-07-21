@@ -6,6 +6,8 @@ import (
 	"github.com/chenota/acc/internal/register"
 )
 
+const stackSlotSize = 8
+
 func lowerConstraints(f *Func) {
 	lowerParams(f)
 	lowerDivides(f)
@@ -20,13 +22,15 @@ func lowerParams(f *Func) {
 			continue
 		}
 
+		// parameters store their index in the value slot
 		i := v.Value.(int)
 		// first 6 args arrive in registers
 		if i < len(register.Args) {
 			v.Loc = NewReg(register.Args[i])
 			continue
 		}
-		// TODO: args beyond the register count arrive on the stack
+		// the rest arrive at the very bottom of the caller's frame
+		v.Loc = NewFrame(incomingArgOffset(i - len(register.Args)))
 	}
 }
 
@@ -80,7 +84,8 @@ func lowerCalls(f *Func) {
 				v.Args[i+1] = copyIn(f, v, arg, register.Args[i])
 				continue
 			}
-			// TODO: args in the stack go into special area in the stack
+			// the rest are written to the outgoing area at the bottom of this function's frame
+			v.Args[i+1] = copyToOutgoingStack(f, v, arg, i-len(register.Args))
 		}
 
 		v.Loc = NewReg(register.RegA)
@@ -88,6 +93,20 @@ func lowerCalls(f *Func) {
 
 		copyOut(f, v)
 	}
+}
+
+// incomingArgOffset returns the rbp-relative offset of the nth incoming stack argument.
+func incomingArgOffset(n int) int {
+	// 16 to account for saved rbp + return address
+	return 16 + n*stackSlotSize
+}
+
+// copyToOutgoingStack inserts a copy of arg into the nth slot of f's outgoing argument area.
+func copyToOutgoingStack(f *Func, v *Value, arg *Value, n int) *Value {
+	in := f.insertValueBefore(v, OpCopy, arg.Type, v.Block)
+	in.Args = []*Value{arg}
+	in.Loc = NewOutgoing(n * stackSlotSize)
+	return in
 }
 
 // copyIn inserts a copy of arg pinned to reg just before v.

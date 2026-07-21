@@ -31,8 +31,8 @@ func regalloc(f *Func) error {
 	for _, iv := range liveIntervals {
 		c.expire(iv.Start)
 
-		// skip precolored values
-		if iv.Value.Loc.Kind == LocRegister || !iv.Value.NeedsRegister() {
+		// skip values already given a home - a register, or a stack slot fixed by the ABI
+		if iv.Value.Loc.Kind != LocNone || !iv.Value.NeedsRegister() {
 			continue
 		}
 

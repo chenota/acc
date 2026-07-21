@@ -284,9 +284,10 @@ func toArg(v *ssa.Value) Arg {
 			Reg:   v.Loc.Reg,
 			Value: v.Type.Size(),
 		}
-	case ssa.LocStack:
+	case ssa.LocMemory:
 		return Arg{
-			Kind:  KStack,
+			Kind:  KMemory,
+			Reg:   v.Loc.Reg,
 			Value: v.Loc.Offset,
 		}
 	}

@@ -143,9 +143,10 @@ type Func struct {
 	Blocks []*Block
 	Entry  *Block
 
-	valueId   int
-	blockId   int
-	frameSize int
+	valueId           int
+	blockId           int
+	frameSize         int // frameSize is the size of the function's general-purpose frame
+	outgoingFrameSize int // outgoingFrameSize is the size of the function's frame reserved for outgoing arguments that don't fit in registers
 }
 
 // OrderedBlocks flattens a function's blocks using reverse post-order traversal
@@ -307,6 +308,21 @@ func (f *Func) FrameSize() int {
 	return f.frameSize
 }
 
+func (f *Func) maxOutgoingSize() int {
+	var max int
+	for v := range f.UnorderedValues() {
+		// Args[0] is the callee so ignore it to count # of arguments
+		if v.Op == OpCall && len(v.Args)-1 > len(register.Args) {
+			// each outgoing stack slot uses 8 bytes
+			outgoingSize := stackSlotSize * (len(v.Args) - 1 - len(register.Args))
+			if outgoingSize > max {
+				max = outgoingSize
+			}
+		}
+	}
+	return max
+}
+
 // UsedRegisters returns the set of physical registers assigned to values in f.
 func (f *Func) UsedRegisters() register.Mask {
 	var m register.Mask
@@ -323,13 +339,13 @@ type LocationKind int
 const (
 	LocNone LocationKind = iota
 	LocRegister
-	LocStack
+	LocMemory // a byte offset from a base register
 )
 
 type Location struct {
 	Kind   LocationKind
-	Reg    register.Register
-	Offset int // negative byte offset from rbp
+	Reg    register.Register // Reg is the value's register for LocRegister, or the base register it is addressed off of for LocMemory
+	Offset int               // Offset is the byte offset from Reg for LocMemory
 }
 
 func NewReg(reg register.Register) Location {
@@ -339,9 +355,21 @@ func NewReg(reg register.Register) Location {
 	}
 }
 
-func NewStack(offset int) Location {
+// NewMem addresses a location at a byte offset from a base register
+func NewMem(base register.Register, offset int) Location {
 	return Location{
-		Kind:   LocStack,
+		Kind:   LocMemory,
+		Reg:    base,
 		Offset: offset,
 	}
+}
+
+// NewFrame addresses a slot in the current frame
+func NewFrame(offset int) Location {
+	return NewMem(register.RegBP, offset)
+}
+
+// NewOutgoing addresses a slot in this function's outgoing argument area
+func NewOutgoing(offset int) Location {
+	return NewMem(register.RegSP, offset)
 }

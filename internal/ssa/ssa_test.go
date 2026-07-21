@@ -232,6 +232,57 @@ func TestGenSsa_Param_Reassigned(t *testing.T) {
 	assert.Equal(t, int32(55), ctrl.Value)
 }
 
+func TestLowerCalls_StackArgs(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun target (a int, b int, c int, d int, e int, f int, g int, h int) -> int { return 0; }
+		fun main () -> int { return target(1, 2, 3, 4, 5, 6, 7, 8); }
+	`)
+
+	call := requireCall(t, funcs, "main")
+
+	// Args[0] is the callee reference; the eight arguments follow
+	require.Len(t, call.Args, 9)
+
+	// the first six still go in the System V argument registers
+	assert.Equal(t, LocRegister, call.Args[1].Loc.Kind)
+	assert.Equal(t, register.RegDI, call.Args[1].Loc.Reg)
+
+	assert.Equal(t, LocRegister, call.Args[6].Loc.Kind)
+	assert.Equal(t, register.Reg9, call.Args[6].Loc.Reg)
+
+	// the seventh and eighth are written into the outgoing area, lowest slot first
+	assert.Equal(t, LocMemory, call.Args[7].Loc.Kind)
+	assert.Equal(t, register.RegSP, call.Args[7].Loc.Reg)
+	assert.Equal(t, 0, call.Args[7].Loc.Offset)
+
+	assert.Equal(t, LocMemory, call.Args[8].Loc.Kind)
+	assert.Equal(t, register.RegSP, call.Args[8].Loc.Reg)
+	assert.Equal(t, 8, call.Args[8].Loc.Offset)
+}
+
+func TestLowerParams_StackParams(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun target (a int, b int, c int, d int, e int, f int, g int, h int) -> int { return 0; }
+	`)
+
+	f := requireFunc(t, funcs, "target")
+	params := findValues(f.Entry.Values, OpParam)
+	require.Len(t, params, 8)
+
+	// the sixth parameter is the last one to arrive in a register
+	assert.Equal(t, LocRegister, params[5].Loc.Kind)
+	assert.Equal(t, register.Reg9, params[5].Loc.Reg)
+
+	// the rest arrive in the caller's frame, past the saved rbp and the return address
+	assert.Equal(t, LocMemory, params[6].Loc.Kind)
+	assert.Equal(t, register.RegBP, params[6].Loc.Reg)
+	assert.Equal(t, 16, params[6].Loc.Offset)
+
+	assert.Equal(t, LocMemory, params[7].Loc.Kind)
+	assert.Equal(t, register.RegBP, params[7].Loc.Reg)
+	assert.Equal(t, 24, params[7].Loc.Offset)
+}
+
 func requireBuildSSA(t *testing.T, src string) []*Func {
 	t.Helper()
 	tokens, err := lexer.Tokenize(strings.NewReader(src))

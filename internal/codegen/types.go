@@ -15,7 +15,7 @@ const (
 	KUndefined ArgKind = iota
 	KRegister
 	KImmediate
-	KStack
+	KMemory
 	KText
 )
 

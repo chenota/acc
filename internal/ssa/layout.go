@@ -13,7 +13,7 @@ func layoutFrame(f *Func) {
 		byteSize := v.Type.Size()
 		offset += byteSize
 		offset = (offset + byteSize - 1) &^ (byteSize - 1)
-		v.Loc = NewStack(-offset)
+		v.Loc = NewFrame(-offset)
 	}
 
 	frame := (offset + 15) &^ 15
@@ -24,4 +24,7 @@ func layoutFrame(f *Func) {
 	}
 
 	f.frameSize = frame
+
+	// set function's outgoing frame size, 16-byte aligned since the whole frame needs to be that way.
+	f.outgoingFrameSize = (f.maxOutgoingSize() + 15) &^ 15
 }

@@ -58,16 +58,16 @@ func argText(arg codegen.Arg) (string, error) {
 			return "", fmt.Errorf("register size has wrong type %T, want int", arg.Value)
 		}
 		return registerString(arg.Reg, size)
-	case codegen.KStack:
+	case codegen.KMemory:
 		offset, ok := arg.Value.(int)
 		if !ok {
-			return "", fmt.Errorf("stack offset has wrong type %T, want int", arg.Value)
+			return "", fmt.Errorf("memory offset has wrong type %T, want int", arg.Value)
 		}
-		rbpName, err := registerString(register.RegBP, 8)
+		baseName, err := registerString(arg.Reg, 8)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("%d(%s)", offset, rbpName), nil
+		return fmt.Sprintf("%d(%s)", offset, baseName), nil
 	case codegen.KText:
 		v, ok := arg.Value.(string)
 		if !ok {

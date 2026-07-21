@@ -42,7 +42,7 @@ func TestAsmTxt_TwoSrc(t *testing.T) {
 		{
 			Op:   "movl",
 			Src1: codegen.Arg{Kind: codegen.KImmediate, Value: int32(10)},
-			Src2: codegen.Arg{Kind: codegen.KStack, Value: -8},
+			Src2: codegen.Arg{Kind: codegen.KMemory, Reg: register.RegBP, Value: -8},
 			Dest: codegen.Arg{Kind: codegen.KRegister, Reg: register.RegA, Value: 4},
 		},
 	}
@@ -52,6 +52,22 @@ func TestAsmTxt_TwoSrc(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, instrs, len(cgInstrs))
 	assert.Equal(t, "\tmovl $10, -8(%rbp), %eax", instrs[0])
+}
+
+func TestAsmTxt_MemoryBaseRegister(t *testing.T) {
+	cgInstrs := []codegen.Inst{
+		{
+			Op:   "movq",
+			Src1: codegen.Arg{Kind: codegen.KRegister, Reg: register.RegA, Value: 8},
+			Dest: codegen.Arg{Kind: codegen.KMemory, Reg: register.RegSP, Value: 16},
+		},
+	}
+
+	instrs, err := Stringify(cgInstrs)
+
+	require.NoError(t, err)
+	require.Len(t, instrs, len(cgInstrs))
+	assert.Equal(t, "\tmovq %rax, 16(%rsp)", instrs[0])
 }
 
 func TestAsmTxt_Label(t *testing.T) {
