@@ -283,6 +283,36 @@ func TestLowerParams_StackParams(t *testing.T) {
 	assert.Equal(t, 24, params[7].Loc.Offset)
 }
 
+func TestLayoutFrame_ReservesOutgoingArea(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun target (a int, b int, c int, d int, e int, f int, g int, h int) -> int { return 0; }
+		fun main () -> int { return target(1, 2, 3, 4, 5, 6, 7, 8); }
+	`)
+
+	main := requireFunc(t, funcs, "main")
+
+	// two arguments spill to the stack, so the frame folds in their two eightbyte slots
+	assert.GreaterOrEqual(t, main.FrameSize(), 16)
+
+	// the whole frame stays 16-byte aligned so rsp is aligned at the call
+	pushBytes := (main.UsedRegisters() & register.CalleeSaved).Count() * 8
+	assert.Equal(t, 0, (pushBytes+main.FrameSize())%16)
+
+	// target makes no calls and has no locals, so it reserves nothing
+	assert.Equal(t, 0, requireFunc(t, funcs, "target").FrameSize())
+}
+
+func TestMaxOutgoingSize_WidestCallWins(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun small (a int, b int, c int, d int, e int, f int, g int) -> int { return 0; }
+		fun big (a int, b int, c int, d int, e int, f int, g int, h int, i int) -> int { return 0; }
+		fun main () -> int { return small(1, 2, 3, 4, 5, 6, 7) + big(1, 2, 3, 4, 5, 6, 7, 8, 9); }
+	`)
+
+	// the outgoing area is reused across calls, so it fits the widest
+	assert.Equal(t, 24, requireFunc(t, funcs, "main").maxOutgoingSize())
+}
+
 func requireBuildSSA(t *testing.T, src string) []*Func {
 	t.Helper()
 	tokens, err := lexer.Tokenize(strings.NewReader(src))

@@ -143,10 +143,9 @@ type Func struct {
 	Blocks []*Block
 	Entry  *Block
 
-	valueId           int
-	blockId           int
-	frameSize         int // frameSize is the size of the function's general-purpose frame
-	outgoingFrameSize int // outgoingFrameSize is the size of the function's frame reserved for outgoing arguments that don't fit in registers
+	valueId   int
+	blockId   int
+	frameSize int // frameSize is the total size subtracted from rsp
 }
 
 // OrderedBlocks flattens a function's blocks using reverse post-order traversal

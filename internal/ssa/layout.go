@@ -16,15 +16,10 @@ func layoutFrame(f *Func) {
 		v.Loc = NewFrame(-offset)
 	}
 
-	frame := (offset + 15) &^ 15
-
-	// Callee-saved registers are pushed in the previous step. Align frame size to 16 bytes if odd number of pushes.
-	if (f.UsedRegisters()&register.CalleeSaved).Count()%2 == 1 {
-		frame += 8
-	}
-
-	f.frameSize = frame
-
-	// set function's outgoing frame size, 16-byte aligned since the whole frame needs to be that way.
-	f.outgoingFrameSize = (f.maxOutgoingSize() + 15) &^ 15
+	// three regions of the frame that shift rsp:
+	// 1. Callee-saved registers (push operation so don't want to account for frame size beyond aligning it, this is a silly design)
+	// 2. Local alloca's
+	// 3. Outgoing argument area for args on the stack
+	pushBytes := (f.UsedRegisters() & register.CalleeSaved).Count() * 8
+	f.frameSize = ((pushBytes + offset + f.maxOutgoingSize() + 15) &^ 15) - pushBytes
 }
