@@ -44,7 +44,6 @@ func optimizeAndAllocate(f *Func) error {
 	if err := regalloc(f); err != nil {
 		return err
 	}
-	calleeSaved(f)
 	layoutFrame(f)
 
 	return nil

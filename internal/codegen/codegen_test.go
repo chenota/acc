@@ -67,6 +67,17 @@ func TestCodegen_RedundantMoves(t *testing.T) {
 	assertNoSelfMoves(t, insts)
 }
 
+func TestCodegen_CalleeSavedSavedBeforeStackAdjust(t *testing.T) {
+	// caller keeps `a` in a callee-saved register across a call that passes arguments on the stack.
+	insts := requireGeneratesProgram(t, `
+		fun sink (x1 int, x2 int, x3 int, x4 int, x5 int, x6 int, x7 int, x8 int) -> int { return 0; }
+		fun caller (a int) -> int { return sink(1, 2, 3, 4, 5, 6, 7, 8) + a; }
+		fun main () -> int { return caller(0); }
+	`)
+
+	assertSavesCalleeBeforeStackAdjust(t, insts)
+}
+
 func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
 	t.Helper()
 
@@ -124,6 +135,22 @@ func assertNoSelfMoves(t *testing.T, insts []Inst) {
 			assert.Fail(t, "a mov onto its own location survived codegen", "%+v", inst)
 		}
 	}
+}
+
+func assertSavesCalleeBeforeStackAdjust(t *testing.T, insts []Inst) {
+	t.Helper()
+	firstPush, firstSub := -1, -1
+	for i, inst := range insts {
+		if firstPush < 0 && inst.Op == "pushq" && inst.Dest.Kind == KRegister && register.CalleeSaved.Contains(inst.Dest.Reg) {
+			firstPush = i
+		}
+		if firstSub < 0 && inst.Op == "subq" && inst.Dest.Kind == KRegister && inst.Dest.Reg == register.RegSP {
+			firstSub = i
+		}
+	}
+	require.NotEqual(t, -1, firstPush, "expected a callee-saved register to be pushed")
+	require.NotEqual(t, -1, firstSub, "expected a stack pointer adjustment")
+	assert.Less(t, firstPush, firstSub, "callee-saved pushes must precede the stack adjustment")
 }
 
 func requireGeneratesProgram(t *testing.T, src string) []Inst {

@@ -25,9 +25,7 @@ const (
 	OpCall
 	OpFuncRef    // the address of a function
 	OpSignExtend // sign-extends the accumulator into the high register (cdq/cqo)
-	OpPush
-	OpPop
-	OpParam // incoming function argument - more of a placeholder for a location than an acutal value in its own right
+	OpParam      // incoming function argument - more of a placeholder for a location than an acutal value in its own right
 )
 
 type Value struct {

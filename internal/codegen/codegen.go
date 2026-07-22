@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strconv"
 
+	"github.com/chenota/acc/internal/iterutil"
 	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/ssa"
 )
@@ -92,6 +93,13 @@ func generateFunction(f *ssa.Func) []Inst {
 			Dest: basePointer,
 		},
 	)
+
+	// Save the callee-saved registers this function uses above the local frame.
+	saved := (f.UsedRegisters() & register.CalleeSaved).All()
+	for reg := range saved {
+		insts = append(insts, Inst{Op: "pushq", Dest: register64(reg)})
+	}
+
 	stackAdjust := f.StackAdjustment()
 	if stackAdjust > 0 {
 		insts = append(insts, Inst{
@@ -111,6 +119,11 @@ func generateFunction(f *ssa.Func) []Inst {
 			Src1: immediate(int32(stackAdjust)),
 			Dest: stackPointer,
 		})
+	}
+
+	// restore in reverse order so each pop mirrors its push
+	for reg := range iterutil.Reverse(saved) {
+		insts = append(insts, Inst{Op: "popq", Dest: register64(reg)})
 	}
 
 	insts = append(insts, Inst{
@@ -160,10 +173,6 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateCopy(v))
 	case ssa.OpSignExtend:
 		insts = append(insts, generateSignExtend(v))
-	case ssa.OpPop:
-		insts = append(insts, generatePop(v))
-	case ssa.OpPush:
-		insts = append(insts, generatePush(v))
 	case ssa.OpCall:
 		insts = append(insts, generateCall(v))
 	}
@@ -178,26 +187,9 @@ func generateCall(v *ssa.Value) Inst {
 	}
 }
 
-func generatePop(v *ssa.Value) Inst {
-	return Inst{
-		Op: "popq",
-		Dest: Arg{
-			Kind:  KRegister,
-			Reg:   v.Loc.Reg,
-			Value: 8, // always use largest register size
-		},
-	}
-}
-
-func generatePush(v *ssa.Value) Inst {
-	return Inst{
-		Op: "pushq",
-		Dest: Arg{
-			Kind:  KRegister,
-			Reg:   v.Loc.Reg,
-			Value: 8, // always use largest register size
-		},
-	}
+// register64 is the full 8-byte operand for a physical register.
+func register64(r register.Register) Arg {
+	return Arg{Kind: KRegister, Reg: r, Value: 8}
 }
 
 func generateCopy(v *ssa.Value) Inst {
