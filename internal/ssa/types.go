@@ -41,8 +41,17 @@ type Value struct {
 	Loc Location
 
 	hints map[register.Register]int // hints stores the number of hints this value has per register
+}
 
-	Clobbers []register.Register // registers this op destroys
+// Clobbers reports the registers this value destroys when it executes.
+func (v *Value) Clobbers() register.Mask {
+	if v.Op == OpCall {
+		// for now calls are considered to clobber all caller-saved registers
+		// TODO: make this more intelligent by only clobbering caller-saved registers that the callee actually uses
+		return register.CallerSaved
+	}
+
+	return register.NewMask()
 }
 
 func (v *Value) IsUnaryOp() bool {

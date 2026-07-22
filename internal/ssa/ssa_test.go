@@ -3,7 +3,6 @@ package ssa
 import (
 	"fmt"
 	"math"
-	"slices"
 	"strings"
 	"testing"
 
@@ -174,7 +173,7 @@ func TestLowerCalls_ResultInRAX(t *testing.T) {
 	assert.Equal(t, register.RegA, call.Loc.Reg)
 }
 
-func TestLowerCalls_ClobbersCallerSaved(t *testing.T) {
+func TestValue_CallClobbersCallerSaved(t *testing.T) {
 	funcs := requireBuildSSA(t, `
 		fun target (a int) -> int { return 0; }
 		fun main () -> int { return target(7); }
@@ -182,7 +181,8 @@ func TestLowerCalls_ClobbersCallerSaved(t *testing.T) {
 
 	call := requireCall(t, funcs, "main")
 
-	assert.ElementsMatch(t, slices.Collect(register.CallerSaved.All()), call.Clobbers)
+	// a call conservatively clobbers every caller-saved register
+	assert.Equal(t, register.CallerSaved, call.Clobbers())
 }
 
 func TestGenSsa_Params_PinnedToArgRegisters(t *testing.T) {

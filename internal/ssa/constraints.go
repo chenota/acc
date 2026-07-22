@@ -1,8 +1,6 @@
 package ssa
 
 import (
-	"slices"
-
 	"github.com/chenota/acc/internal/register"
 )
 
@@ -89,7 +87,6 @@ func lowerCalls(f *Func) {
 		}
 
 		v.Loc = NewReg(register.RegA)
-		v.Clobbers = slices.Collect(register.CallerSaved.All())
 
 		copyOut(f, v)
 	}
