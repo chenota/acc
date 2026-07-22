@@ -291,15 +291,15 @@ func TestLayoutFrame_ReservesOutgoingArea(t *testing.T) {
 
 	main := requireFunc(t, funcs, "main")
 
-	// two arguments spill to the stack, so the frame folds in their two eightbyte slots
-	assert.GreaterOrEqual(t, main.FrameSize(), 16)
+	// two arguments spill to the stack, so the adjustment folds in their two eightbyte slots
+	assert.GreaterOrEqual(t, main.StackAdjustment(), 16)
 
 	// the whole frame stays 16-byte aligned so rsp is aligned at the call
 	pushBytes := (main.UsedRegisters() & register.CalleeSaved).Count() * 8
-	assert.Equal(t, 0, (pushBytes+main.FrameSize())%16)
+	assert.Equal(t, 0, (pushBytes+main.StackAdjustment())%16)
 
-	// target makes no calls and has no locals, so it reserves nothing
-	assert.Equal(t, 0, requireFunc(t, funcs, "target").FrameSize())
+	// target makes no calls and has no locals, so it subtracts nothing
+	assert.Equal(t, 0, requireFunc(t, funcs, "target").StackAdjustment())
 }
 
 func TestMaxOutgoingSize_WidestCallWins(t *testing.T) {

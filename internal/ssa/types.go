@@ -143,9 +143,8 @@ type Func struct {
 	Blocks []*Block
 	Entry  *Block
 
-	valueId   int
-	blockId   int
-	frameSize int // frameSize is the total size subtracted from rsp
+	valueId int
+	blockId int
 }
 
 // OrderedBlocks flattens a function's blocks using reverse post-order traversal
@@ -303,8 +302,23 @@ func (f *Func) removeValue(v *Value) {
 	}
 }
 
-func (f *Func) FrameSize() int {
-	return f.frameSize
+// StackAdjustment is the number of bytes the function prologue must subtract from rsp.
+func (f *Func) StackAdjustment() int {
+	// number of bytes pushed due to callee-saved registers - this is computed for alignment purposes
+	pushBytes := (f.UsedRegisters() & register.CalleeSaved).Count() * 8
+	region := pushBytes + f.localsSize() + f.maxOutgoingSize()
+	return ((region + 15) &^ 15) - pushBytes
+}
+
+// localsSize is the size in bytes of the local alloca area
+func (f *Func) localsSize() int {
+	var size int
+	for _, v := range f.Entry.Values {
+		if v.Op == OpAlloca {
+			size = max(size, -v.Loc.Offset)
+		}
+	}
+	return size
 }
 
 func (f *Func) maxOutgoingSize() int {

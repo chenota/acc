@@ -92,10 +92,11 @@ func generateFunction(f *ssa.Func) []Inst {
 			Dest: basePointer,
 		},
 	)
-	if f.FrameSize() > 0 {
+	stackAdjust := f.StackAdjustment()
+	if stackAdjust > 0 {
 		insts = append(insts, Inst{
 			Op:   "subq",
-			Src1: immediate(int32(f.FrameSize())),
+			Src1: immediate(int32(stackAdjust)),
 			Dest: stackPointer,
 		})
 	}
@@ -104,10 +105,10 @@ func generateFunction(f *ssa.Func) []Inst {
 		insts = append(insts, generateBlock(b)...)
 	}
 
-	if f.FrameSize() > 0 {
+	if stackAdjust > 0 {
 		insts = append(insts, Inst{
 			Op:   "addq",
-			Src1: immediate(int32(f.FrameSize())),
+			Src1: immediate(int32(stackAdjust)),
 			Dest: stackPointer,
 		})
 	}
