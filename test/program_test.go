@@ -2,10 +2,11 @@ package test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,29 +16,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const timeout = time.Second
+// testConfig is the contents of a test directory's test.json file.
+type testConfig struct {
+	Name   string   `json:"name"`
+	Tags   []string `json:"tags"`
+	Status *int     `json:"status"`
+}
 
 func TestProgram(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	require.NoError(t, err)
 
-	runWip := runWip()
+	userTag, userNegative := tag(t)
 	asmOnFail := asmOnFail()
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-
 		dirPath := filepath.Join(".", entry.Name())
+		config := readTestConfig(t, dirPath)
 
-		var isWip bool
-		if _, err := os.Stat(filepath.Join(dirPath, "wip")); err == nil {
-			isWip = true
-		}
-
-		if isWip == runWip {
-			t.Run(entry.Name(), func(t *testing.T) {
+		t.Run(config.Name, func(t *testing.T) {
+			if userTag == "" || !userNegative == slices.Contains(config.Tags, userTag) {
 				mainFile := filepath.Join(dirPath, "main.acc")
 				require.FileExists(t, mainFile, "each source directory must contain a main file")
 
@@ -53,7 +54,7 @@ func TestProgram(t *testing.T) {
 				binaryPath := compileProgram(t, mainFile)
 				defer os.Remove(binaryPath)
 
-				ctx, cancel := context.WithTimeout(t.Context(), timeout)
+				ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 				defer cancel()
 
 				cmd := exec.CommandContext(ctx, binaryPath)
@@ -68,10 +69,28 @@ func TestProgram(t *testing.T) {
 				}
 
 				actualStatus := cmd.ProcessState.ExitCode()
-				verifyGoldenStatus(t, dirPath, actualStatus)
-			})
-		}
+				verifyStatus(t, config, actualStatus)
+			}
+		})
 	}
+}
+
+// readTestConfig reads and parses the test.json file in dirPath.
+func readTestConfig(t *testing.T, dirPath string) testConfig {
+	t.Helper()
+
+	configBytes, err := os.ReadFile(filepath.Join(dirPath, "test.json"))
+	require.NoError(t, err, "each test directory must contain a test.json file")
+
+	var config testConfig
+	require.NoError(t, json.Unmarshal(configBytes, &config), "failed to parse test.json")
+	require.NotEmpty(t, config.Name, "test.json must contain a name field")
+
+	for _, testTag := range config.Tags {
+		require.NotContains(t, testTag, "~", "illegal character in test tags: ~")
+	}
+
+	return config
 }
 
 func compileProgram(t *testing.T, mainFile string) string {
@@ -97,25 +116,15 @@ func compileProgram(t *testing.T, mainFile string) string {
 	return tmpBinary.Name()
 }
 
-func verifyGoldenStatus(t *testing.T, dirPath string, actualStatus int) {
+func verifyStatus(t *testing.T, config testConfig, actualStatus int) {
 	t.Helper()
 
-	statusPath := filepath.Join(dirPath, "status.golden")
-
-	statusBytes, err := os.ReadFile(statusPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return
-		}
-		require.NoError(t, err, "failed to read status.golden file")
+	// skip this check if the test does not specify an expected status
+	if config.Status == nil {
+		return
 	}
 
-	statusStr := strings.TrimSpace(string(statusBytes))
-
-	expectedStatus, err := strconv.Atoi(statusStr)
-	require.NoError(t, err)
-
-	assert.Equal(t, expectedStatus, actualStatus, "actual status does not match golden status")
+	assert.Equal(t, *config.Status, actualStatus, "actual status does not match expected status")
 }
 
 func asmOnFail() bool {
@@ -123,9 +132,19 @@ func asmOnFail() bool {
 	return v == "1" || v == "true"
 }
 
-func runWip() bool {
-	v := os.Getenv("RUN_WIP")
-	return v == "1" || v == "true"
+// tag returns a user-supplied tag and a bool indicating if it is a ~ operation
+func tag(t *testing.T) (value string, isNegative bool) {
+	t.Helper()
+
+	value = os.Getenv("TAG")
+	if strings.HasPrefix(value, "~") {
+		isNegative = true
+		value = value[1:]
+
+		require.NotContains(t, value, "~", "illegal character in user-supplied tag: ~")
+	}
+
+	return
 }
 
 // dumpAssembly makes a best-effort attempt to log the assembly acc generates for mainFile with the -S flag.
