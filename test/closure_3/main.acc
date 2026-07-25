@@ -1,0 +1,11 @@
+fun helper(f () -> int) int {
+    return f() + 2;
+}
+
+fun main () -> int {
+    let x = 10;
+    let f = func() {
+        return x + 1;
+    }
+    return helper(f);
+}

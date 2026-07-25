@@ -1,0 +1,7 @@
+fun main () -> int {
+    let x = 10;
+    let f = func(y int) {
+        return x + y;
+    }
+    return f(2);
+}

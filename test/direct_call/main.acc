@@ -1,0 +1,5 @@
+fun main () -> int {
+    return fun() -> int {
+        return 7;
+    }();
+}

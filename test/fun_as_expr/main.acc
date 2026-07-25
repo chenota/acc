@@ -1,0 +1,6 @@
+fun main () -> int {
+    let f = func(x int) {
+        return x * 2;
+    }
+    return f(21);
+}

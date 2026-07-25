@@ -1,0 +1,12 @@
+fun add (x int, y int) -> int {
+    return x + y;
+}
+
+fun adderFactory (x int) -> (int) -> int {
+    return func(y int) { return x + y; };
+}
+
+fun main () -> int {
+    let inc = adderFactory(1);
+    return inc(3);
+}
