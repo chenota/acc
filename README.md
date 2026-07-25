@@ -130,7 +130,7 @@ Another low-hanging fruit I'd like to knock out is assignment operators since ev
              | <Ident> ("+=" | "-=" | "*=" | "/=") <Expression> ";"
 ```
 
-### Vertical Slice 6: Global Functions [Work in Progress]
+### Vertical Slice 6: Global Functions [Complete]
 
 We can build on Vertical Slice 3 and add the last foundational construct we need before introducing a format print by adding functions.
 
@@ -155,9 +155,23 @@ We can build on Vertical Slice 3 and add the last foundational construct we need
               | <Atom>
 ```
 
-### Vertical Slice 7: Lambda Functions [Not Started]
+### Vertical Slice 7: Lambda Functions [Work in Progress]
 
 Lambda functions let `acc` use functions as values.
+
+#### Expression Grammar (CFG)
+
+```
+<Atom> := "fun" "(" <Paramlist> ")" "->" <Type> <Block>
+```
+
+#### Type Grammar (CFG)
+
+```
+<Type> := "(" <Typelist> ")" "->" <Type>
+        | <Atom>
+<Atom> := "int"
+```
 
 ### Vertical Slice 8: String Literals and File Output [Not Started]
 
