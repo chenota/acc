@@ -28,7 +28,7 @@ func TestProgram(t *testing.T) {
 	require.NoError(t, err)
 
 	userTag, userNegative := tag(t)
-	asmOnFail := asmOnFail()
+	verboseFail := verboseFail()
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -43,7 +43,7 @@ func TestProgram(t *testing.T) {
 				require.FileExists(t, mainFile, "each source directory must contain a main file")
 
 				// on failure dump the assembly acc generated so it's debuggable
-				if asmOnFail {
+				if verboseFail {
 					defer func() {
 						if t.Failed() {
 							dumpAssembly(t, mainFile)
@@ -127,8 +127,8 @@ func verifyStatus(t *testing.T, config testConfig, actualStatus int) {
 	assert.Equal(t, *config.Status, actualStatus, "actual status does not match expected status")
 }
 
-func asmOnFail() bool {
-	v := os.Getenv("ASM_ON_FAIL")
+func verboseFail() bool {
+	v := os.Getenv("VERBOSE_FAIL")
 	return v == "1" || v == "true"
 }
 
