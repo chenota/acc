@@ -1,5 +1,5 @@
 {
   "name": "Callee-Saved Register Clobbering",
-  "tags": [],
+  "tags": ["vs6"],
   "status": 128
 }
