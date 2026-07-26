@@ -92,7 +92,7 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 			Val: left.Text,
 		}, nil
 	case lexer.KMinus:
-		e, err := p.expr(prefixBindingPower(left))
+		e, err := p.expr(unaryBindingPower)
 		if err != nil {
 			return nil, err
 		}
@@ -103,7 +103,7 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 			List: []*ir.Node{e},
 		}, nil
 	case lexer.KRef:
-		e, err := p.expr(prefixBindingPower(left))
+		e, err := p.expr(unaryBindingPower)
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +114,7 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 			List: []*ir.Node{e},
 		}, nil
 	case lexer.KStar:
-		e, err := p.expr(prefixBindingPower(left))
+		e, err := p.expr(unaryBindingPower)
 		if err != nil {
 			return nil, err
 		}
@@ -197,24 +197,17 @@ func isOperator(t lexer.Token) bool {
 	return bopFrom(t) != ir.OpUnknown || t.Kind == lexer.KLParen
 }
 
+// unary binding power should be tighter than any binary operator but looser than a call
+const unaryBindingPower = 30
+
 func bindingPower(t lexer.Token) int {
 	switch t.Kind {
 	case lexer.KPlus, lexer.KMinus:
 		return 10
 	case lexer.KStar, lexer.KDiv:
 		return 20
+	// function call
 	case lexer.KLParen:
-		return 50
-	default:
-		return 0
-	}
-}
-
-func prefixBindingPower(t lexer.Token) int {
-	switch t.Kind {
-	case lexer.KMinus:
-		return 30
-	case lexer.KRef, lexer.KStar:
 		return 40
 	default:
 		return 0
