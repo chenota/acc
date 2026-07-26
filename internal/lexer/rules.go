@@ -27,6 +27,7 @@ const (
 	KMinusEq
 	KMulEq
 	KDivEq
+	KRef
 )
 
 type tokenRule struct {
@@ -55,6 +56,7 @@ var rules = []tokenRule{
 	{KDiv, mustAnchor(`/`)},
 	{KEqual, mustAnchor(`=`)},
 	{KSemicolon, mustAnchor(`;`)},
+	{KRef, mustAnchor(`&`)},
 	{KInteger, mustAnchor(`[0-9]+(_[0-9]+)*`)},
 	{KIdentifier, mustAnchor(`[a-zA-Z_][a-zA-Z0-9_]*`)},
 	{KNewLines, mustAnchor(`\n+`)},
