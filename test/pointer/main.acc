@@ -1,0 +1,5 @@
+fun main () -> int {
+    let a = 10;
+    let b = &a;
+    return *b;
+}

@@ -59,8 +59,7 @@ The first goal of this language is to have a main function that can return an ex
 #### Type Grammar (CFG)
 
 ```
-<Type> := <Atom>
-<Atom> := "int"
+<Type> := "int"
 ```
 
 ### Vertical Slice 2: Constant Arithmetic [Complete]
@@ -155,7 +154,26 @@ We can build on Vertical Slice 3 and add the last foundational construct we need
               | <Atom>
 ```
 
-### Vertical Slice 7: Lambda Functions [Work in Progress]
+### Vertical Slice 7: Pointers [Work in Progress]
+
+We need referenced values to make closures work.
+
+#### Expression Grammar (CFG)
+
+```
+<Unary> := "-" <Call>
+         | "&" <Call>
+         | "*" <Call>
+         | <Call>
+```
+
+#### Type Grammar (CFG)
+
+```
+<Type> := "*" <Type>
+```
+
+### Vertical Slice 8: Lambda Functions 
 
 Lambda functions let `acc` use functions as values.
 
@@ -169,10 +187,10 @@ Lambda functions let `acc` use functions as values.
 
 ```
 <Type> := "(" <Typelist> ")" "->" <Type>
-        | <Atom>
-<Atom> := "int"
+        | "*" <Type>
+        | "int"
 ```
 
-### Vertical Slice 8: String Literals and File Output [Not Started]
+### Vertical Slice 9: String Literals and File Output [Not Started]
 
 With functions and variables out of the way, we can finally add a format print which greatly expands the usefulness of the `acc` language.
