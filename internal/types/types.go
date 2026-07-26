@@ -13,6 +13,7 @@ const (
 	KUntypedInt
 	KInt
 	KFunction
+	KPointer
 )
 
 type Type struct {
@@ -44,6 +45,11 @@ func Equal(a *Type, b *Type) bool {
 		return true
 	}
 
+	// pointer comparison
+	if a.kind == KPointer && b.kind == KPointer {
+		return Equal(a.result, b.result)
+	}
+
 	// atom comparison: just use the kinds
 	return a.kind == b.kind
 }
@@ -71,6 +77,8 @@ func (t *Type) String() string {
 		}
 
 		return fmt.Sprintf("(%s) -> %v", strings.Join(params, ","), t.result)
+	case KPointer:
+		return fmt.Sprintf("*%v", t.result)
 	default:
 		return "unknown"
 	}
@@ -126,6 +134,13 @@ func Function(params []*Type, result *Type) *Type {
 
 func Unit() *Type {
 	return &Type{kind: KUnit}
+}
+
+func Pointer(sub *Type) *Type {
+	return &Type{
+		kind:   KPointer,
+		result: sub,
+	}
 }
 
 // Size returns the type's size in bytes

@@ -91,6 +91,7 @@ func TestParser_ExprErr(t *testing.T) {
 		{"missing right operand", `fun main () -> int { return 4 + ;}`},
 		{"missing left operand", `fun main () -> int { return / 5; }`},
 		{"operator by itself", `fun main () -> int { return *; }`},
+		{"reference missing operand", `fun main () -> int { return &; }`},
 	}
 
 	for _, tt := range tests {
@@ -583,6 +584,200 @@ func TestParser_CallErr(t *testing.T) {
 		{"double comma", `fun main () -> int { return f(1,,2); }`},
 		{"missing comma", `fun main () -> int { return f(1 2); }`},
 		{"unclosed paren", `fun main () -> int { return f(1; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := requireTokenize(t, tt.test)
+			_, err := ParseProgram(tokens)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestParser_Reference(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { return &x; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	e := fun.List[0].List[0]
+	assert.Equal(t, ir.OpRef, e.Op)
+
+	require.Len(t, e.List, 1)
+	assert.Equal(t, ir.OpIdent, e.List[0].Op)
+	assert.Equal(t, "x", e.List[0].Ident())
+}
+
+func TestParser_Dereference(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { return *p; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	e := fun.List[0].List[0]
+	assert.Equal(t, ir.OpDeref, e.Op)
+
+	require.Len(t, e.List, 1)
+	assert.Equal(t, ir.OpIdent, e.List[0].Op)
+	assert.Equal(t, "p", e.List[0].Ident())
+}
+
+func TestParser_Dereference_Nested(t *testing.T) {
+	// prefix operators bind right, so **p is *(*p)
+	tokens := requireTokenize(t, `fun main () -> int { return **p; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	outer := fun.List[0].List[0]
+	assert.Equal(t, ir.OpDeref, outer.Op)
+
+	require.Len(t, outer.List, 1)
+	inner := outer.List[0]
+	assert.Equal(t, ir.OpDeref, inner.Op)
+
+	require.Len(t, inner.List, 1)
+	assert.Equal(t, ir.OpIdent, inner.List[0].Op)
+	assert.Equal(t, "p", inner.List[0].Ident())
+}
+
+func TestParser_Dereference_MultiplyPrecedence(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { return *a * *b; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	e := fun.List[0].List[0]
+	assert.Equal(t, ir.OpTimes, e.Op)
+
+	require.Len(t, e.List, 2)
+	left := e.List[0]
+	right := e.List[1]
+
+	assert.Equal(t, ir.OpDeref, left.Op)
+	require.Len(t, left.List, 1)
+	assert.Equal(t, "a", left.List[0].Ident())
+
+	assert.Equal(t, ir.OpDeref, right.Op)
+	require.Len(t, right.List, 1)
+	assert.Equal(t, "b", right.List[0].Ident())
+}
+
+func TestParser_Reference_BinaryPrecedence(t *testing.T) {
+	// &x + 1 parses as (&x) + 1
+	tokens := requireTokenize(t, `fun main () -> int { return &x + 1; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	e := fun.List[0].List[0]
+	assert.Equal(t, ir.OpPlus, e.Op)
+
+	require.Len(t, e.List, 2)
+	assert.Equal(t, ir.OpRef, e.List[0].Op)
+	assert.Equal(t, ir.OpInt, e.List[1].Op)
+}
+
+func TestParser_Dereference_CallPrecedence(t *testing.T) {
+	// *f() parses as *(f())
+	tokens := requireTokenize(t, `fun main () -> int { return *f(); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	e := fun.List[0].List[0]
+	assert.Equal(t, ir.OpDeref, e.Op)
+
+	require.Len(t, e.List, 1)
+	assert.Equal(t, ir.OpCall, e.List[0].Op)
+}
+
+func TestParser_PointerType(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { let p *int = x; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	decl := fun.List[0]
+	assert.Equal(t, ir.OpDeclaration, decl.Op)
+
+	require.Len(t, decl.List, 3)
+	varType := decl.List[1]
+	assert.Equal(t, ir.OpType, varType.Op)
+	require.NotNil(t, varType.Type)
+	assert.True(t, types.Equal(types.Pointer(types.Int()), varType.Type))
+}
+
+func TestParser_PointerType_Nested(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { let p **int = x; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	decl := fun.List[0]
+
+	require.Len(t, decl.List, 3)
+	varType := decl.List[1]
+	assert.Equal(t, ir.OpType, varType.Op)
+	require.NotNil(t, varType.Type)
+	assert.True(t, types.Equal(types.Pointer(types.Pointer(types.Int())), varType.Type))
+}
+
+func TestParser_PointerType_Result(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> *int { return x; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.NotNil(t, fun.Signature)
+	require.NotNil(t, fun.Signature.Result)
+	require.NotNil(t, fun.Signature.Result.Type)
+	assert.True(t, types.Equal(types.Pointer(types.Int()), fun.Signature.Result.Type))
+}
+
+func TestParser_TypeErr(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"pointer missing subtype", `fun main () -> int { let p * = x; }`},
+		{"pointer result missing subtype", `fun main () -> * { return x; }`},
 	}
 
 	for _, tt := range tests {

@@ -102,6 +102,28 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 			Pos:  left.Pos,
 			List: []*ir.Node{e},
 		}, nil
+	case lexer.KRef:
+		e, err := p.expr(prefixBindingPower(left))
+		if err != nil {
+			return nil, err
+		}
+
+		return &ir.Node{
+			Op:   ir.OpRef,
+			Pos:  left.Pos,
+			List: []*ir.Node{e},
+		}, nil
+	case lexer.KStar:
+		e, err := p.expr(prefixBindingPower(left))
+		if err != nil {
+			return nil, err
+		}
+
+		return &ir.Node{
+			Op:   ir.OpDeref,
+			Pos:  left.Pos,
+			List: []*ir.Node{e},
+		}, nil
 	default:
 		return nil, diagnostic.NewError(left.Pos, "expected prefix or literal expression")
 	}
@@ -182,7 +204,7 @@ func bindingPower(t lexer.Token) int {
 	case lexer.KStar, lexer.KDiv:
 		return 20
 	case lexer.KLParen:
-		return 40
+		return 50
 	default:
 		return 0
 	}
@@ -192,6 +214,8 @@ func prefixBindingPower(t lexer.Token) int {
 	switch t.Kind {
 	case lexer.KMinus:
 		return 30
+	case lexer.KRef, lexer.KStar:
+		return 40
 	default:
 		return 0
 	}
