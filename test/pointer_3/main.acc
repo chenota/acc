@@ -1,0 +1,12 @@
+fun ptr (x int) -> *int {
+    return &x;
+}
+
+fun main () -> int {
+    let a = ptr(0);
+    let b = ptr(32);
+
+    *a = 10;
+
+    return *a + *b;
+}
