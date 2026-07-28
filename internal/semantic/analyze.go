@@ -144,6 +144,12 @@ func analyzeRef(scope *ir.Table, n *ir.Node) error {
 	}
 
 	sub := n.List[0]
+
+	// can only take the address of an addressable expression
+	if !sub.IsLValue() {
+		return diagnostic.NewError(sub.Pos, "cannot take reference of non-addressable expression")
+	}
+
 	if err := analyzeExpr(scope, sub, nil); err != nil {
 		return err
 	}

@@ -368,6 +368,12 @@ func TestAnalyze_Deref_NonPointer(t *testing.T) {
 	assert.Error(t, Analyze(funcs))
 }
 
+func TestAnalyze_Reference_NonLValue(t *testing.T) {
+	funcs := mustParse(t, `fun main () -> int { let x int = 1; let p = &(x + 1); return 0; }`)
+
+	assert.Error(t, Analyze(funcs))
+}
+
 func mustParse(t *testing.T, inputStr string) []*ir.Node {
 	t.Helper()
 

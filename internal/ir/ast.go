@@ -88,5 +88,5 @@ func (n *Node) IsLValue() bool {
 		return false
 	}
 
-	return n.Op == OpIdent
+	return n.Op == OpIdent || n.Op == OpDeref
 }
