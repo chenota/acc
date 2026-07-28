@@ -12,8 +12,6 @@ import (
 var (
 	basePointer  = Arg{Kind: KRegister, Reg: register.RegBP, Value: 8}
 	stackPointer = Arg{Kind: KRegister, Reg: register.RegSP, Value: 8}
-	rax          = Arg{Kind: KRegister, Reg: register.RegA, Value: 8}
-	rdi          = Arg{Kind: KRegister, Reg: register.RegDI, Value: 8}
 )
 
 func GenerateProgram(program []*ssa.Func) ([]Inst, error) {
@@ -35,8 +33,6 @@ func GenerateProgram(program []*ssa.Func) ([]Inst, error) {
 		return nil, errors.New("program has no main function")
 	}
 
-	insts = append(insts, callAndExit("_start", mainFunc)...)
-
 	for _, f := range program {
 		insts = append(insts, generateFunction(f)...)
 	}
@@ -47,42 +43,15 @@ func GenerateProgram(program []*ssa.Func) ([]Inst, error) {
 	return insts, nil
 }
 
-func callAndExit(wrapperLabel string, main *ssa.Func) []Inst {
-	return []Inst{
-		{
-			Op:   ".globl",
-			Dest: text(wrapperLabel),
-		},
-		label(wrapperLabel),
-		{
-			Op:   "call",
-			Dest: text(main.Label()),
-		},
-		{
-			Op:   "movq",
-			Src1: rax,
-			Dest: rdi,
-		},
-		{
-			Op:   "movq",
-			Src1: immediate(60),
-			Dest: rax,
-		},
-		{
-			Op: "syscall",
-		},
-	}
-}
-
 func generateFunction(f *ssa.Func) []Inst {
 	var insts []Inst
 
 	insts = append(insts,
 		Inst{
 			Op:   ".globl",
-			Dest: text(f.Label()),
+			Dest: text(funcLabel(f)),
 		},
-		label(f.Label()),
+		label(funcLabel(f)),
 		Inst{
 			Op:   "pushq",
 			Dest: basePointer,
@@ -267,7 +236,7 @@ func blockLabel(b *ssa.Block) string {
 
 func toArg(v *ssa.Value) Arg {
 	if v.Op == ssa.OpFuncRef {
-		return text(v.Value.(*ssa.Func).Label())
+		return text(funcLabel(v.Value.(*ssa.Func)))
 	}
 
 	switch v.Loc.Kind {
@@ -386,4 +355,15 @@ func mulOp(size int) string {
 
 func text(v string) Arg {
 	return Arg{Kind: KText, Value: v}
+}
+
+// symbol maps a source-level name to its assembly symbol, applying the target's
+// C symbol convention (see symbolPrefix).
+func symbol(name string) string {
+	return symbolPrefix + name
+}
+
+// funcLabel is the assembly symbol for a function.
+func funcLabel(f *ssa.Func) string {
+	return symbol(f.Name())
 }

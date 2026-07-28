@@ -12,7 +12,7 @@ func newModule() *Module {
 
 // declare adds a named function shell to the pool.
 func (m *Module) declare(name string) *Func {
-	f := &Func{Name: name}
+	f := &Func{name: name}
 	m.Funcs = append(m.Funcs, f)
 	m.byName[name] = f
 	return f

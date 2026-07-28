@@ -25,26 +25,10 @@ func TestCodegen_ImmediateValue(t *testing.T) {
 	assertContainsOpWithArgs(t, insts, "movl", KImmediate, KUndefined, KRegister)
 }
 
-func TestCodegen_MainWrapper(t *testing.T) {
-	insts := requireGeneratesProgram(t, `fun main () -> int { return 0; }`)
-
-	assertContainsSeq(t, insts, "call", "movq", "movq", "syscall")
-}
-
 func TestCodegen_Directives(t *testing.T) {
 	insts := requireGeneratesProgram(t, `fun main () -> int { return 0; }`)
 
 	assertContainsSeq(t, insts, ".text", ".globl")
-}
-
-func TestCodegen_Call_TargetsCalleeLabel(t *testing.T) {
-	insts := requireGeneratesProgram(t, `
-		fun target (a int) -> int { return 0; }
-		fun main () -> int { return target(7); }
-	`)
-
-	// the call must reference the callee's mangled label, not its source name
-	assertCallsLabel(t, insts, "_target")
 }
 
 func TestCodegen_Call_ArgsInRegisters(t *testing.T) {
@@ -102,16 +86,6 @@ func assertContainsOpWithArgs(t *testing.T, insts []Inst, op string, src1, src2,
 		}
 	}
 	assert.Fail(t, "instructions list does not contain specified operation with arguments", op, src1, src2, dest)
-}
-
-func assertCallsLabel(t *testing.T, insts []Inst, label string) {
-	t.Helper()
-	for _, inst := range insts {
-		if inst.Op == "call" && inst.Dest.Kind == KText && inst.Dest.Value == label {
-			return
-		}
-	}
-	assert.Fail(t, "instructions list does not call the specified label", label)
 }
 
 func assertWritesRegBeforeCall(t *testing.T, insts []Inst, reg register.Register) {

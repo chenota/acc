@@ -146,7 +146,7 @@ func (b *Block) indexOf(v *Value) int {
 }
 
 type Func struct {
-	Name   string
+	name   string
 	Blocks []*Block
 	Entry  *Block
 
@@ -253,13 +253,12 @@ func (f *Func) newBlock() *Block {
 }
 
 func (f *Func) IsMain() bool {
-	return f.Name == "main"
+	return f.name == "main"
 }
 
-// Label returns the function's assembly symbol.
-// TODO: this will need expanded for anonymous functions.
-func (f *Func) Label() string {
-	return "_" + f.Name
+// Name returns the function's source-level name.
+func (f *Func) Name() string {
+	return f.name
 }
 
 // redirectUses points every reference to old at new - does not touch the instruction stream itself.

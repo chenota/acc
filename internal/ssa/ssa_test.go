@@ -20,7 +20,7 @@ func TestGenSsa_Basic(t *testing.T) {
 
 	require.Len(t, funcs, 1)
 	f := funcs[0]
-	assert.Equal(t, "main", f.Name)
+	assert.Equal(t, "main", f.Name())
 
 	b := f.Blocks[0]
 	assert.Equal(t, BlockRet, b.Kind)
@@ -149,7 +149,7 @@ func TestLowerCalls_ArgRegisters(t *testing.T) {
 	require.Equal(t, OpFuncRef, call.Args[0].Op)
 	callee, ok := call.Args[0].Value.(*Func)
 	require.True(t, ok, "callee payload should be a *Func")
-	assert.Equal(t, "target", callee.Name)
+	assert.Equal(t, "target", callee.Name())
 
 	assert.Equal(t, LocRegister, call.Args[1].Loc.Kind)
 	assert.Equal(t, register.RegDI, call.Args[1].Loc.Reg)
@@ -338,7 +338,7 @@ func findValues(values []*Value, op Op) []*Value {
 func requireFunc(t *testing.T, funcs []*Func, name string) *Func {
 	t.Helper()
 	for _, f := range funcs {
-		if f.Name == name {
+		if f.Name() == name {
 			return f
 		}
 	}
