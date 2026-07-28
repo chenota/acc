@@ -1,0 +1,9 @@
+fun f(x *int) -> *int {
+    return x;
+}
+
+fun main () -> int {
+    let a = 10;
+    *f(&a) = 15;
+    return a;
+}
