@@ -322,6 +322,52 @@ func TestAnalyze_DuplicateFunction(t *testing.T) {
 	require.Error(t, Analyze(funcs))
 }
 
+func TestAnalyze_Reference(t *testing.T) {
+	funcs := mustParse(t, `fun main () -> int { let x int = 10; let p = &x; return 0; }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 3)
+	decl := fun.List[1]
+
+	require.Len(t, decl.List, 3)
+	ref := decl.List[2]
+	assert.Equal(t, ir.OpRef, ref.Op)
+
+	// &x on an int variable yields *int
+	require.NotNil(t, ref.Type)
+	assert.True(t, types.Equal(types.Pointer(types.Int()), ref.Type))
+}
+
+func TestAnalyze_Deref(t *testing.T) {
+	funcs := mustParse(t, `fun main () -> int { let x int = 10; let p = &x; return *p; }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 3)
+	ret := fun.List[2]
+
+	require.Len(t, ret.List, 1)
+	deref := ret.List[0]
+	assert.Equal(t, ir.OpDeref, deref.Op)
+
+	// *p where p is *int yields the base type int
+	require.NotNil(t, deref.Type)
+	assert.True(t, types.Equal(types.Int(), deref.Type))
+}
+
+func TestAnalyze_Deref_NonPointer(t *testing.T) {
+	funcs := mustParse(t, `fun main () -> int { let x int = 10; return *x; }`)
+
+	assert.Error(t, Analyze(funcs))
+}
+
 func mustParse(t *testing.T, inputStr string) []*ir.Node {
 	t.Helper()
 

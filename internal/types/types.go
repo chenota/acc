@@ -100,8 +100,16 @@ func (t *Type) IsFunction() bool {
 	return t.kind == KFunction
 }
 
+func (t *Type) IsPointer() bool {
+	if t == nil {
+		return false
+	}
+
+	return t.kind == KPointer
+}
+
 func (t *Type) Params() []*Type {
-	if t == nil || t.kind != KFunction {
+	if t == nil {
 		return nil
 	}
 
@@ -109,7 +117,7 @@ func (t *Type) Params() []*Type {
 }
 
 func (t *Type) Result() *Type {
-	if t == nil || t.kind != KFunction {
+	if t == nil {
 		return nil
 	}
 

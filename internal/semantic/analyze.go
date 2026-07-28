@@ -129,9 +129,49 @@ func analyzeExpr(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 		return analyzeNegate(scope, n, hint)
 	case ir.OpCall:
 		return analyzeCall(scope, n)
+	case ir.OpRef:
+		return analyzeRef(scope, n)
+	case ir.OpDeref:
+		return analyzeDeref(scope, n)
 	default:
 		return diagnostic.NewError(n.Pos, "unknown expression operation: %d", n.Op)
 	}
+}
+
+func analyzeRef(scope *ir.Table, n *ir.Node) error {
+	if len(n.List) < 1 {
+		return diagnostic.NewError(n.Pos, "ref without argument")
+	}
+
+	sub := n.List[0]
+	if err := analyzeExpr(scope, sub, nil); err != nil {
+		return err
+	}
+
+	// n's type is a pointer of sub's type
+	n.Type = types.Pointer(sub.Type)
+
+	return nil
+}
+
+func analyzeDeref(scope *ir.Table, n *ir.Node) error {
+	if len(n.List) < 1 {
+		return diagnostic.NewError(n.Pos, "deref without argument")
+	}
+
+	sub := n.List[0]
+	if err := analyzeExpr(scope, sub, nil); err != nil {
+		return err
+	}
+
+	// make sure sub's type is a pointer
+	if !sub.Type.IsPointer() {
+		return diagnostic.NewError(n.Pos, "dereference of a non-pointer type")
+	}
+
+	n.Type = sub.Type.Result()
+
+	return nil
 }
 
 func analyzeCall(scope *ir.Table, n *ir.Node) error {
