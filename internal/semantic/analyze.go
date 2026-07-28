@@ -304,7 +304,15 @@ func registerFunction(scope *ir.Table, f *ir.Node) error {
 		}
 		paramTypes = append(paramTypes, p.Type)
 	}
-	f.Type = types.Function(paramTypes, f.Signature.Result.Type)
+
+	resultType := f.Signature.Result.Type
+
+	// returning a pointer is forbidden until the language is garbage collected
+	if resultType.IsPointer() {
+		return diagnostic.NewError(f.Signature.Result.Pos, "functions cannot return pointer types")
+	}
+
+	f.Type = types.Function(paramTypes, resultType)
 
 	// register self onto scope
 	name := f.Signature.Name

@@ -374,6 +374,13 @@ func TestAnalyze_Reference_NonLValue(t *testing.T) {
 	assert.Error(t, Analyze(funcs))
 }
 
+func TestAnalyze_PointerReturn(t *testing.T) {
+	// returning a pointer is forbidden until the language is garbage collected
+	funcs := mustParse(t, `fun f (x *int) -> *int { return x; } fun main () -> int { return 0; }`)
+
+	assert.Error(t, Analyze(funcs))
+}
+
 func mustParse(t *testing.T, inputStr string) []*ir.Node {
 	t.Helper()
 
