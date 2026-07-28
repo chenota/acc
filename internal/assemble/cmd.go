@@ -8,7 +8,6 @@ func assembleCmd(bin string) *exec.Cmd {
 	args := []string{
 		"-x", "assembler",
 		"-",
-		"-no-pie",
 		"-o", bin,
 	}
 
