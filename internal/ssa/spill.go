@@ -21,7 +21,7 @@ func spill(f *Func) {
 
 	s := &spiller{
 		inReg: make(map[*Value]struct{}),
-		slot:  make(map[*Value]*Value),
+		slot:  make(map[*Value]*Slot),
 		uses:  uses,
 	}
 
@@ -38,8 +38,8 @@ func spill(f *Func) {
 				continue
 			}
 			s.makeRoom(f, v, p)
-			reload := f.insertValueBefore(v, OpCopy, a.Type, v.Block)
-			reload.Args = []*Value{s.slot[a]}
+			reload := f.insertValueBefore(v, OpLoad, a.Type, v.Block)
+			reload.Value = s.slot[a]
 			v.Args[i] = reload
 			s.inReg[reload] = struct{}{}
 			s.pinned[reload] = struct{}{}
@@ -62,7 +62,7 @@ func spill(f *Func) {
 
 type spiller struct {
 	inReg  map[*Value]struct{}
-	slot   map[*Value]*Value
+	slot   map[*Value]*Slot
 	pinned map[*Value]struct{}
 	uses   map[*Value][]int
 }
@@ -95,10 +95,11 @@ func (s *spiller) makeRoom(f *Func, before *Value, p int) {
 	}
 
 	if _, done := s.slot[victim]; !done {
-		alloca := f.newValue(OpAlloca, victim.Type, victim.Block)
-		s.slot[victim] = alloca
+		slot := f.newSlot(nil, victim.Type)
+		s.slot[victim] = slot
 		store := f.insertValueBefore(before, OpStore, victim.Type, before.Block)
-		store.Args = []*Value{victim, alloca}
+		store.Args = []*Value{victim}
+		store.Value = slot
 	}
 	delete(s.inReg, victim)
 }

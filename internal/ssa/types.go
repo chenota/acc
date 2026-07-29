@@ -2,9 +2,9 @@ package ssa
 
 import (
 	"iter"
-	"maps"
 	"slices"
 
+	"github.com/chenota/acc/internal/ir"
 	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/types"
 )
@@ -14,8 +14,8 @@ type Op int
 const (
 	OpUnknown Op = iota
 	OpLiteral
-	OpAlloca // virtual stack allocation - more of a placeholder for a location than an acutal value in its own right
-	OpStore
+	OpLoad  // reads the frame slot named in Value
+	OpStore // writes Args[0] to the frame slot named in Value
 	OpAdd
 	OpSubtract
 	OpMultiply
@@ -75,7 +75,13 @@ func (v *Value) ArgIndex(arg *Value) int {
 
 // NeedsRegister reports whether a value produces a result that occupies a physical register.
 func (v *Value) NeedsRegister() bool {
-	return v.Op != OpAlloca && v.Op != OpStore
+	return v.Op != OpStore
+}
+
+// Slot is the frame slot this value reads or writes, or nil if it does not touch one.
+func (v *Value) Slot() *Slot {
+	s, _ := v.Value.(*Slot)
+	return s
 }
 
 // Callee is the function an OpCall targets.
@@ -154,9 +160,24 @@ type Func struct {
 	name   string
 	Blocks []*Block
 	Entry  *Block
+	Slots  []*Slot
 
 	valueId int
 	blockId int
+}
+
+// Slot is a variable's home in the stack frame.
+type Slot struct {
+	Sym  *ir.Sym
+	Type *types.Type
+	Loc  Location
+}
+
+// newSlot reserves a frame slot in f. The slot has no location until layoutFrame runs.
+func (f *Func) newSlot(sym *ir.Sym, t *types.Type) *Slot {
+	s := &Slot{Sym: sym, Type: t}
+	f.Slots = append(f.Slots, s)
+	return s
 }
 
 // OrderedBlocks flattens a function's blocks using reverse post-order traversal
@@ -201,17 +222,6 @@ func (f *Func) UnorderedValues() iter.Seq[*Value] {
 		vals = append(vals, b.Values...)
 	}
 	return slices.Values(vals)
-}
-
-// Args returns all unique values used as arguments in function f
-func (f *Func) Args() iter.Seq[*Value] {
-	args := make(map[*Value]struct{})
-	for v := range f.UnorderedValues() {
-		for _, a := range v.Args {
-			args[a] = struct{}{}
-		}
-	}
-	return maps.Keys(args)
 }
 
 func (f *Func) newValue(op Op, t *types.Type, b *Block) *Value {
@@ -321,13 +331,11 @@ func (f *Func) StackAdjustment() int {
 	return ((region + 15) &^ 15) - pushBytes
 }
 
-// localsSize is the size in bytes of the local alloca area
+// localsSize is the size in bytes of the frame's slot area
 func (f *Func) localsSize() int {
 	var size int
-	for _, v := range f.Entry.Values {
-		if v.Op == OpAlloca {
-			size = max(size, -v.Loc.Offset)
-		}
+	for _, s := range f.Slots {
+		size = max(size, -s.Loc.Offset)
 	}
 	return size
 }

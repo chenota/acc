@@ -4,18 +4,22 @@ import (
 	"iter"
 )
 
-// mem2reg promotes scalar never-addressed memory values to SSA values
+// mem2reg promotes scalar never-addressed slots to SSA values
 func mem2reg(f *Func) {
-	for alloca := range promotableAllocas(f) {
+	for slot := range promotableSlots(f) {
 		var currentDef *Value
 
 		for v := range f.OrderedValues() {
-			if v.Op == OpStore && v.ArgIndex(alloca) > -1 {
-				// capture the most recent value stored to this alloca and delete the store operation
+			if v.Slot() != slot {
+				continue
+			}
+			switch v.Op {
+			case OpStore:
+				// capture the most recent value stored to this slot and delete the store operation
 				currentDef = v.Args[0]
 				f.removeValue(v)
-			} else if v.Op == OpCopy && v.ArgIndex(alloca) > -1 {
-				// point users at the new value and delete it
+			case OpLoad:
+				// point users at the stored value and delete the load
 				f.redirectUses(v, currentDef)
 				f.removeValue(v)
 			}
@@ -23,29 +27,26 @@ func mem2reg(f *Func) {
 	}
 }
 
-func promotableAllocas(f *Func) iter.Seq[*Value] {
-	return func(yield func(*Value) bool) {
-	ArgsLoop:
-		for v := range f.Args() {
-			// value must be an alloca
-			if v.Op != OpAlloca {
+func promotableSlots(f *Func) iter.Seq[*Slot] {
+	return func(yield func(*Slot) bool) {
+		addressed := make(map[*Slot]struct{})
+
+		for v := range f.UnorderedValues() {
+			if v.Slot() == nil {
 				continue
 			}
-			// non-scalar values must stay in memory
-			if !v.Type.IsScalar() {
+			if v.Op != OpLoad && v.Op != OpStore {
+				addressed[v.Slot()] = struct{}{}
+			}
+		}
+
+		for _, s := range f.Slots {
+			// non-scalar and addressed slots stay in memory
+			if _, ok := addressed[s]; ok || !s.Type.IsScalar() {
 				continue
 			}
-			// v must only be used as a load or as a store destination
-			for user := range f.UnorderedValues() {
-				i := user.ArgIndex(v)
-				if i == -1 {
-					continue
-				}
-				if !(user.Op == OpCopy || (user.Op == OpStore && i == 1)) {
-					continue ArgsLoop
-				}
-			}
-			if !yield(v) {
+			// slot is promotable
+			if !yield(s) {
 				break
 			}
 		}

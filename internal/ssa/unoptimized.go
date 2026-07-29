@@ -16,7 +16,7 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 		return diagnostic.NewError(n.Pos, "could not find function in module")
 	}
 
-	b := &builder{targetFunc: f, module: m, vars: make(map[*ir.Sym]*Value)}
+	b := &builder{targetFunc: f, module: m, vars: make(map[*ir.Sym]*Slot)}
 
 	entry := f.newBlock()
 	f.Entry = entry
@@ -46,11 +46,12 @@ func (b *builder) bindParams(params []*ir.Node) {
 		param := b.targetFunc.appendValue(OpCopy, p.Type, b.currentBlock)
 		param.Args = []*Value{incoming[i]}
 
-		alloca := b.targetFunc.newValue(OpAlloca, p.Type, b.currentBlock)
-		b.vars[p.Sym] = alloca
+		slot := b.targetFunc.newSlot(p.Sym, p.Type)
+		b.vars[p.Sym] = slot
 
 		store := b.targetFunc.appendValue(OpStore, p.Type, b.currentBlock)
-		store.Args = []*Value{param, alloca}
+		store.Args = []*Value{param}
+		store.Value = slot
 	}
 }
 
@@ -58,7 +59,7 @@ type builder struct {
 	targetFunc   *Func
 	module       *Module
 	currentBlock *Block
-	vars         map[*ir.Sym]*Value
+	vars         map[*ir.Sym]*Slot
 }
 
 func (b *builder) genStatement(stmt *ir.Node) error {
@@ -83,14 +84,14 @@ func (b *builder) genAssignOp(n *ir.Node) error {
 	target := n.List[0]
 
 	// variable location
-	alloca := b.vars[target.Sym]
-	if alloca == nil {
+	slot := b.vars[target.Sym]
+	if slot == nil {
 		return diagnostic.NewError(target.Pos, "variable used before declared: %s", target.Ident())
 	}
 
-	// load variable value (a copy from its alloca)
-	loadOp := b.targetFunc.appendValue(OpCopy, target.Sym.Type, b.currentBlock)
-	loadOp.Args = []*Value{alloca}
+	// read the variable out of its slot
+	loadOp := b.targetFunc.appendValue(OpLoad, target.Sym.Type, b.currentBlock)
+	loadOp.Value = slot
 
 	// generate expression value
 	exprVal, err := b.genExpr(n.List[1])
@@ -102,9 +103,10 @@ func (b *builder) genAssignOp(n *ir.Node) error {
 	arithOp := b.targetFunc.insertValueAfter(exprVal, numericBopFrom(n), target.Sym.Type, exprVal.Block)
 	arithOp.Args = []*Value{loadOp, exprVal}
 
-	// insert store operation into stack location
+	// insert store operation into the variable's slot
 	storeOp := b.targetFunc.insertValueAfter(arithOp, OpStore, exprVal.Type, exprVal.Block)
-	storeOp.Args = []*Value{arithOp, alloca}
+	storeOp.Args = []*Value{arithOp}
+	storeOp.Value = slot
 
 	return nil
 }
@@ -142,13 +144,14 @@ func (b *builder) genDecl(n *ir.Node) error {
 		return diagnostic.NewError(n.Pos, "variable already allocated: %s", n.List[0].Ident())
 	}
 
-	// come up with stack location for the new variable
-	alloca := b.targetFunc.newValue(OpAlloca, exprVal.Type, b.currentBlock)
-	b.vars[n.Sym] = alloca
+	// reserve a slot for the new variable
+	slot := b.targetFunc.newSlot(n.Sym, exprVal.Type)
+	b.vars[n.Sym] = slot
 
-	// insert store operation into the new stack location
+	// insert store operation into the new slot
 	storeOp := b.targetFunc.insertValueAfter(exprVal, OpStore, exprVal.Type, exprVal.Block)
-	storeOp.Args = []*Value{exprVal, alloca}
+	storeOp.Args = []*Value{exprVal}
+	storeOp.Value = slot
 
 	return nil
 }
@@ -164,14 +167,15 @@ func (b *builder) genAssign(n *ir.Node) error {
 		return err
 	}
 
-	alloca := b.vars[target.Sym]
-	if alloca == nil {
-		return diagnostic.NewError(target.Pos, "variable used before declared: %s", target.Ident())
+	slot := b.vars[target.Sym]
+	if slot == nil {
+		return diagnostic.NewError(target.Pos, "variable has no slot: %s", target.Ident())
 	}
 
-	// insert store operation into stack location
+	// insert store operation into the variable's slot
 	storeOp := b.targetFunc.insertValueAfter(exprVal, OpStore, exprVal.Type, exprVal.Block)
-	storeOp.Args = []*Value{exprVal, alloca}
+	storeOp.Args = []*Value{exprVal}
+	storeOp.Value = slot
 
 	return nil
 }
@@ -256,12 +260,12 @@ func (b *builder) genIdent(expr *ir.Node) (*Value, error) {
 		// a function name is only meaningful as a call target until functions become values
 		return nil, diagnostic.NewError(expr.Pos, "cannot use function as a value: %s", expr.Ident())
 	case ir.SymParam, ir.SymLocal:
-		alloca := b.vars[expr.Sym]
-		if alloca == nil {
+		slot := b.vars[expr.Sym]
+		if slot == nil {
 			return nil, diagnostic.NewError(expr.Pos, "no stack location for variable: %s", expr.Ident())
 		}
-		loadOp := b.targetFunc.appendValue(OpCopy, expr.Type, b.currentBlock)
-		loadOp.Args = []*Value{alloca}
+		loadOp := b.targetFunc.appendValue(OpLoad, expr.Type, b.currentBlock)
+		loadOp.Value = slot
 		return loadOp, nil
 	}
 	return nil, diagnostic.NewError(expr.Pos, "unknown symbol kind: %v", expr.Sym.Kind)

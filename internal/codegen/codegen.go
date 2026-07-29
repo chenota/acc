@@ -126,6 +126,8 @@ func generateValue(v *ssa.Value) []Inst {
 	switch v.Op {
 	case ssa.OpLiteral:
 		insts = append(insts, generateConstInt(v))
+	case ssa.OpLoad:
+		insts = append(insts, generateLoad(v))
 	case ssa.OpStore:
 		insts = append(insts, generateStore(v))
 	case ssa.OpAdd:
@@ -219,14 +221,28 @@ func generateConstInt(v *ssa.Value) Inst {
 	}
 }
 
-func generateStore(v *ssa.Value) Inst {
-	src := v.Args[0]
-	alloca := v.Args[1]
-
+func generateLoad(v *ssa.Value) Inst {
 	return Inst{
 		Op:   movOp(v.Type.Size()),
-		Src1: toArg(src),
-		Dest: toArg(alloca),
+		Src1: slotArg(v.Slot()),
+		Dest: toArg(v),
+	}
+}
+
+func generateStore(v *ssa.Value) Inst {
+	return Inst{
+		Op:   movOp(v.Type.Size()),
+		Src1: toArg(v.Args[0]),
+		Dest: slotArg(v.Slot()),
+	}
+}
+
+// slotArg is the memory operand addressing a slot in the current frame.
+func slotArg(s *ssa.Slot) Arg {
+	return Arg{
+		Kind:  KMemory,
+		Reg:   s.Loc.Reg,
+		Value: s.Loc.Offset,
 	}
 }
 
