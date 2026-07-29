@@ -14,11 +14,11 @@ func mem2reg(f *Func) {
 				continue
 			}
 			switch v.Op {
-			case OpStore:
+			case OpStaticStore:
 				// capture the most recent value stored to this slot and delete the store operation
 				currentDef = v.Args[0]
 				f.removeValue(v)
-			case OpLoad:
+			case OpStaticLoad:
 				// point users at the stored value and delete the load
 				f.redirectUses(v, currentDef)
 				f.removeValue(v)
@@ -35,7 +35,7 @@ func promotableSlots(f *Func) iter.Seq[*Slot] {
 			if v.Slot() == nil {
 				continue
 			}
-			if v.Op != OpLoad && v.Op != OpStore {
+			if v.Op != OpStaticLoad && v.Op != OpStaticStore {
 				addressed[v.Slot()] = struct{}{}
 			}
 		}

@@ -14,8 +14,10 @@ type Op int
 const (
 	OpUnknown Op = iota
 	OpLiteral
-	OpLoad  // reads the frame slot named in Value
-	OpStore // writes Args[0] to the frame slot named in Value
+	OpLoad
+	OpStaticLoad // reads the frame slot named in Value
+	OpStore
+	OpStaticStore // writes Args[0] to the frame slot named in Value
 	OpAdd
 	OpSubtract
 	OpMultiply
@@ -25,6 +27,7 @@ const (
 	OpStaticCall // direct call to the function in Value
 	OpSignExtend // sign-extends the accumulator into the high register (cdq/cqo)
 	OpParam      // incoming function argument - more of a placeholder for a location than an acutal value in its own right
+	OpLocalAddr  // address bound to a static stack slot
 )
 
 type Value struct {
@@ -75,7 +78,7 @@ func (v *Value) ArgIndex(arg *Value) int {
 
 // NeedsRegister reports whether a value produces a result that occupies a physical register.
 func (v *Value) NeedsRegister() bool {
-	return v.Op != OpStore
+	return !(v.Op == OpStore || v.Op == OpStaticStore)
 }
 
 // Slot is the frame slot this value reads or writes, or nil if it does not touch one.

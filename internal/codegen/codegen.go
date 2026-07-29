@@ -120,10 +120,10 @@ func generateValue(v *ssa.Value) []Inst {
 	switch v.Op {
 	case ssa.OpLiteral:
 		insts = append(insts, generateConstInt(v))
-	case ssa.OpLoad:
-		insts = append(insts, generateLoad(v))
-	case ssa.OpStore:
-		insts = append(insts, generateStore(v))
+	case ssa.OpStaticLoad:
+		insts = append(insts, generateStaticLoad(v))
+	case ssa.OpStaticStore:
+		insts = append(insts, generateStaticStore(v))
 	case ssa.OpAdd:
 		insts = append(insts, generateBop(v, addOp(v.Type.Size()))...)
 	case ssa.OpSubtract:
@@ -215,7 +215,7 @@ func generateConstInt(v *ssa.Value) Inst {
 	}
 }
 
-func generateLoad(v *ssa.Value) Inst {
+func generateStaticLoad(v *ssa.Value) Inst {
 	return Inst{
 		Op:   movOp(v.Type.Size()),
 		Src1: slotArg(v.Slot()),
@@ -223,7 +223,7 @@ func generateLoad(v *ssa.Value) Inst {
 	}
 }
 
-func generateStore(v *ssa.Value) Inst {
+func generateStaticStore(v *ssa.Value) Inst {
 	return Inst{
 		Op:   movOp(v.Type.Size()),
 		Src1: toArg(v.Args[0]),

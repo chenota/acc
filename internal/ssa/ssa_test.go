@@ -61,8 +61,8 @@ func TestGenSsa_Variable(t *testing.T) {
 	b := funcs[0].Blocks[0]
 
 	// mem2reg promotes x, so no memory operations survive
-	assert.Empty(t, findValues(b.Values, OpLoad), "load should be promoted away")
-	assert.Empty(t, findValues(b.Values, OpStore), "store should be promoted away")
+	assert.Empty(t, findValues(b.Values, OpStaticLoad), "load should be promoted away")
+	assert.Empty(t, findValues(b.Values, OpStaticStore), "store should be promoted away")
 
 	// nothing names the slot any more, so layout drops it from the frame
 	assert.Empty(t, funcs[0].Slots, "promoted slot should be dropped")
@@ -81,8 +81,8 @@ func TestGenSsa_Variable_Assignment(t *testing.T) {
 
 	b := funcs[0].Blocks[0]
 
-	assert.Empty(t, findValues(b.Values, OpLoad), "loads should be promoted away")
-	assert.Empty(t, findValues(b.Values, OpStore), "stores should be promoted away")
+	assert.Empty(t, findValues(b.Values, OpStaticLoad), "loads should be promoted away")
+	assert.Empty(t, findValues(b.Values, OpStaticStore), "stores should be promoted away")
 	assert.Empty(t, funcs[0].Slots, "promoted slot should be dropped")
 
 	// the most recent definition (20) reaches the return
@@ -129,8 +129,8 @@ func TestGenSsa_Variable_Assignment_Operator(t *testing.T) {
 
 	b := funcs[0].Blocks[0]
 
-	assert.Empty(t, findValues(b.Values, OpLoad), "loads should be promoted away")
-	assert.Empty(t, findValues(b.Values, OpStore), "stores should be promoted away")
+	assert.Empty(t, findValues(b.Values, OpStaticLoad), "loads should be promoted away")
+	assert.Empty(t, findValues(b.Values, OpStaticStore), "stores should be promoted away")
 	assert.Empty(t, funcs[0].Slots, "promoted slot should be dropped")
 
 	// x += 20 promotes and folds to 30
@@ -315,6 +315,104 @@ func TestMaxOutgoingSize_WidestCallWins(t *testing.T) {
 
 	// the outgoing area is reused across calls, so it fits the widest
 	assert.Equal(t, 24, requireFunc(t, funcs, "main").maxOutgoingSize())
+}
+
+func TestGenSsa_Ref_KeepsAddressedSlotInFrame(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
+
+	f := requireFunc(t, funcs, "main")
+
+	// taking a's address blocks promotion, but b is only ever loaded so it still promotes
+	require.Len(t, f.Slots, 1)
+	slot := f.Slots[0]
+	require.NotNil(t, slot.Sym)
+	assert.Equal(t, "a", slot.Sym.Name)
+
+	// the surviving slot gets a real home below rbp
+	assert.Equal(t, LocMemory, slot.Loc.Kind)
+	assert.Equal(t, register.RegBP, slot.Loc.Reg)
+	assert.Equal(t, -4, slot.Loc.Offset)
+	assert.Equal(t, 4, f.localsSize())
+}
+
+func TestGenSsa_Ref_MaterializesSlotAddress(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
+
+	f := requireFunc(t, funcs, "main")
+	addrs := findValues(f.Entry.Values, OpLocalAddr)
+	require.Len(t, addrs, 1)
+
+	// the address names the slot it points at and lands in a register
+	require.Len(t, f.Slots, 1)
+	assert.Same(t, f.Slots[0], addrs[0].Slot())
+	assert.True(t, types.Equal(types.Pointer(types.Int()), addrs[0].Type))
+	assert.Equal(t, LocRegister, addrs[0].Loc.Kind)
+	assert.Empty(t, addrs[0].Args, "a slot address takes no operand")
+}
+
+func TestGenSsa_Deref_LoadsThroughPointer(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
+
+	f := requireFunc(t, funcs, "main")
+
+	ctrl := f.Entry.Control
+	require.NotNil(t, ctrl)
+	require.Equal(t, OpLoad, ctrl.Op)
+
+	// an indirect load carries its address as an operand and names no slot
+	assert.Nil(t, ctrl.Slot())
+	require.Len(t, ctrl.Args, 1)
+	assert.Equal(t, OpLocalAddr, ctrl.Args[0].Op)
+	assert.True(t, types.Equal(types.Int(), ctrl.Type))
+}
+
+func TestGenSsa_Deref_AssignmentStoresThroughPointer(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let a = 10; let b = &a; *b = 20; return a; }`)
+
+	f := requireFunc(t, funcs, "main")
+	stores := findValues(f.Entry.Values, OpStore)
+	require.Len(t, stores, 1)
+	store := stores[0]
+
+	assert.Nil(t, store.Slot())
+	require.Len(t, store.Args, 2)
+	assert.Equal(t, OpLiteral, store.Args[0].Op)
+	assert.Equal(t, int32(20), store.Args[0].Value)
+	assert.Equal(t, OpLocalAddr, store.Args[1].Op)
+
+	// a store produces nothing, so it never claims a register
+	assert.False(t, store.NeedsRegister())
+	assert.Equal(t, LocNone, store.Loc.Kind)
+}
+
+func TestGenSsa_DerefAssignOp_EvaluatesAddressOnce(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let a = 10; let b = &a; *b += 5; return a; }`)
+
+	f := requireFunc(t, funcs, "main")
+
+	// *b += 5 computes the destination address once and both reads and writes through it
+	addrs := findValues(f.Entry.Values, OpLocalAddr)
+	require.Len(t, addrs, 1)
+
+	loads := findValues(f.Entry.Values, OpLoad)
+	require.Len(t, loads, 1)
+	require.Len(t, loads[0].Args, 1)
+	assert.Same(t, addrs[0], loads[0].Args[0])
+
+	stores := findValues(f.Entry.Values, OpStore)
+	require.Len(t, stores, 1)
+	require.Len(t, stores[0].Args, 2)
+	assert.Same(t, addrs[0], stores[0].Args[1])
+}
+
+func TestGenSsa_RefOfDeref_ReusesPointer(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let a = 10; let b = &a; let c = &*b; return *c; }`)
+
+	f := requireFunc(t, funcs, "main")
+
+	// &*b is just b, so a's address is the only one ever computed
+	assert.Len(t, findValues(f.Entry.Values, OpLocalAddr), 1)
+	assert.Len(t, f.Slots, 1)
 }
 
 func requireBuildSSA(t *testing.T, src string) []*Func {

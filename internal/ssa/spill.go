@@ -38,7 +38,7 @@ func spill(f *Func) {
 				continue
 			}
 			s.makeRoom(f, v, p)
-			reload := f.insertValueBefore(v, OpLoad, a.Type, v.Block)
+			reload := f.insertValueBefore(v, OpStaticLoad, a.Type, v.Block)
 			reload.Value = s.slot[a]
 			v.Args[i] = reload
 			s.inReg[reload] = struct{}{}
@@ -97,7 +97,7 @@ func (s *spiller) makeRoom(f *Func, before *Value, p int) {
 	if _, done := s.slot[victim]; !done {
 		slot := f.newSlot(nil, victim.Type)
 		s.slot[victim] = slot
-		store := f.insertValueBefore(before, OpStore, victim.Type, before.Block)
+		store := f.insertValueBefore(before, OpStaticStore, victim.Type, before.Block)
 		store.Args = []*Value{victim}
 		store.Value = slot
 	}

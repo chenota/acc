@@ -49,9 +49,7 @@ func (b *builder) bindParams(params []*ir.Node) {
 		slot := b.targetFunc.newSlot(p.Sym, p.Type)
 		b.vars[p.Sym] = slot
 
-		store := b.targetFunc.appendValue(OpStore, p.Type, b.currentBlock)
-		store.Args = []*Value{param}
-		store.Value = slot
+		b.genStoreTo(addr{Slot: slot}, param)
 	}
 }
 
@@ -83,15 +81,13 @@ func (b *builder) genAssignOp(n *ir.Node) error {
 	}
 	target := n.List[0]
 
-	// variable location
-	slot := b.vars[target.Sym]
-	if slot == nil {
-		return diagnostic.NewError(target.Pos, "variable used before declared: %s", target.Ident())
+	dest, err := b.genLValue(target)
+	if err != nil {
+		return err
 	}
 
-	// read the variable out of its slot
-	loadOp := b.targetFunc.appendValue(OpLoad, target.Sym.Type, b.currentBlock)
-	loadOp.Value = slot
+	// read the current value out of the destination
+	loadOp := b.genLoadFrom(dest, target.Type)
 
 	// generate expression value
 	exprVal, err := b.genExpr(n.List[1])
@@ -100,13 +96,11 @@ func (b *builder) genAssignOp(n *ir.Node) error {
 	}
 
 	// glue together with arithmetic bop
-	arithOp := b.targetFunc.insertValueAfter(exprVal, numericBopFrom(n), target.Sym.Type, exprVal.Block)
+	arithOp := b.targetFunc.appendValue(numericBopFrom(n), target.Type, b.currentBlock)
 	arithOp.Args = []*Value{loadOp, exprVal}
 
-	// insert store operation into the variable's slot
-	storeOp := b.targetFunc.insertValueAfter(arithOp, OpStore, exprVal.Type, exprVal.Block)
-	storeOp.Args = []*Value{arithOp}
-	storeOp.Value = slot
+	// write the result back where it came from
+	b.genStoreTo(dest, arithOp)
 
 	return nil
 }
@@ -148,10 +142,7 @@ func (b *builder) genDecl(n *ir.Node) error {
 	slot := b.targetFunc.newSlot(n.Sym, exprVal.Type)
 	b.vars[n.Sym] = slot
 
-	// insert store operation into the new slot
-	storeOp := b.targetFunc.insertValueAfter(exprVal, OpStore, exprVal.Type, exprVal.Block)
-	storeOp.Args = []*Value{exprVal}
-	storeOp.Value = slot
+	b.genStoreTo(addr{Slot: slot}, exprVal)
 
 	return nil
 }
@@ -160,22 +151,18 @@ func (b *builder) genAssign(n *ir.Node) error {
 	if len(n.List) != 2 {
 		return diagnostic.NewError(n.Pos, "variable assignment missing target or expression")
 	}
-	target := n.List[0]
 
 	exprVal, err := b.genExpr(n.List[1])
 	if err != nil {
 		return err
 	}
 
-	slot := b.vars[target.Sym]
-	if slot == nil {
-		return diagnostic.NewError(target.Pos, "variable has no slot: %s", target.Ident())
+	dest, err := b.genLValue(n.List[0])
+	if err != nil {
+		return err
 	}
 
-	// insert store operation into the variable's slot
-	storeOp := b.targetFunc.insertValueAfter(exprVal, OpStore, exprVal.Type, exprVal.Block)
-	storeOp.Args = []*Value{exprVal}
-	storeOp.Value = slot
+	b.genStoreTo(dest, exprVal)
 
 	return nil
 }
@@ -192,9 +179,104 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 		return b.genNegate(expr)
 	case ir.OpCall:
 		return b.genCall(expr)
+	case ir.OpRef:
+		return b.genRef(expr)
+	case ir.OpDeref:
+		return b.genDeref(expr)
 	default:
 		return nil, diagnostic.NewError(expr.Pos, "unknown expression operation: %d", expr.Op)
 	}
+}
+
+func (b *builder) genRef(expr *ir.Node) (*Value, error) {
+	if len(expr.List) < 1 {
+		return nil, diagnostic.NewError(expr.Pos, "invalid number of args in ref")
+	}
+
+	dest, err := b.genLValue(expr.List[0])
+	if err != nil {
+		return nil, err
+	}
+
+	// already returning the address nothing more to do
+	if dest.Ptr != nil {
+		return dest.Ptr, nil
+	}
+
+	// take the address of the stack slot
+	v := b.targetFunc.appendValue(OpLocalAddr, expr.Type, b.currentBlock)
+	v.Value = dest.Slot
+
+	return v, nil
+}
+
+func (b *builder) genDeref(expr *ir.Node) (*Value, error) {
+	if len(expr.List) < 1 {
+		return nil, diagnostic.NewError(expr.Pos, "invalid number of args in deref")
+	}
+
+	ptr, err := b.genExpr(expr.List[0])
+	if err != nil {
+		return nil, err
+	}
+
+	v := b.targetFunc.appendValue(OpLoad, expr.Type, b.currentBlock)
+	v.Args = []*Value{ptr}
+
+	return v, nil
+}
+
+type addr struct {
+	Slot *Slot  // frame slot referenced directly
+	Ptr  *Value // an address computed at runtime
+}
+
+func (b *builder) genLValue(expr *ir.Node) (addr, error) {
+	switch expr.Op {
+	case ir.OpIdent:
+		if slot, ok := b.vars[expr.Sym]; ok {
+			return addr{Slot: slot}, nil
+		}
+		return addr{}, diagnostic.NewError(expr.Pos, "variable missing slot: %s", expr.Sym.Name)
+	case ir.OpDeref:
+		if len(expr.List) < 1 {
+			return addr{}, diagnostic.NewError(expr.Pos, "deref missing argument")
+		}
+		// evaluating the expression should return a value containing the address we care about
+		ptr, err := b.genExpr(expr.List[0])
+		if err != nil {
+			return addr{}, err
+		}
+		return addr{Ptr: ptr}, nil
+	}
+	return addr{}, diagnostic.NewError(expr.Pos, "invalid op for lvalue: %v", expr.Op)
+}
+
+// genLoadFrom reads the value of type t living at dest.
+func (b *builder) genLoadFrom(dest addr, t *types.Type) *Value {
+	if dest.Slot != nil {
+		v := b.targetFunc.appendValue(OpStaticLoad, t, b.currentBlock)
+		v.Value = dest.Slot
+		return v
+	}
+
+	v := b.targetFunc.appendValue(OpLoad, t, b.currentBlock)
+	v.Args = []*Value{dest.Ptr}
+	return v
+}
+
+// genStoreTo writes val to dest.
+func (b *builder) genStoreTo(dest addr, val *Value) *Value {
+	if dest.Slot != nil {
+		v := b.targetFunc.appendValue(OpStaticStore, val.Type, b.currentBlock)
+		v.Args = []*Value{val}
+		v.Value = dest.Slot
+		return v
+	}
+
+	v := b.targetFunc.appendValue(OpStore, val.Type, b.currentBlock)
+	v.Args = []*Value{val, dest.Ptr}
+	return v
 }
 
 func (b *builder) genCall(expr *ir.Node) (*Value, error) {
@@ -264,9 +346,7 @@ func (b *builder) genIdent(expr *ir.Node) (*Value, error) {
 		if slot == nil {
 			return nil, diagnostic.NewError(expr.Pos, "no stack location for variable: %s", expr.Ident())
 		}
-		loadOp := b.targetFunc.appendValue(OpLoad, expr.Type, b.currentBlock)
-		loadOp.Value = slot
-		return loadOp, nil
+		return b.genLoadFrom(addr{Slot: slot}, expr.Type), nil
 	}
 	return nil, diagnostic.NewError(expr.Pos, "unknown symbol kind: %v", expr.Sym.Kind)
 }
