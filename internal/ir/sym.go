@@ -11,7 +11,8 @@ type SymKind int
 
 const (
 	SymLocal SymKind = iota
-	SymGlobal
+	SymFunc
+	SymParam
 )
 
 type Sym struct {
@@ -32,7 +33,7 @@ func (t *Table) NewChild() *Table {
 	return child
 }
 
-func (t *Table) Register(name string, symType *types.Type) *Sym {
+func (t *Table) Register(name string, symType *types.Type, symKind SymKind) *Sym {
 	if t == nil {
 		return nil
 	}
@@ -41,15 +42,10 @@ func (t *Table) Register(name string, symType *types.Type) *Sym {
 		return nil
 	}
 
-	kind := SymLocal
-	if t.parent == nil {
-		kind = SymGlobal
-	}
-
 	t.entries[name] = &Sym{
 		Name: name,
 		Type: symType,
-		Kind: kind,
+		Kind: symKind,
 	}
 
 	return t.entries[name]

@@ -108,7 +108,7 @@ func analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 	}
 
 	// register self in scope; will get nil if variable already exists in scope
-	sym := scope.Register(nameNode.Ident(), e.Type)
+	sym := scope.Register(nameNode.Ident(), e.Type, ir.SymLocal)
 	if sym == nil {
 		return diagnostic.NewError(nameNode.Pos, "variable re-declared: %v", nameNode.Ident())
 	}
@@ -316,7 +316,7 @@ func registerFunction(scope *ir.Table, f *ir.Node) error {
 
 	// register self onto scope
 	name := f.Signature.Name
-	sym := scope.Register(name.Ident(), f.Type)
+	sym := scope.Register(name.Ident(), f.Type, ir.SymFunc)
 	if sym == nil {
 		return diagnostic.NewError(name.Pos, "symbol '%s' already declared", name.Ident())
 	}
@@ -332,7 +332,7 @@ func analyzeFunction(scope *ir.Table, f *ir.Node) error {
 	// register parameters into the function scope so the body can reference them
 	for _, p := range f.Signature.Params {
 		pName := p.List[0]
-		sym := funScope.Register(pName.Ident(), p.Type)
+		sym := funScope.Register(pName.Ident(), p.Type, ir.SymParam)
 		if sym == nil {
 			return diagnostic.NewError(pName.Pos, "parameter '%s' already declared", pName.Ident())
 		}

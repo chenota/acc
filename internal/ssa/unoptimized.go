@@ -222,7 +222,7 @@ func (b *builder) genCall(expr *ir.Node) (*Value, error) {
 
 // resolveCallee identifies the function a call targets.
 func (b *builder) resolveCallee(callee *ir.Node) (*Func, error) {
-	if callee.Op != ir.OpIdent || callee.Sym.Kind != ir.SymGlobal {
+	if callee.Op != ir.OpIdent || callee.Sym.Kind != ir.SymFunc {
 		return nil, diagnostic.NewError(callee.Pos, "only calls to top-level functions are supported")
 	}
 
@@ -252,18 +252,19 @@ func (b *builder) genNegate(expr *ir.Node) (*Value, error) {
 
 func (b *builder) genIdent(expr *ir.Node) (*Value, error) {
 	switch expr.Sym.Kind {
-	case ir.SymGlobal:
+	case ir.SymFunc:
 		// a function name is only meaningful as a call target until functions become values
 		return nil, diagnostic.NewError(expr.Pos, "cannot use function as a value: %s", expr.Ident())
-	default:
+	case ir.SymParam, ir.SymLocal:
 		alloca := b.vars[expr.Sym]
 		if alloca == nil {
-			return nil, diagnostic.NewError(expr.Pos, "variable used before declared: %s", expr.Ident())
+			return nil, diagnostic.NewError(expr.Pos, "no stack location for variable: %s", expr.Ident())
 		}
 		loadOp := b.targetFunc.appendValue(OpCopy, expr.Type, b.currentBlock)
 		loadOp.Args = []*Value{alloca}
 		return loadOp, nil
 	}
+	return nil, diagnostic.NewError(expr.Pos, "unknown symbol kind: %v", expr.Sym.Kind)
 }
 
 func (b *builder) genInt(expr *ir.Node) (*Value, error) {
