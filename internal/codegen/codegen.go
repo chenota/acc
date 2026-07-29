@@ -2,7 +2,6 @@ package codegen
 
 import (
 	"errors"
-	"strconv"
 
 	"github.com/chenota/acc/internal/iterutil"
 	"github.com/chenota/acc/internal/register"
@@ -107,11 +106,6 @@ func generateFunction(f *ssa.Func) []Inst {
 
 func generateBlock(b *ssa.Block) []Inst {
 	var insts []Inst
-
-	// only need a label if something is going to jump to this block
-	if len(b.Predecessors) > 0 {
-		insts = append(insts, label(blockLabel(b)))
-	}
 
 	for _, v := range b.Values {
 		insts = append(insts, generateValue(v)...)
@@ -244,10 +238,6 @@ func slotArg(s *ssa.Slot) Arg {
 		Reg:   s.Loc.Reg,
 		Value: s.Loc.Offset,
 	}
-}
-
-func blockLabel(b *ssa.Block) string {
-	return "_block" + strconv.Itoa(b.Id)
 }
 
 func toArg(v *ssa.Value) Arg {
