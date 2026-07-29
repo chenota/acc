@@ -143,22 +143,21 @@ func TestLowerCalls_ArgRegisters(t *testing.T) {
 
 	call := requireCall(t, funcs, "main")
 
-	// Args[0] is the callee reference; the three arguments follow
-	require.Len(t, call.Args, 4)
+	// a direct call names its target, so Args holds the arguments alone
+	require.Len(t, call.Args, 3)
 
-	require.Equal(t, OpFuncRef, call.Args[0].Op)
-	callee, ok := call.Args[0].Value.(*Func)
-	require.True(t, ok, "callee payload should be a *Func")
+	callee := call.Callee()
+	require.NotNil(t, callee, "call should name its target")
 	assert.Equal(t, "target", callee.Name())
 
+	assert.Equal(t, LocRegister, call.Args[0].Loc.Kind)
+	assert.Equal(t, register.RegDI, call.Args[0].Loc.Reg)
+
 	assert.Equal(t, LocRegister, call.Args[1].Loc.Kind)
-	assert.Equal(t, register.RegDI, call.Args[1].Loc.Reg)
+	assert.Equal(t, register.RegSI, call.Args[1].Loc.Reg)
 
 	assert.Equal(t, LocRegister, call.Args[2].Loc.Kind)
-	assert.Equal(t, register.RegSI, call.Args[2].Loc.Reg)
-
-	assert.Equal(t, LocRegister, call.Args[3].Loc.Kind)
-	assert.Equal(t, register.RegD, call.Args[3].Loc.Reg)
+	assert.Equal(t, register.RegD, call.Args[2].Loc.Reg)
 }
 
 func TestLowerCalls_ResultInRAX(t *testing.T) {
@@ -240,24 +239,23 @@ func TestLowerCalls_StackArgs(t *testing.T) {
 
 	call := requireCall(t, funcs, "main")
 
-	// Args[0] is the callee reference; the eight arguments follow
-	require.Len(t, call.Args, 9)
+	require.Len(t, call.Args, 8)
 
 	// the first six still go in the System V argument registers
-	assert.Equal(t, LocRegister, call.Args[1].Loc.Kind)
-	assert.Equal(t, register.RegDI, call.Args[1].Loc.Reg)
+	assert.Equal(t, LocRegister, call.Args[0].Loc.Kind)
+	assert.Equal(t, register.RegDI, call.Args[0].Loc.Reg)
 
-	assert.Equal(t, LocRegister, call.Args[6].Loc.Kind)
-	assert.Equal(t, register.Reg9, call.Args[6].Loc.Reg)
+	assert.Equal(t, LocRegister, call.Args[5].Loc.Kind)
+	assert.Equal(t, register.Reg9, call.Args[5].Loc.Reg)
 
 	// the seventh and eighth are written into the outgoing area, lowest slot first
+	assert.Equal(t, LocMemory, call.Args[6].Loc.Kind)
+	assert.Equal(t, register.RegSP, call.Args[6].Loc.Reg)
+	assert.Equal(t, 0, call.Args[6].Loc.Offset)
+
 	assert.Equal(t, LocMemory, call.Args[7].Loc.Kind)
 	assert.Equal(t, register.RegSP, call.Args[7].Loc.Reg)
-	assert.Equal(t, 0, call.Args[7].Loc.Offset)
-
-	assert.Equal(t, LocMemory, call.Args[8].Loc.Kind)
-	assert.Equal(t, register.RegSP, call.Args[8].Loc.Reg)
-	assert.Equal(t, 8, call.Args[8].Loc.Offset)
+	assert.Equal(t, 8, call.Args[7].Loc.Offset)
 }
 
 func TestLowerParams_StackParams(t *testing.T) {
@@ -350,7 +348,7 @@ func requireFunc(t *testing.T, funcs []*Func, name string) *Func {
 func requireCall(t *testing.T, funcs []*Func, funcName string) *Value {
 	t.Helper()
 	f := requireFunc(t, funcs, funcName)
-	calls := findValues(f.Entry.Values, OpCall)
+	calls := findValues(f.Entry.Values, OpStaticCall)
 	require.Len(t, calls, 1)
 	return calls[0]
 }

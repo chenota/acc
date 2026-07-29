@@ -33,15 +33,7 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 	return nil
 }
 
-// bindParams materializes incoming arguments at the top of the entry block. Each
-// parameter arrives in a fixed ABI register (an OpParam, pinned later in
-// constraints); we immediately copy it into an unconstrained value so the body
-// can hold it across clobbers like a call. The copy is bound through an alloca
-// so it behaves as an ordinary mutable local (mem2reg promotes it away).
-//
-// All OpParams are defined first, before any copy, so every argument register
-// stays reserved until its value is safely copied out -- otherwise an early
-// copy's destination could reuse a register still holding a later argument.
+// bindParams materializes incoming arguments at the top of the entry block.
 func (b *builder) bindParams(params []*ir.Node) {
 	incoming := make([]*Value, len(params))
 	for i, p := range params {
@@ -206,8 +198,7 @@ func (b *builder) genCall(expr *ir.Node) (*Value, error) {
 		return nil, diagnostic.NewError(expr.Pos, "call without a callee")
 	}
 
-	// analyze the expression being called
-	callee, err := b.genExpr(expr.List[0])
+	callee, err := b.resolveCallee(expr.List[0])
 	if err != nil {
 		return nil, err
 	}
@@ -222,10 +213,25 @@ func (b *builder) genCall(expr *ir.Node) (*Value, error) {
 		argVals = append(argVals, argVal)
 	}
 
-	v := b.targetFunc.appendValue(OpCall, expr.Type, b.currentBlock)
-	v.Args = append([]*Value{callee}, argVals...)
+	v := b.targetFunc.appendValue(OpStaticCall, expr.Type, b.currentBlock)
+	v.Value = callee
+	v.Args = argVals
 
 	return v, nil
+}
+
+// resolveCallee identifies the function a call targets.
+func (b *builder) resolveCallee(callee *ir.Node) (*Func, error) {
+	if callee.Op != ir.OpIdent || callee.Sym.Kind != ir.SymGlobal {
+		return nil, diagnostic.NewError(callee.Pos, "only calls to top-level functions are supported")
+	}
+
+	target := b.module.lookup(callee.Sym.Name)
+	if target == nil {
+		return nil, diagnostic.NewError(callee.Pos, "reference to unknown function: %s", callee.Sym.Name)
+	}
+
+	return target, nil
 }
 
 func (b *builder) genNegate(expr *ir.Node) (*Value, error) {
@@ -247,13 +253,8 @@ func (b *builder) genNegate(expr *ir.Node) (*Value, error) {
 func (b *builder) genIdent(expr *ir.Node) (*Value, error) {
 	switch expr.Sym.Kind {
 	case ir.SymGlobal:
-		callee := b.module.lookup(expr.Sym.Name)
-		if callee == nil {
-			return nil, diagnostic.NewError(expr.Pos, "reference to unknown function: %s", expr.Sym.Name)
-		}
-		v := b.targetFunc.appendValue(OpFuncRef, expr.Type, b.currentBlock)
-		v.Value = callee
-		return v, nil
+		// a function name is only meaningful as a call target until functions become values
+		return nil, diagnostic.NewError(expr.Pos, "cannot use function as a value: %s", expr.Ident())
 	default:
 		alloca := b.vars[expr.Sym]
 		if alloca == nil {

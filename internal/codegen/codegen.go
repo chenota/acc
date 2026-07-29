@@ -142,7 +142,7 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateCopy(v))
 	case ssa.OpSignExtend:
 		insts = append(insts, generateSignExtend(v))
-	case ssa.OpCall:
+	case ssa.OpStaticCall:
 		insts = append(insts, generateCall(v))
 	}
 
@@ -152,7 +152,7 @@ func generateValue(v *ssa.Value) []Inst {
 func generateCall(v *ssa.Value) Inst {
 	return Inst{
 		Op:   "call",
-		Dest: toArg(v.Args[0]), // callee is in first arg
+		Dest: text(funcLabel(v.Callee())),
 	}
 }
 
@@ -235,10 +235,6 @@ func blockLabel(b *ssa.Block) string {
 }
 
 func toArg(v *ssa.Value) Arg {
-	if v.Op == ssa.OpFuncRef {
-		return text(funcLabel(v.Value.(*ssa.Func)))
-	}
-
 	switch v.Loc.Kind {
 	case ssa.LocRegister:
 		return Arg{

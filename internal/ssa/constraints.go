@@ -72,18 +72,18 @@ func lowerDivides(f *Func) {
 
 func lowerCalls(f *Func) {
 	for v := range f.UnorderedValues() {
-		if v.Op != OpCall {
+		if v.Op != OpStaticCall {
 			continue
 		}
 
-		for i, arg := range v.Args[1:] {
+		for i, arg := range v.Args {
 			// first 6 args go in registers
 			if i < len(register.Args) {
-				v.Args[i+1] = copyIn(f, v, arg, register.Args[i])
+				v.Args[i] = copyIn(f, v, arg, register.Args[i])
 				continue
 			}
 			// the rest are written to the outgoing area at the bottom of this function's frame
-			v.Args[i+1] = copyToOutgoingStack(f, v, arg, i-len(register.Args))
+			v.Args[i] = copyToOutgoingStack(f, v, arg, i-len(register.Args))
 		}
 
 		v.Loc = NewReg(register.RegA)

@@ -22,8 +22,7 @@ const (
 	OpDivide
 	OpNegate
 	OpCopy
-	OpCall
-	OpFuncRef    // the address of a function
+	OpStaticCall // direct call to the function in Value
 	OpSignExtend // sign-extends the accumulator into the high register (cdq/cqo)
 	OpParam      // incoming function argument - more of a placeholder for a location than an acutal value in its own right
 )
@@ -45,7 +44,7 @@ type Value struct {
 
 // Clobbers reports the registers this value destroys when it executes.
 func (v *Value) Clobbers() register.Mask {
-	if v.Op == OpCall {
+	if v.Op == OpStaticCall {
 		// for now calls are considered to clobber all caller-saved registers
 		// TODO: make this more intelligent by only clobbering caller-saved registers that the callee actually uses
 		return register.CallerSaved
@@ -76,7 +75,13 @@ func (v *Value) ArgIndex(arg *Value) int {
 
 // NeedsRegister reports whether a value produces a result that occupies a physical register.
 func (v *Value) NeedsRegister() bool {
-	return v.Op != OpAlloca && v.Op != OpStore && v.Op != OpFuncRef
+	return v.Op != OpAlloca && v.Op != OpStore
+}
+
+// Callee is the function an OpCall targets.
+func (v *Value) Callee() *Func {
+	f, _ := v.Value.(*Func)
+	return f
 }
 
 // RecordHint records that this value was hinted for a register
@@ -330,10 +335,9 @@ func (f *Func) localsSize() int {
 func (f *Func) maxOutgoingSize() int {
 	var max int
 	for v := range f.UnorderedValues() {
-		// Args[0] is the callee so ignore it to count # of arguments
-		if v.Op == OpCall && len(v.Args)-1 > len(register.Args) {
+		if v.Op == OpStaticCall && len(v.Args) > len(register.Args) {
 			// each outgoing stack slot uses 8 bytes
-			outgoingSize := stackSlotSize * (len(v.Args) - 1 - len(register.Args))
+			outgoingSize := stackSlotSize * (len(v.Args) - len(register.Args))
 			if outgoingSize > max {
 				max = outgoingSize
 			}
