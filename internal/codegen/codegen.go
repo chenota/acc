@@ -124,6 +124,12 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateStaticLoad(v))
 	case ssa.OpStaticStore:
 		insts = append(insts, generateStaticStore(v))
+	case ssa.OpLocalAddr:
+		insts = append(insts, generateLocalAddr(v))
+	case ssa.OpStore:
+		insts = append(insts, generateStore(v))
+	case ssa.OpLoad:
+		insts = append(insts, generateLoad(v))
 	case ssa.OpAdd:
 		insts = append(insts, generateBop(v, addOp(v.Type.Size()))...)
 	case ssa.OpSubtract:
@@ -143,6 +149,30 @@ func generateValue(v *ssa.Value) []Inst {
 	}
 
 	return insts
+}
+
+func generateLocalAddr(v *ssa.Value) Inst {
+	return Inst{
+		Op:   "leaq", // always use the quadword version of this
+		Src1: slotArg(v.Slot()),
+		Dest: toArg(v),
+	}
+}
+
+func generateStore(v *ssa.Value) Inst {
+	return Inst{
+		Op:   movOp(v.Type.Size()),
+		Src1: toArg(v.Args[0]),
+		Dest: indirect(v.Args[1]),
+	}
+}
+
+func generateLoad(v *ssa.Value) Inst {
+	return Inst{
+		Op:   movOp(v.Type.Size()),
+		Src1: indirect(v.Args[0]),
+		Dest: toArg(v),
+	}
 }
 
 func generateCall(v *ssa.Value) Inst {
@@ -237,6 +267,14 @@ func slotArg(s *ssa.Slot) Arg {
 		Kind:  KMemory,
 		Reg:   s.Loc.Reg,
 		Value: s.Loc.Offset,
+	}
+}
+
+func indirect(ptr *ssa.Value) Arg {
+	return Arg{
+		Kind:  KMemory,
+		Reg:   ptr.Loc.Reg,
+		Value: 0,
 	}
 }
 
