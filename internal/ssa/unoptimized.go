@@ -30,6 +30,11 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 		}
 	}
 
+	// control reaching the end of the body returns implicitly.
+	if b.currentBlock != nil && b.currentBlock.Kind == BlockUnset {
+		b.currentBlock.Kind = BlockRet
+	}
+
 	return nil
 }
 

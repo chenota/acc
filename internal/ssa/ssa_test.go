@@ -444,6 +444,19 @@ func TestGenSsa_UnitReturn_HasNoControlValue(t *testing.T) {
 	assert.Empty(t, f.Entry.Values)
 }
 
+func TestGenSsa_UnitFunction_ImplicitReturn(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun f () { }
+		fun main () -> int { return 0; }
+	`)
+
+	f := requireFunc(t, funcs, "f")
+
+	// falling off the end terminates the block just like an explicit bare return does
+	assert.Equal(t, BlockRet, f.Entry.Kind)
+	assert.Nil(t, f.Entry.Control)
+}
+
 func TestGenSsa_UnitFunction_CallStatement(t *testing.T) {
 	funcs := requireBuildSSA(t, `
 		fun f () { return; }

@@ -51,7 +51,8 @@ func TestAnalyze_ParamTypes(t *testing.T) {
 }
 
 func TestAnalyze_NoReturnType(t *testing.T) {
-	funcs := mustParse(t, `fun main (x int, y int) { return; }`)
+	// not main, which is required to return int
+	funcs := mustParse(t, `fun f (x int, y int) { return; }`)
 
 	require.NoError(t, Analyze(funcs))
 
@@ -62,6 +63,30 @@ func TestAnalyze_NoReturnType(t *testing.T) {
 	require.NotNil(t, fun.Type)
 	want := types.Function([]*types.Type{types.Int(), types.Int()}, types.Unit())
 	assert.True(t, types.Equal(want, fun.Type))
+}
+
+func TestAnalyze_MissingReturn(t *testing.T) {
+	funcs := mustParse(t, `fun f () -> int { let x = 1; }`)
+
+	assert.Error(t, Analyze(funcs))
+}
+
+func TestAnalyze_UnitFunction_NeedsNoReturn(t *testing.T) {
+	// control falling off the end of a unit function is an implicit return
+	funcs := mustParse(t, `fun f (x *int) { *x = 15; }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	// no statement is synthesized to stand in for the implicit return
+	require.Len(t, funcs, 1)
+	require.Len(t, funcs[0].List, 1)
+	assert.Equal(t, ir.OpAssignment, funcs[0].List[0].Op)
+}
+
+func TestAnalyze_MainMustReturnInt(t *testing.T) {
+	funcs := mustParse(t, `fun main () { }`)
+
+	assert.Error(t, Analyze(funcs))
 }
 
 func TestAnalyze_NoReturnType_Err(t *testing.T) {

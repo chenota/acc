@@ -300,6 +300,15 @@ func analyzeBop(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 	return nil
 }
 
+// terminates reports whether control cannot flow past n.
+func terminates(n *ir.Node) bool {
+	if n == nil {
+		return false
+	}
+
+	return n.Op == ir.OpReturn
+}
+
 func registerFunction(scope *ir.Table, f *ir.Node) error {
 	// resolve parameter types and set own type
 	var paramTypes []*types.Type
@@ -318,6 +327,11 @@ func registerFunction(scope *ir.Table, f *ir.Node) error {
 	// returning a pointer is forbidden until the language is garbage collected
 	if resultType.IsPointer() {
 		return diagnostic.NewError(f.Signature.Result.Pos, "functions cannot return pointer types")
+	}
+
+	// TODO: widen this to any integer type once more than one exists.
+	if f.Signature.Name.Ident() == "main" && !types.Equal(resultType, types.Int()) {
+		return diagnostic.NewError(f.Pos, "main must return int, got %v", resultType)
 	}
 
 	f.Type = types.Function(paramTypes, resultType)
@@ -352,6 +366,11 @@ func analyzeFunction(scope *ir.Table, f *ir.Node) error {
 		if err := analyzeStmt(funScope, s); err != nil {
 			return err
 		}
+	}
+
+	// TODO: point this at the body's closing brace instead of the function's start once nodes carry an end position
+	if !(len(f.List) > 0 && terminates(f.List[len(f.List)-1])) && !f.Type.Result().IsUnit() {
+		return diagnostic.NewError(f.Pos, "missing return at end of function")
 	}
 
 	return nil
