@@ -415,6 +415,53 @@ func TestGenSsa_RefOfDeref_ReusesPointer(t *testing.T) {
 	assert.Len(t, f.Slots, 1)
 }
 
+func TestGenSsa_CallStatement_DiscardsResult(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun g (n int) -> int { return n; }
+		fun main () -> int { g(7); return 0; }
+	`)
+
+	f := requireFunc(t, funcs, "main")
+
+	// the return value comes from the return statement, never from the discarded call
+	ctrl := f.Entry.Control
+	require.NotNil(t, ctrl)
+	assert.Equal(t, OpLiteral, ctrl.Op)
+	assert.Equal(t, int32(0), ctrl.Value)
+}
+
+func TestGenSsa_UnitReturn_HasNoControlValue(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun f () { return; }
+		fun main () -> int { return 0; }
+	`)
+
+	f := requireFunc(t, funcs, "f")
+
+	// a bare return still terminates the block, but there is no value to place in the return register
+	assert.Equal(t, BlockRet, f.Entry.Kind)
+	assert.Nil(t, f.Entry.Control)
+	assert.Empty(t, f.Entry.Values)
+}
+
+func TestGenSsa_UnitFunction_CallStatement(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun f () { return; }
+		fun g () { f(); return; }
+		fun main () -> int { return 0; }
+	`)
+
+	g := requireFunc(t, funcs, "g")
+	assert.Equal(t, BlockRet, g.Entry.Kind)
+	assert.Nil(t, g.Entry.Control)
+
+	call := requireCall(t, funcs, "g")
+	require.NotNil(t, call.Callee())
+	assert.Equal(t, "f", call.Callee().Name())
+	assert.Empty(t, call.Args)
+	assert.True(t, types.Equal(types.Unit(), call.Type))
+}
+
 func requireBuildSSA(t *testing.T, src string) []*Func {
 	t.Helper()
 	tokens, err := lexer.Tokenize(strings.NewReader(src))

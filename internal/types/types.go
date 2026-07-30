@@ -124,6 +124,14 @@ func (t *Type) Result() *Type {
 	return t.result
 }
 
+func (t *Type) IsUnit() bool {
+	if t == nil {
+		return false
+	}
+
+	return t.kind == KUnit
+}
+
 func Int() *Type {
 	return &Type{kind: KInt}
 }

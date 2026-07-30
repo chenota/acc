@@ -50,6 +50,40 @@ func TestAnalyze_ParamTypes(t *testing.T) {
 	assert.True(t, types.Equal(want, fun.Type))
 }
 
+func TestAnalyze_NoReturnType(t *testing.T) {
+	funcs := mustParse(t, `fun main (x int, y int) { return; }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	// and those types should be reflected in the function's own type
+	require.NotNil(t, fun.Type)
+	want := types.Function([]*types.Type{types.Int(), types.Int()}, types.Unit())
+	assert.True(t, types.Equal(want, fun.Type))
+}
+
+func TestAnalyze_NoReturnType_Err(t *testing.T) {
+	funcs := mustParse(t, `fun main (x int, y int) -> int { return; }`)
+
+	assert.Error(t, Analyze(funcs))
+}
+
+func TestAnalyze_CallAsStmt(t *testing.T) {
+	funcs := mustParse(t, `fun f () -> int { return 5; } fun main (x int, y int) -> int { f(); return x + y; }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 2)
+	fun := funcs[1]
+
+	require.Len(t, fun.List, 2)
+	call := fun.List[0]
+
+	assert.True(t, types.Equal(types.Int(), call.Type))
+}
+
 func TestAnalyze_DuplicateParam(t *testing.T) {
 	funcs := mustParse(t, `fun main (x int, x int) -> int { return 0; }`)
 

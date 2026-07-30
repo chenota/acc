@@ -39,6 +39,8 @@ func analyzeStmt(scope *ir.Table, n *ir.Node) error {
 	case ir.OpPlusEq, ir.OpMinusEq, ir.OpDivEq, ir.OpTimesEq:
 		// assignment operators have same structure and use same typing rules as regular assignment
 		return analyzeAssignment(scope, n)
+	case ir.OpCall:
+		return analyzeCall(scope, n)
 	default:
 		return diagnostic.NewError(n.Pos, "unknown statement operation: %d", n.Op)
 	}
@@ -231,7 +233,9 @@ func analyzeNegate(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 
 	// analyze sub-expression with hint
 	e := n.List[0]
-	analyzeExpr(scope, e, hint)
+	if err := analyzeExpr(scope, e, hint); err != nil {
+		return err
+	}
 
 	// steal type from sub-expression
 	n.Type = e.Type
@@ -267,6 +271,7 @@ func analyzeBop(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 	if err := analyzeExpr(scope, right, hint); err != nil {
 		return err
 	}
+
 	leftType := left.Type
 	rightType := right.Type
 
@@ -305,7 +310,10 @@ func registerFunction(scope *ir.Table, f *ir.Node) error {
 		paramTypes = append(paramTypes, p.Type)
 	}
 
-	resultType := f.Signature.Result.Type
+	resultType := types.Unit()
+	if f.Signature.Result != nil {
+		resultType = f.Signature.Result.Type
+	}
 
 	// returning a pointer is forbidden until the language is garbage collected
 	if resultType.IsPointer() {
@@ -371,14 +379,19 @@ func analyzeReturn(scope *ir.Table, r *ir.Node) error {
 	expectedOut := currentFunc.Type.Result()
 
 	// determine type of sub-expression
-	e := r.List[0]
-	if err := analyzeExpr(scope, e, expectedOut); err != nil {
-		return err
-	}
-
-	// this check is redundant for now but will be useful in the future when we introduce more complexity
-	if !types.Equal(e.Type, expectedOut) {
-		return diagnostic.NewError(e.Pos, "return value type does not match type of function signature. expected %v, got %v", expectedOut, e.Type)
+	if len(r.List) > 0 {
+		e := r.List[0]
+		if err := analyzeExpr(scope, e, expectedOut); err != nil {
+			return err
+		}
+		if !types.Equal(e.Type, expectedOut) {
+			return diagnostic.NewError(e.Pos, "return value type does not match type of function signature. expected %v, got %v", expectedOut, e.Type)
+		}
+	} else {
+		// returning nothing; expect function to return unit type
+		if !expectedOut.IsUnit() {
+			return diagnostic.NewError(r.Pos, "empty return for function that returns concrete value")
+		}
 	}
 
 	return nil

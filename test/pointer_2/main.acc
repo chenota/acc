@@ -1,5 +1,6 @@
 fun f (x *int) {
     *x = 15;
+    return;
 }
 
 fun main () -> int {

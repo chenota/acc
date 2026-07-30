@@ -84,6 +84,8 @@ func (p *parser) parseIdent() (*ir.Node, bool) {
 }
 
 func (p *parser) parseStmt() (*ir.Node, bool) {
+	loc := p.t.Mark()
+
 	if n, ok := p.parseDeclaration(); ok {
 		return n, true
 	}
@@ -96,7 +98,28 @@ func (p *parser) parseStmt() (*ir.Node, bool) {
 		return n, true
 	}
 
-	return p.parseReturn()
+	if n, ok := p.parseReturn(); ok {
+		return n, true
+	}
+
+	if n, ok := p.parseExpr(); ok {
+		if n.Op != ir.OpCall {
+			p.markErr("only function calls are valid expression-statements")
+			p.t.Restore(loc)
+			return nil, false
+		}
+
+		if _, ok = p.t.Expect(lexer.KSemicolon); !ok {
+			p.markErr("expected semicolon")
+			p.t.Restore(loc)
+			return nil, false
+		}
+
+		return n, true
+	}
+
+	p.markErr("expected valid statement")
+	return nil, false
 }
 
 func (p *parser) parseAssignmentOp() (*ir.Node, bool) {
@@ -114,9 +137,9 @@ func (p *parser) parseAssignmentOp() (*ir.Node, bool) {
 	}
 	target.Parent = n
 
+	// as with plain assignment, no operator means this was never an assignment operation
 	opToken, ok := p.t.Peek()
 	if !ok {
-		p.markErr("unexpected EOF")
 		p.t.Restore(loc)
 		return nil, false
 	}
@@ -132,7 +155,6 @@ func (p *parser) parseAssignmentOp() (*ir.Node, bool) {
 	case lexer.KDivEq:
 		op = ir.OpDivEq
 	default:
-		p.markErr("expected an assignment operator")
 		p.t.Restore(loc)
 		return nil, false
 	}
@@ -228,8 +250,9 @@ func (p *parser) parseAssignment() (*ir.Node, bool) {
 	}
 	target.Parent = n
 
+	// without an equal sign this was never an assignment, so stay quiet and let another
+	// statement form report the error against the same tokens
 	if _, ok := p.t.Expect(lexer.KEqual); !ok {
-		p.markErr("expected equal sign in variable assignment")
 		p.t.Restore(loc)
 		return nil, false
 	}
@@ -266,12 +289,10 @@ func (p *parser) parseReturn() (*ir.Node, bool) {
 	}
 
 	e, ok := p.parseExpr()
-	if !ok {
-		p.t.Restore(loc)
-		return nil, false
+	if ok {
+		e.Parent = n
+		n.List = []*ir.Node{e}
 	}
-	e.Parent = n
-	n.List = []*ir.Node{e}
 
 	if _, ok = p.t.Expect(lexer.KSemicolon); !ok {
 		p.markErr("expected semicolon")
@@ -340,19 +361,15 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 		return nil, false
 	}
 
-	if _, ok := p.t.Expect(lexer.KArrow); !ok {
-		p.markErr("expected arrow")
-		p.t.Restore(loc)
-		return nil, false
+	if _, ok := p.t.Expect(lexer.KArrow); ok {
+		returnType, ok := p.parseType()
+		if !ok {
+			p.t.Restore(loc)
+			return nil, false
+		}
+		returnType.Parent = n
+		n.Signature.Result = returnType
 	}
-
-	returnType, ok := p.parseType()
-	if !ok {
-		p.t.Restore(loc)
-		return nil, false
-	}
-	returnType.Parent = n
-	n.Signature.Result = returnType
 
 	body, ok := p.parseBlock()
 	if !ok {

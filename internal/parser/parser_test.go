@@ -86,7 +86,6 @@ func TestParser_ExprErr(t *testing.T) {
 		name string
 		test string
 	}{
-		{"missing int", `fun main () -> int { return ; }`},
 		{"extra int", `fun main () -> int { return 0 0; }`},
 		{"missing right operand", `fun main () -> int { return 4 + ;}`},
 		{"missing left operand", `fun main () -> int { return / 5; }`},
@@ -386,6 +385,21 @@ func TestParser_NoParams(t *testing.T) {
 	assert.Empty(t, fun.Signature.Params)
 }
 
+func TestParser_NoReturnType(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () { return 0; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.NotNil(t, fun.Signature)
+	assert.Empty(t, fun.Signature.Params)
+
+	assert.Nil(t, fun.Signature.Result)
+}
+
 func TestParser_SingleParam(t *testing.T) {
 	tokens := requireTokenize(t, `fun main (x int) -> int { return 0; }`)
 
@@ -455,6 +469,20 @@ func TestParser_ParamErr(t *testing.T) {
 			assert.Error(t, err)
 		})
 	}
+}
+
+func TestParser_Call_AsStmt(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () { f(); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	call := fun.List[0]
+	assert.Equal(t, ir.OpCall, call.Op)
 }
 
 func TestParser_Call_NoArgs(t *testing.T) {

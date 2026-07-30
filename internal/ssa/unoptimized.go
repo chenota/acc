@@ -70,6 +70,10 @@ func (b *builder) genStatement(stmt *ir.Node) error {
 		return b.genAssign(stmt)
 	case ir.OpPlusEq, ir.OpMinusEq, ir.OpTimesEq, ir.OpDivEq:
 		return b.genAssignOp(stmt)
+	case ir.OpCall:
+		// ignore the call's return value
+		_, err := b.genCall(stmt)
+		return err
 	default:
 		return diagnostic.NewError(stmt.Pos, "unknown statement operation: %d", stmt.Op)
 	}
@@ -106,19 +110,18 @@ func (b *builder) genAssignOp(n *ir.Node) error {
 }
 
 func (b *builder) genReturn(n *ir.Node) error {
-	if len(n.List) != 1 {
-		return diagnostic.NewError(n.Pos, "return statement missing expression")
+	b.currentBlock.Kind = BlockRet
+
+	if len(n.List) == 0 {
+		// no return value we're done
+		return nil
 	}
 
 	retVal, err := b.genExpr(n.List[0])
 	if err != nil {
 		return err
 	}
-
-	if b.currentBlock != nil && b.currentBlock.Kind == BlockUnset {
-		b.currentBlock.Kind = BlockRet
-		b.currentBlock.Control = retVal
-	}
+	b.currentBlock.Control = retVal
 
 	return nil
 }
