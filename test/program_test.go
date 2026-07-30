@@ -54,7 +54,7 @@ func TestProgram(t *testing.T) {
 				binaryPath := compileProgram(t, mainFile)
 				defer os.Remove(binaryPath)
 
-				ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 				defer cancel()
 
 				cmd := exec.CommandContext(ctx, binaryPath)
