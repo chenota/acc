@@ -1,0 +1,11 @@
+fun boxed (x int) -> *int {
+    let p = &x;
+    let q = p;
+    return q;
+}
+
+fun main () -> int {
+    let a = boxed(1);
+    let b = boxed(41);
+    return *a + *b;
+}
