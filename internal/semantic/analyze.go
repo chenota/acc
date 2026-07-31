@@ -272,30 +272,30 @@ func analyzeBop(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 		return err
 	}
 
-	leftType := left.Type
-	rightType := right.Type
-
 	// attempt to resolve flexible types
 	switch {
-	case leftType.IsUntypedNumeric() && rightType.IsConcreteNumeric():
-		if err := analyzeExpr(scope, left, rightType); err != nil {
+	case left.Type.IsUntypedNumeric() && right.Type.IsConcreteNumeric():
+		if err := analyzeExpr(scope, left, right.Type); err != nil {
 			return err
 		}
-	case leftType.IsConcreteNumeric() && rightType.IsUntypedNumeric():
-		if err := analyzeExpr(scope, right, leftType); err != nil {
+	case left.Type.IsConcreteNumeric() && right.Type.IsUntypedNumeric():
+		if err := analyzeExpr(scope, right, left.Type); err != nil {
 			return err
 		}
 	}
-	leftType = left.Type
-	rightType = right.Type
 
 	// types must be equal
-	if !types.Equal(leftType, rightType) {
-		return diagnostic.NewError(n.Pos, "binary operation with mismatched types: %v and %v", leftType, rightType)
+	if !types.Equal(left.Type, right.Type) {
+		return diagnostic.NewError(n.Pos, "binary operation with mismatched types: %v and %v", left.Type, right.Type)
+	}
+
+	// restrict what can be added to numeric types
+	if !left.Type.IsConcreteNumeric() {
+		return diagnostic.NewError(n.Pos, "binary operation unavailable for type: %v", left.Type)
 	}
 
 	// finally, assign bop node to the agreed-upon type
-	n.Type = leftType
+	n.Type = left.Type
 
 	return nil
 }

@@ -385,13 +385,9 @@ func (b *builder) genBop(expr *ir.Node) (*Value, error) {
 		return nil, err
 	}
 
-	if expr.Type.IsConcreteNumeric() {
-		v := b.targetFunc.appendValue(numericBopFrom(expr), expr.Type, b.currentBlock)
-		v.Args = []*Value{leftVal, rightVal}
-		return v, nil
-	}
-
-	return nil, diagnostic.NewError(expr.Pos, "cannot perform binary operation for type %v", expr.Type)
+	v := b.targetFunc.appendValue(numericBopFrom(expr), expr.Type, b.currentBlock)
+	v.Args = []*Value{leftVal, rightVal}
+	return v, nil
 }
 
 func numericBopFrom(n *ir.Node) Op {

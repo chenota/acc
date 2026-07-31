@@ -140,6 +140,12 @@ func TestAnalyze_SimpleBop(t *testing.T) {
 	assert.Equal(t, types.Int(), bopExpr.List[1].Type)
 }
 
+func TestAnalyze_BopInvalidType(t *testing.T) {
+	funcs := mustParse(t, `fun f () {} fun main () -> int { let x = 10; let y = &x + &x; return 0; }`)
+
+	require.Error(t, Analyze(funcs))
+}
+
 func TestAnalyze_VariableDeclaration(t *testing.T) {
 	funcs := mustParse(t, `fun main () -> int { let x int = 10; return 0; }`)
 
