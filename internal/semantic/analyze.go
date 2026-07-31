@@ -324,11 +324,6 @@ func registerFunction(scope *ir.Table, f *ir.Node) error {
 		resultType = f.Signature.Result.Type
 	}
 
-	// returning a pointer is forbidden until the language is garbage collected
-	if resultType.IsPointer() {
-		return diagnostic.NewError(f.Signature.Result.Pos, "functions cannot return pointer types")
-	}
-
 	// TODO: widen this to any integer type once more than one exists.
 	if f.Signature.Name.Ident() == "main" && !types.Equal(resultType, types.Int()) {
 		return diagnostic.NewError(f.Pos, "main must return int, got %v", resultType)
