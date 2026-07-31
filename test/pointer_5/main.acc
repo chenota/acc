@@ -1,0 +1,15 @@
+fun singlePtr(v int) -> *int {
+    return &v;
+}
+
+fun doublePtr (v *int) -> **int {
+    return &v;
+}
+
+fun triplePtr (v **int) -> ***int {
+    return &v;
+}
+
+fun main () -> int {
+    return ***triplePtr(doublePtr(singlePtr(5 + 10)));
+}
