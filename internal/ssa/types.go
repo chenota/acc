@@ -28,6 +28,7 @@ const (
 	OpSignExtend // sign-extends the accumulator into the high register (cdq/cqo)
 	OpParam      // incoming function argument - more of a placeholder for a location than an acutal value in its own right
 	OpLocalAddr  // address bound to a static stack slot
+	OpAllocate   // special call to the garbage collector's allocate functionality
 )
 
 type Value struct {
@@ -47,7 +48,7 @@ type Value struct {
 
 // Clobbers reports the registers this value destroys when it executes.
 func (v *Value) Clobbers() register.Mask {
-	if v.Op == OpStaticCall {
+	if v.Op == OpStaticCall || v.Op == OpAllocate {
 		// for now calls are considered to clobber all caller-saved registers
 		// TODO: make this more intelligent by only clobbering caller-saved registers that the callee actually uses
 		return register.CallerSaved
@@ -159,6 +160,30 @@ func (b *Block) indexOf(v *Value) int {
 	return -1
 }
 
+// firstUse is the index of the first value in b naming slot.
+func (b *Block) firstUse(slot *Slot) int {
+	for i, v := range b.Values {
+		if v.Slot() == slot {
+			return i
+		}
+	}
+
+	return len(b.Values)
+}
+
+// argReadersEnd is the index just past the last value in b that reads an incoming argument register
+// TODO: I hate this I need to rework the parameter-copy process and get this out of here!!!1!!1!
+func (b *Block) argReadersEnd() int {
+	var end int
+	for i, v := range b.Values {
+		if v.Op == OpParam || (v.Op == OpCopy && len(v.Args) == 1 && v.Args[0].Op == OpParam) {
+			end = i + 1
+		}
+	}
+
+	return end
+}
+
 type Func struct {
 	name   string
 	Blocks []*Block
@@ -263,6 +288,30 @@ func (f *Func) insertValueAfter(v *Value, op Op, t *types.Type, b *Block) *Value
 	return newVal
 }
 
+// insertValueAt splices a new value into b at index i.
+func (f *Func) insertValueAt(i int, op Op, t *types.Type, b *Block) *Value {
+	newVal := f.newValue(op, t, b)
+	b.Values = slices.Insert(b.Values, i, newVal)
+
+	return newVal
+}
+
+// ensureAfter moves v to sit directly after anchor, but only when it currently runs ahead of it.
+// TODO: again I hate this I need to rework parameter copies to get rid of it
+func (f *Func) ensureAfter(v, anchor *Value) {
+	b := anchor.Block
+	if v.Block != b {
+		return
+	}
+
+	from, to := b.indexOf(v), b.indexOf(anchor)
+	if from < 0 || to < 0 || from > to {
+		return
+	}
+
+	b.Values = slices.Insert(slices.Delete(b.Values, from, from+1), to, v)
+}
+
 func (f *Func) newBlock() *Block {
 	b := &Block{Id: f.blockId}
 	f.blockId += 1
@@ -297,6 +346,7 @@ func (f *Func) redirectUses(old, new *Value) {
 }
 
 // replaceValue old with new in the instruction stream and redirects uses of old to new.
+// TODO: This is wrong since it only replaces the first use of the value and ignores control
 func (f *Func) replaceValue(old, new *Value) {
 	for _, block := range f.Blocks {
 		if i := block.indexOf(old); i >= 0 {
@@ -366,6 +416,38 @@ func (f *Func) UsedRegisters() register.Mask {
 		}
 	}
 	return m
+}
+
+// allocationPoint decides the latest point at which a slot allocation can go. Rules this needs to follow:
+// 1. Allocation dominates every use of the slot
+// 2. Runs at most once per call (not inside loops!)
+// 3. Needs to happen after register copies
+func (f *Func) allocationPoint(slot *Slot) (*Block, int) {
+	block := f.dominatingBlock(slot)
+
+	i := block.firstUse(slot)
+	if end := block.argReadersEnd(); end > i {
+		i = end
+	}
+
+	return block, i
+}
+
+// dominatingBlock returns the block that dominates every use of slot.
+func (f *Func) dominatingBlock(_ *Slot) *Block {
+	// with one block per function the entry dominates everything
+	return f.Entry
+}
+
+// SlotValues returns every value that names the given frame slot
+func (f *Func) SlotValues(s *Slot) iter.Seq[*Value] {
+	return func(yield func(*Value) bool) {
+		for v := range f.UnorderedValues() {
+			if v.Slot() == s && !yield(v) {
+				return
+			}
+		}
+	}
 }
 
 type LocationKind int

@@ -35,6 +35,10 @@ func BuildAndAllocate(program []*ir.Node) ([]*Func, error) {
 
 func optimizeAndAllocate(f *Func) error {
 	mem2reg(f)
+
+	escaped := escapeAnalysis(f)
+	heapify(f, escaped)
+
 	unaryFold(f)
 	quickFold(f)
 	associativeFold(f)
