@@ -10,8 +10,13 @@ import (
 func heapify(f *Func, escaped []*Slot) {
 	for _, slot := range escaped {
 		block, i := f.allocationPoint(slot)
-		heapPtr := f.insertValueAt(i, OpStaticCall, types.Pointer(slot.Type), block)
+
+		size := f.insertValueAt(i, OpLiteral, types.Int(), block)
+		size.Value = int32(slot.Type.Size())
+
+		heapPtr := f.insertValueAt(i+1, OpStaticCall, types.Pointer(slot.Type), block)
 		heapPtr.Value = Alloc
+		heapPtr.Args = []*Value{size}
 
 		for v := range f.SlotValues(slot) {
 			switch v.Op {

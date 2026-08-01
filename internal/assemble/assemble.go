@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/chenota/acc/internal/runtime"
 )
 
 // Assemble assembles and links a list of x64 instructions into binary using GCC
@@ -18,12 +20,18 @@ func Assemble(instructions []string, w io.Writer) error {
 	// we don't want to write to this initially so close for now
 	tmpBinary.Close()
 
-	cmd := assembleCmd(tmpBinary.Name())
+	tmpRuntime, err := runtime.WriteSource()
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpRuntime)
 
-	var stderr bytes.Buffer
+	cmd := assemble(tmpBinary.Name(), tmpRuntime)
+
+	var stderr, stdout bytes.Buffer
 	cmd.Stderr = &stderr
-	cmd.Stdout = w
-	cmd.Stdin = bytes.NewBufferString(strings.Join(instructions, "\n"))
+	cmd.Stdout = &stdout
+	cmd.Stdin = bytes.NewBufferString(strings.Join(instructions, "\n") + "\n")
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("gcc failed to assemble source: %w (stderr: %s)", err, stderr.String())
