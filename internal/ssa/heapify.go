@@ -26,10 +26,6 @@ func heapify(f *Func, escaped []*Slot) {
 				v.Op = OpStore
 				v.Args = []*Value{v.Args[0], heapPtr}
 				v.Value = nil
-
-				// ensure parameter prologue shenanigans happen after we allocate the space
-				// TODO: rework parameter prologue so this is not necessary
-				f.ensureAfter(v, heapPtr)
 			}
 		}
 

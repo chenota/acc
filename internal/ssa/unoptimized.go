@@ -40,6 +40,7 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 
 // bindParams materializes incoming arguments at the top of the entry block.
 func (b *builder) bindParams(params []*ir.Node) {
+	// append parameter as value
 	incoming := make([]*Value, len(params))
 	for i, p := range params {
 		v := b.targetFunc.appendValue(OpParam, p.Type, b.currentBlock)
@@ -47,14 +48,20 @@ func (b *builder) bindParams(params []*ir.Node) {
 		incoming[i] = v
 	}
 
+	// copy each parameter into non-restricted slot
+	copies := make([]*Value, len(params))
 	for i, p := range params {
 		param := b.targetFunc.appendValue(OpCopy, p.Type, b.currentBlock)
 		param.Args = []*Value{incoming[i]}
+		copies[i] = param
+	}
 
+	// parameters are variables so store them on the stack like any other variable
+	for i, p := range params {
 		slot := b.targetFunc.newSlot(p.Sym, p.Type)
 		b.vars[p.Sym] = slot
 
-		b.genStoreTo(addr{Slot: slot}, param)
+		b.genStoreTo(addr{Slot: slot}, copies[i])
 	}
 }
 

@@ -171,19 +171,6 @@ func (b *Block) firstUse(slot *Slot) int {
 	return len(b.Values)
 }
 
-// argReadersEnd is the index just past the last value in b that reads an incoming argument register
-// TODO: I hate this I need to rework the parameter-copy process and get this out of here!!!1!!1!
-func (b *Block) argReadersEnd() int {
-	var end int
-	for i, v := range b.Values {
-		if v.Op == OpParam || (v.Op == OpCopy && len(v.Args) == 1 && v.Args[0].Op == OpParam) {
-			end = i + 1
-		}
-	}
-
-	return end
-}
-
 type Func struct {
 	name   string
 	Blocks []*Block
@@ -296,22 +283,6 @@ func (f *Func) insertValueAt(i int, op Op, t *types.Type, b *Block) *Value {
 	return newVal
 }
 
-// ensureAfter moves v to sit directly after anchor, but only when it currently runs ahead of it.
-// TODO: again I hate this I need to rework parameter copies to get rid of it
-func (f *Func) ensureAfter(v, anchor *Value) {
-	b := anchor.Block
-	if v.Block != b {
-		return
-	}
-
-	from, to := b.indexOf(v), b.indexOf(anchor)
-	if from < 0 || to < 0 || from > to {
-		return
-	}
-
-	b.Values = slices.Insert(slices.Delete(b.Values, from, from+1), to, v)
-}
-
 func (f *Func) newBlock() *Block {
 	b := &Block{Id: f.blockId}
 	f.blockId += 1
@@ -418,19 +389,12 @@ func (f *Func) UsedRegisters() register.Mask {
 	return m
 }
 
-// allocationPoint decides the latest point at which a slot allocation can go. Rules this needs to follow:
+// allocationPoint decides the point at which a slot allocation goes. Rules this needs to follow:
 // 1. Allocation dominates every use of the slot
 // 2. Runs at most once per call (not inside loops!)
-// 3. Needs to happen after register copies
 func (f *Func) allocationPoint(slot *Slot) (*Block, int) {
 	block := f.dominatingBlock(slot)
-
-	i := block.firstUse(slot)
-	if end := block.argReadersEnd(); end > i {
-		i = end
-	}
-
-	return block, i
+	return block, block.firstUse(slot)
 }
 
 // dominatingBlock returns the block that dominates every use of slot.
