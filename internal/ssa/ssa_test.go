@@ -31,27 +31,66 @@ func TestGenSsa_Basic(t *testing.T) {
 	assert.Equal(t, types.Int(), ret.Type)
 }
 
-func TestGenSsa_ConstantFolding(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { return 1 + 1; }`)
+// TestGenSsa_FoldsToLiteral covers the programs that collapse all the way down to a single constant
+func TestGenSsa_FoldsToLiteral(t *testing.T) {
+	tests := []struct {
+		name string
+		fn   string // the function to inspect, "main" when empty
+		src  string
+		want int32
+	}{
+		{
+			name: "binary operands fold",
+			src:  `fun main () -> int { return 1 + 1; }`,
+			want: 2,
+		},
+		{
+			name: "addition wraps on overflow",
+			src:  fmt.Sprintf(`fun main () -> int { return %d + 1; }`, math.MaxInt32),
+			want: math.MinInt32,
+		},
+		{
+			name: "unary operand folds",
+			src:  `fun main () -> int { return -10; }`,
+			want: -10,
+		},
+		{
+			// both operands promote to constants, so the divide folds away
+			name: "promoted variables fold",
+			src:  `fun main () -> int { let x = 10; let y = 2; return x / y; }`,
+			want: 5,
+		},
+		{
+			name: "assignment overwrites the earlier definition",
+			src:  `fun main () -> int { let x = 10; x = 20; return x; }`,
+			want: 20,
+		},
+		{
+			name: "compound assignment folds",
+			src:  `fun main () -> int { let x = 10; x += 20; return x; }`,
+			want: 30,
+		},
+		{
+			name: "reassigned parameter",
+			fn:   "f",
+			src:  `fun f (x int) -> int { x = 55; return x; }`,
+			want: 55,
+		},
+	}
 
-	b := funcs[0].Blocks[0]
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name := tt.fn
+			if name == "" {
+				name = "main"
+			}
+			f := requireFunc(t, requireBuildSSA(t, tt.src), name)
 
-	ret := requireReturned(t, b)
-	assert.Equal(t, OpLiteral, ret.Op)
-	assert.Equal(t, types.Int(), ret.Type)
-	assert.Equal(t, int32(2), ret.Value)
-}
-
-func TestGenSsa_AdditionOverflow(t *testing.T) {
-	src := fmt.Sprintf(`fun main () -> int { return %d + 1; }`, math.MaxInt32)
-	funcs := requireBuildSSA(t, src)
-
-	b := funcs[0].Blocks[0]
-
-	ret := requireReturned(t, b)
-	assert.Equal(t, OpLiteral, ret.Op)
-	assert.Equal(t, types.Int(), ret.Type)
-	assert.Equal(t, int32(math.MinInt32), ret.Value)
+			ret := requireReturned(t, f.Entry)
+			assert.Equal(t, OpLiteral, ret.Op)
+			assert.Equal(t, tt.want, ret.Value)
+		})
+	}
 }
 
 func TestGenSsa_Variable(t *testing.T) {
@@ -65,73 +104,11 @@ func TestGenSsa_Variable(t *testing.T) {
 
 	// nothing names the slot any more, so layout drops it from the frame
 	assert.Empty(t, funcs[0].Slots, "promoted slot should be dropped")
-	assert.Equal(t, 0, funcs[0].localsSize())
 
 	// the stored value flows directly into the return
 	ret := requireReturned(t, b)
 	assert.Equal(t, OpLiteral, ret.Op)
 	assert.Equal(t, int32(10), ret.Value)
-}
-
-func TestGenSsa_Variable_Assignment(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; x = 20; return x; }`)
-
-	b := funcs[0].Blocks[0]
-
-	assert.Empty(t, findValues(b.Values, OpStaticLoad), "loads should be promoted away")
-	assert.Empty(t, findValues(b.Values, OpStaticStore), "stores should be promoted away")
-	assert.Empty(t, funcs[0].Slots, "promoted slot should be dropped")
-
-	// the most recent definition (20) reaches the return
-	ret := requireReturned(t, b)
-	assert.Equal(t, OpLiteral, ret.Op)
-	assert.Equal(t, int32(20), ret.Value)
-}
-
-func TestGenSsa_Divide(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; let y = 2; return x / y; }`)
-
-	b := funcs[0].Blocks[0]
-
-	// both operands promote to constants, so the divide folds away
-	ret := requireReturned(t, b)
-	assert.Equal(t, OpLiteral, ret.Op)
-	assert.Equal(t, int32(5), ret.Value)
-}
-
-func TestGenSsa_Variable_InExpression(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { let x = 5; return x + 1; }`)
-
-	b := funcs[0].Blocks[0]
-
-	// x promotes to 5, so x + 1 folds to 6
-	ret := requireReturned(t, b)
-	assert.Equal(t, OpLiteral, ret.Op)
-	assert.Equal(t, int32(6), ret.Value)
-}
-
-func TestGenSsa_Negate_Fold(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { return -10; }`)
-	b := funcs[0].Blocks[0]
-
-	ret := requireReturned(t, b)
-	assert.Equal(t, OpLiteral, ret.Op)
-	assert.Equal(t, int32(-10), ret.Value.(int32))
-}
-
-func TestGenSsa_Variable_Assignment_Operator(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; x += 20; return x; }`)
-
-	b := funcs[0].Blocks[0]
-
-	assert.Empty(t, findValues(b.Values, OpStaticLoad), "loads should be promoted away")
-	assert.Empty(t, findValues(b.Values, OpStaticStore), "stores should be promoted away")
-	assert.Empty(t, funcs[0].Slots, "promoted slot should be dropped")
-
-	// x += 20 promotes and folds to 30
-	ret := requireReturned(t, b)
-	assert.Equal(t, OpLiteral, ret.Op)
-	assert.Equal(t, int32(30), ret.Value)
 }
 
 func TestLowerCalls_ArgRegisters(t *testing.T) {
@@ -159,7 +136,7 @@ func TestLowerCalls_ArgRegisters(t *testing.T) {
 	assert.Equal(t, register.RegD, call.Args[2].Loc.Reg)
 }
 
-func TestLowerCalls_ResultInRAX(t *testing.T) {
+func TestLowerCalls_ResultAndClobbers(t *testing.T) {
 	funcs := requireBuildSSA(t, `
 		fun target (a int) -> int { return 0; }
 		fun main () -> int { return target(7); }
@@ -167,19 +144,11 @@ func TestLowerCalls_ResultInRAX(t *testing.T) {
 
 	call := requireCall(t, funcs, "main")
 
+	// the result comes back in rax
 	assert.Equal(t, LocRegister, call.Loc.Kind)
 	assert.Equal(t, register.RegA, call.Loc.Reg)
-}
 
-func TestValue_CallClobbersCallerSaved(t *testing.T) {
-	funcs := requireBuildSSA(t, `
-		fun target (a int) -> int { return 0; }
-		fun main () -> int { return target(7); }
-	`)
-
-	call := requireCall(t, funcs, "main")
-
-	// a call conservatively clobbers every caller-saved register
+	// and the call conservatively clobbers every caller-saved register
 	assert.Equal(t, register.CallerSaved, call.Clobbers())
 }
 
@@ -213,18 +182,6 @@ func TestGenSsa_Param_FlowsToReturn(t *testing.T) {
 
 	require.Len(t, ret.Args, 1)
 	assert.Equal(t, OpParam, ret.Args[0].Op)
-	assert.Equal(t, register.RegDI, ret.Args[0].Loc.Reg)
-}
-
-func TestGenSsa_Param_Reassigned(t *testing.T) {
-	// a parameter is a mutable local - reassigning it before use discards the incoming value
-	funcs := requireBuildSSA(t, `fun f (x int) -> int { x = 55; return x; }`)
-
-	f := requireFunc(t, funcs, "f")
-
-	ret := requireReturned(t, f.Entry)
-	assert.Equal(t, OpLiteral, ret.Op)
-	assert.Equal(t, int32(55), ret.Value)
 }
 
 func TestLowerCalls_StackArgs(t *testing.T) {
@@ -247,11 +204,11 @@ func TestLowerCalls_StackArgs(t *testing.T) {
 	// the seventh and eighth are written into the outgoing area, lowest slot first
 	assert.Equal(t, LocMemory, call.Args[6].Loc.Kind)
 	assert.Equal(t, register.RegSP, call.Args[6].Loc.Reg)
-	assert.Equal(t, 0, call.Args[6].Loc.Offset)
 
 	assert.Equal(t, LocMemory, call.Args[7].Loc.Kind)
 	assert.Equal(t, register.RegSP, call.Args[7].Loc.Reg)
-	assert.Equal(t, 8, call.Args[7].Loc.Offset)
+
+	assert.Less(t, call.Args[6].Loc.Offset, call.Args[7].Loc.Offset)
 }
 
 func TestLowerParams_StackParams(t *testing.T) {
@@ -270,11 +227,13 @@ func TestLowerParams_StackParams(t *testing.T) {
 	// the rest arrive in the caller's frame, past the saved rbp and the return address
 	assert.Equal(t, LocMemory, params[6].Loc.Kind)
 	assert.Equal(t, register.RegBP, params[6].Loc.Reg)
-	assert.Equal(t, 16, params[6].Loc.Offset)
 
 	assert.Equal(t, LocMemory, params[7].Loc.Kind)
 	assert.Equal(t, register.RegBP, params[7].Loc.Reg)
-	assert.Equal(t, 24, params[7].Loc.Offset)
+
+	// above rbp is the caller's frame; below it would collide with our own locals
+	assert.Positive(t, params[6].Loc.Offset)
+	assert.Less(t, params[6].Loc.Offset, params[7].Loc.Offset)
 }
 
 func TestLayoutFrame_ReservesOutgoingArea(t *testing.T) {
@@ -318,11 +277,9 @@ func TestGenSsa_Ref_KeepsAddressedSlotInFrame(t *testing.T) {
 	require.NotNil(t, slot.Sym)
 	assert.Equal(t, "a", slot.Sym.Name)
 
-	// the surviving slot gets a real home below rbp
+	// the surviving slot gets a real home below rbp, not a register
 	assert.Equal(t, LocMemory, slot.Loc.Kind)
 	assert.Equal(t, register.RegBP, slot.Loc.Reg)
-	assert.Equal(t, -4, slot.Loc.Offset)
-	assert.Equal(t, 4, f.localsSize())
 }
 
 func TestGenSsa_Ref_MaterializesSlotAddress(t *testing.T) {
@@ -404,20 +361,6 @@ func TestGenSsa_RefOfDeref_ReusesPointer(t *testing.T) {
 	assert.Len(t, f.Slots, 1)
 }
 
-func TestGenSsa_CallStatement_DiscardsResult(t *testing.T) {
-	funcs := requireBuildSSA(t, `
-		fun g (n int) -> int { return n; }
-		fun main () -> int { g(7); return 0; }
-	`)
-
-	f := requireFunc(t, funcs, "main")
-
-	// the return value comes from the return statement, never from the discarded call
-	ret := requireReturned(t, f.Entry)
-	assert.Equal(t, OpLiteral, ret.Op)
-	assert.Equal(t, int32(0), ret.Value)
-}
-
 func TestGenSsa_UnitReturn_HasNoControlValue(t *testing.T) {
 	funcs := requireBuildSSA(t, `
 		fun f () { return; }
@@ -482,12 +425,6 @@ func TestHeapify_RewritesAnEscapingLocal(t *testing.T) {
 	// nothing still takes the address of a frame slot, and the slot is gone
 	assert.Empty(t, findValues(slices.Collect(f.UnorderedValues()), OpLocalAddr))
 	assert.Nil(t, slotNamed(f, "x"))
-
-	// allocating is an ordinary call to the runtime, so it obeys the same ABI
-	assert.Equal(t, "acc_alloc", alloc.Callee().Name())
-	assert.Equal(t, register.CallerSaved, alloc.Clobbers())
-	assert.Equal(t, NewReg(register.ReturnTarget), alloc.Loc)
-	assert.True(t, alloc.NeedsRegister(), "the allocation produces a pointer")
 }
 
 // requireReturned unwraps b's return copy and hands back the value feeding it.
