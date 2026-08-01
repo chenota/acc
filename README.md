@@ -154,7 +154,7 @@ We can build on Vertical Slice 3 and add the last foundational construct we need
               | <Atom>
 ```
 
-### Vertical Slice 7: Pointers [Work in Progress]
+### Vertical Slice 7: Pointers [Complete]
 
 We need referenced values to make closures work.
 
@@ -173,7 +173,7 @@ We need referenced values to make closures work.
 <Type> := "*" <Type>
 ```
 
-### Vertical Slice 8: Lambda Functions 
+### Vertical Slice 8: Lambda Functions [Work in Progress]
 
 Lambda functions let `acc` use functions as values.
 
