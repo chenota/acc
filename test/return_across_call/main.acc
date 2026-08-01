@@ -1,0 +1,13 @@
+fun bump () -> int {
+    return 7;
+}
+
+fun f (a int) -> int {
+    let x = a + 1;
+    bump();
+    return x;
+}
+
+fun main () -> int {
+    return f(41);
+}

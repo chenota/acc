@@ -131,6 +131,11 @@ func computeLiveIntervals(f *Func) []*liveInterval {
 			touch(arg, tick)
 		}
 
+		// parameters are live at the very beginning of the function
+		if v.Op == OpParam {
+			touch(v, 0)
+		}
+
 		// ensure the right operand of a bop is live alongside the result so they don't get mapped to the same place
 		if v.IsBinaryOp() {
 			touch(v.Args[1], tick+1)

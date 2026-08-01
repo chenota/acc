@@ -19,7 +19,7 @@ func TestHeapify_RewritesAnEscapingLocal(t *testing.T) {
 	alloc := requireAllocate(t, f)
 
 	// the returned address is now the allocation itself
-	assert.Equal(t, alloc, f.Entry.Control)
+	assert.Equal(t, alloc, requireReturned(t, f.Entry))
 	assert.True(t, types.Equal(types.Pointer(types.Int()), alloc.Type),
 		"expected *int, got %v", alloc.Type)
 

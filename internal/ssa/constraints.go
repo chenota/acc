@@ -35,7 +35,12 @@ func lowerParams(f *Func) {
 func lowerReturns(f *Func) {
 	for _, b := range f.Blocks {
 		if b.Kind == BlockRet && b.Control != nil {
-			b.Control.Loc = NewReg(register.ReturnTarget)
+			b.Control.RecordHint(register.ReturnTarget) // fold the copy away when the source can live in rax
+
+			out := f.appendValue(OpCopy, b.Control.Type, b)
+			out.Args = []*Value{b.Control}
+			out.Loc = NewReg(register.ReturnTarget)
+			b.Control = out
 		}
 	}
 }

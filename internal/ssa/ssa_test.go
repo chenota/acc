@@ -25,11 +25,9 @@ func TestGenSsa_Basic(t *testing.T) {
 	b := f.Blocks[0]
 	assert.Equal(t, BlockRet, b.Kind)
 
-	require.NotNil(t, b.Control)
-	assert.Equal(t, OpLiteral, b.Control.Op)
-	assert.Equal(t, types.Int(), b.Control.Type)
-	assert.Equal(t, LocRegister, b.Control.Loc.Kind)
-	assert.Equal(t, register.RegA, b.Control.Loc.Reg)
+	ret := requireReturned(t, b)
+	assert.Equal(t, OpLiteral, ret.Op)
+	assert.Equal(t, types.Int(), ret.Type)
 }
 
 func TestGenSsa_ConstantFolding(t *testing.T) {
@@ -37,10 +35,10 @@ func TestGenSsa_ConstantFolding(t *testing.T) {
 
 	b := funcs[0].Blocks[0]
 
-	require.NotNil(t, b.Control)
-	assert.Equal(t, OpLiteral, b.Control.Op)
-	assert.Equal(t, types.Int(), b.Control.Type)
-	assert.Equal(t, int32(2), b.Control.Value)
+	ret := requireReturned(t, b)
+	assert.Equal(t, OpLiteral, ret.Op)
+	assert.Equal(t, types.Int(), ret.Type)
+	assert.Equal(t, int32(2), ret.Value)
 }
 
 func TestGenSsa_AdditionOverflow(t *testing.T) {
@@ -49,10 +47,10 @@ func TestGenSsa_AdditionOverflow(t *testing.T) {
 
 	b := funcs[0].Blocks[0]
 
-	require.NotNil(t, b.Control)
-	assert.Equal(t, OpLiteral, b.Control.Op)
-	assert.Equal(t, types.Int(), b.Control.Type)
-	assert.Equal(t, int32(math.MinInt32), b.Control.Value)
+	ret := requireReturned(t, b)
+	assert.Equal(t, OpLiteral, ret.Op)
+	assert.Equal(t, types.Int(), ret.Type)
+	assert.Equal(t, int32(math.MinInt32), ret.Value)
 }
 
 func TestGenSsa_Variable(t *testing.T) {
@@ -69,11 +67,9 @@ func TestGenSsa_Variable(t *testing.T) {
 	assert.Equal(t, 0, funcs[0].localsSize())
 
 	// the stored value flows directly into the return
-	require.NotNil(t, b.Control)
-	assert.Equal(t, OpLiteral, b.Control.Op)
-	assert.Equal(t, int32(10), b.Control.Value)
-	assert.Equal(t, LocRegister, b.Control.Loc.Kind)
-	assert.Equal(t, register.RegA, b.Control.Loc.Reg)
+	ret := requireReturned(t, b)
+	assert.Equal(t, OpLiteral, ret.Op)
+	assert.Equal(t, int32(10), ret.Value)
 }
 
 func TestGenSsa_Variable_Assignment(t *testing.T) {
@@ -86,11 +82,9 @@ func TestGenSsa_Variable_Assignment(t *testing.T) {
 	assert.Empty(t, funcs[0].Slots, "promoted slot should be dropped")
 
 	// the most recent definition (20) reaches the return
-	require.NotNil(t, b.Control)
-	assert.Equal(t, OpLiteral, b.Control.Op)
-	assert.Equal(t, int32(20), b.Control.Value)
-	assert.Equal(t, LocRegister, b.Control.Loc.Kind)
-	assert.Equal(t, register.RegA, b.Control.Loc.Reg)
+	ret := requireReturned(t, b)
+	assert.Equal(t, OpLiteral, ret.Op)
+	assert.Equal(t, int32(20), ret.Value)
 }
 
 func TestGenSsa_Divide(t *testing.T) {
@@ -99,9 +93,9 @@ func TestGenSsa_Divide(t *testing.T) {
 	b := funcs[0].Blocks[0]
 
 	// both operands promote to constants, so the divide folds away
-	require.NotNil(t, b.Control)
-	assert.Equal(t, OpLiteral, b.Control.Op)
-	assert.Equal(t, int32(5), b.Control.Value)
+	ret := requireReturned(t, b)
+	assert.Equal(t, OpLiteral, ret.Op)
+	assert.Equal(t, int32(5), ret.Value)
 }
 
 func TestGenSsa_Variable_InExpression(t *testing.T) {
@@ -110,18 +104,18 @@ func TestGenSsa_Variable_InExpression(t *testing.T) {
 	b := funcs[0].Blocks[0]
 
 	// x promotes to 5, so x + 1 folds to 6
-	require.NotNil(t, b.Control)
-	assert.Equal(t, OpLiteral, b.Control.Op)
-	assert.Equal(t, int32(6), b.Control.Value)
+	ret := requireReturned(t, b)
+	assert.Equal(t, OpLiteral, ret.Op)
+	assert.Equal(t, int32(6), ret.Value)
 }
 
 func TestGenSsa_Negate_Fold(t *testing.T) {
 	funcs := requireBuildSSA(t, `fun main () -> int { return -10; }`)
 	b := funcs[0].Blocks[0]
 
-	require.NotNil(t, b.Control)
-	assert.Equal(t, OpLiteral, b.Control.Op)
-	assert.Equal(t, int32(-10), b.Control.Value.(int32))
+	ret := requireReturned(t, b)
+	assert.Equal(t, OpLiteral, ret.Op)
+	assert.Equal(t, int32(-10), ret.Value.(int32))
 }
 
 func TestGenSsa_Variable_Assignment_Operator(t *testing.T) {
@@ -134,11 +128,9 @@ func TestGenSsa_Variable_Assignment_Operator(t *testing.T) {
 	assert.Empty(t, funcs[0].Slots, "promoted slot should be dropped")
 
 	// x += 20 promotes and folds to 30
-	require.NotNil(t, b.Control)
-	assert.Equal(t, OpLiteral, b.Control.Op)
-	assert.Equal(t, int32(30), b.Control.Value)
-	assert.Equal(t, LocRegister, b.Control.Loc.Kind)
-	assert.Equal(t, register.RegA, b.Control.Loc.Reg)
+	ret := requireReturned(t, b)
+	assert.Equal(t, OpLiteral, ret.Op)
+	assert.Equal(t, int32(30), ret.Value)
 }
 
 func TestLowerCalls_ArgRegisters(t *testing.T) {
@@ -214,15 +206,13 @@ func TestGenSsa_Param_FlowsToReturn(t *testing.T) {
 
 	f := requireFunc(t, funcs, "identity")
 
-	// the parameter is copied out of its argument register into the return register
-	ctrl := f.Entry.Control
-	require.NotNil(t, ctrl)
-	require.Equal(t, OpCopy, ctrl.Op)
-	assert.Equal(t, register.RegA, ctrl.Loc.Reg)
+	// the parameter is copied out of its argument register, then into the return register
+	ret := requireReturned(t, f.Entry)
+	require.Equal(t, OpCopy, ret.Op)
 
-	require.Len(t, ctrl.Args, 1)
-	assert.Equal(t, OpParam, ctrl.Args[0].Op)
-	assert.Equal(t, register.RegDI, ctrl.Args[0].Loc.Reg)
+	require.Len(t, ret.Args, 1)
+	assert.Equal(t, OpParam, ret.Args[0].Op)
+	assert.Equal(t, register.RegDI, ret.Args[0].Loc.Reg)
 }
 
 func TestGenSsa_Param_Reassigned(t *testing.T) {
@@ -231,10 +221,9 @@ func TestGenSsa_Param_Reassigned(t *testing.T) {
 
 	f := requireFunc(t, funcs, "f")
 
-	ctrl := f.Entry.Control
-	require.NotNil(t, ctrl)
-	assert.Equal(t, OpLiteral, ctrl.Op)
-	assert.Equal(t, int32(55), ctrl.Value)
+	ret := requireReturned(t, f.Entry)
+	assert.Equal(t, OpLiteral, ret.Op)
+	assert.Equal(t, int32(55), ret.Value)
 }
 
 func TestLowerCalls_StackArgs(t *testing.T) {
@@ -355,15 +344,14 @@ func TestGenSsa_Deref_LoadsThroughPointer(t *testing.T) {
 
 	f := requireFunc(t, funcs, "main")
 
-	ctrl := f.Entry.Control
-	require.NotNil(t, ctrl)
-	require.Equal(t, OpLoad, ctrl.Op)
+	ret := requireReturned(t, f.Entry)
+	require.Equal(t, OpLoad, ret.Op)
 
 	// an indirect load carries its address as an operand and names no slot
-	assert.Nil(t, ctrl.Slot())
-	require.Len(t, ctrl.Args, 1)
-	assert.Equal(t, OpLocalAddr, ctrl.Args[0].Op)
-	assert.True(t, types.Equal(types.Int(), ctrl.Type))
+	assert.Nil(t, ret.Slot())
+	require.Len(t, ret.Args, 1)
+	assert.Equal(t, OpLocalAddr, ret.Args[0].Op)
+	assert.True(t, types.Equal(types.Int(), ret.Type))
 }
 
 func TestGenSsa_Deref_AssignmentStoresThroughPointer(t *testing.T) {
@@ -424,10 +412,9 @@ func TestGenSsa_CallStatement_DiscardsResult(t *testing.T) {
 	f := requireFunc(t, funcs, "main")
 
 	// the return value comes from the return statement, never from the discarded call
-	ctrl := f.Entry.Control
-	require.NotNil(t, ctrl)
-	assert.Equal(t, OpLiteral, ctrl.Op)
-	assert.Equal(t, int32(0), ctrl.Value)
+	ret := requireReturned(t, f.Entry)
+	assert.Equal(t, OpLiteral, ret.Op)
+	assert.Equal(t, int32(0), ret.Value)
 }
 
 func TestGenSsa_UnitReturn_HasNoControlValue(t *testing.T) {
@@ -473,6 +460,19 @@ func TestGenSsa_UnitFunction_CallStatement(t *testing.T) {
 	assert.Equal(t, "f", call.Callee().Name())
 	assert.Empty(t, call.Args)
 	assert.True(t, types.Equal(types.Unit(), call.Type))
+}
+
+// requireReturned unwraps b's return copy and hands back the value feeding it.
+func requireReturned(t *testing.T, b *Block) *Value {
+	t.Helper()
+
+	require.NotNil(t, b.Control)
+	require.Equal(t, OpCopy, b.Control.Op, "a returning block must end in the return copy")
+	require.Equal(t, LocRegister, b.Control.Loc.Kind)
+	require.Equal(t, register.ReturnTarget, b.Control.Loc.Reg)
+	require.Len(t, b.Control.Args, 1)
+
+	return b.Control.Args[0]
 }
 
 func requireBuildSSA(t *testing.T, src string) []*Func {
