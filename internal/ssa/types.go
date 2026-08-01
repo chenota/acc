@@ -28,7 +28,6 @@ const (
 	OpSignExtend // sign-extends the accumulator into the high register (cdq/cqo)
 	OpParam      // incoming function argument - more of a placeholder for a location than an acutal value in its own right
 	OpLocalAddr  // address bound to a static stack slot
-	OpAllocate   // special call to the garbage collector's allocate functionality
 )
 
 type Value struct {
@@ -48,7 +47,7 @@ type Value struct {
 
 // Clobbers reports the registers this value destroys when it executes.
 func (v *Value) Clobbers() register.Mask {
-	if v.Op == OpStaticCall || v.Op == OpAllocate {
+	if v.Op == OpStaticCall {
 		// for now calls are considered to clobber all caller-saved registers
 		// TODO: make this more intelligent by only clobbering caller-saved registers that the callee actually uses
 		return register.CallerSaved

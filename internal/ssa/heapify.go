@@ -6,11 +6,12 @@ import (
 	"github.com/chenota/acc/internal/types"
 )
 
-// heapify moves escaping slots off the frame.
+// heapify moves escaping slots off the frame, handing each one to the runtime allocator.
 func heapify(f *Func, escaped []*Slot) {
 	for _, slot := range escaped {
 		block, i := f.allocationPoint(slot)
-		heapPtr := f.insertValueAt(i, OpAllocate, types.Pointer(slot.Type), block)
+		heapPtr := f.insertValueAt(i, OpStaticCall, types.Pointer(slot.Type), block)
+		heapPtr.Value = Alloc
 
 		for v := range f.SlotValues(slot) {
 			switch v.Op {

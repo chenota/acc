@@ -3,6 +3,7 @@ package ssa
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -462,6 +463,33 @@ func TestGenSsa_UnitFunction_CallStatement(t *testing.T) {
 	assert.True(t, types.Equal(types.Unit(), call.Type))
 }
 
+func TestHeapify_RewritesAnEscapingLocal(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun f () -> *int { let x = 1; return &x; }
+		fun main () -> int { let p = f(); return *p; }`)
+	f := requireFunc(t, funcs, "f")
+
+	alloc := requireAllocate(t, f)
+
+	// the returned address is the allocation, copied out of the ABI's return register
+	returned := requireReturned(t, f.Entry)
+	require.Equal(t, OpCopy, returned.Op)
+	require.Len(t, returned.Args, 1)
+	assert.Equal(t, alloc, returned.Args[0])
+	assert.True(t, types.Equal(types.Pointer(types.Int()), alloc.Type),
+		"expected *int, got %v", alloc.Type)
+
+	// nothing still takes the address of a frame slot, and the slot is gone
+	assert.Empty(t, findValues(slices.Collect(f.UnorderedValues()), OpLocalAddr))
+	assert.Nil(t, slotNamed(f, "x"))
+
+	// allocating is an ordinary call to the runtime, so it obeys the same ABI
+	assert.Equal(t, "acc_alloc", alloc.Callee().Name())
+	assert.Equal(t, register.CallerSaved, alloc.Clobbers())
+	assert.Equal(t, NewReg(register.ReturnTarget), alloc.Loc)
+	assert.True(t, alloc.NeedsRegister(), "the allocation produces a pointer")
+}
+
 // requireReturned unwraps b's return copy and hands back the value feeding it.
 func requireReturned(t *testing.T, b *Block) *Value {
 	t.Helper()
@@ -515,4 +543,33 @@ func requireCall(t *testing.T, funcs []*Func, funcName string) *Value {
 	calls := findValues(f.Entry.Values, OpStaticCall)
 	require.Len(t, calls, 1)
 	return calls[0]
+}
+
+// requireAllocate returns the single call to the runtime allocator in f.
+func requireAllocate(t *testing.T, f *Func) *Value {
+	t.Helper()
+	allocs := findAllocations(f)
+	require.Len(t, allocs, 1)
+	return allocs[0]
+}
+
+// findAllocations returns every call f makes to the runtime allocator.
+func findAllocations(f *Func) []*Value {
+	var result []*Value
+	for v := range f.UnorderedValues() {
+		if v.Op == OpStaticCall && v.Callee() == Alloc {
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
+// slotNamed returns the slot named sym, or nil when f no longer has one.
+func slotNamed(f *Func, sym string) *Slot {
+	for _, s := range f.Slots {
+		if s.Sym.Name == sym {
+			return s
+		}
+	}
+	return nil
 }

@@ -113,6 +113,16 @@ func TestCodegen_DerefAssignOp_FormsAddressOnce(t *testing.T) {
 	assertContainsMemDest(t, insts, "movl", lea.Dest.Reg, 0)
 }
 
+func TestCodegen_EscapingLocal_CallsRuntimeAllocator(t *testing.T) {
+	insts := requireGeneratesProgram(t, `
+		fun escape () -> *int { let a = 10; return &a; }
+		fun main () -> int { let p = escape(); return *p; }
+	`)
+
+	// the allocator is an ordinary call to a symbol the C runtime defines
+	assertContainsCallTo(t, insts, symbol("acc_alloc"))
+}
+
 func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
 	t.Helper()
 
@@ -172,6 +182,17 @@ func assertContainsMemDest(t *testing.T, insts []Inst, op string, reg register.R
 		}
 	}
 	assert.Fail(t, "no instruction writes the specified memory operand", "%s _, %d(%v)", op, offset, reg)
+}
+
+// assertContainsCallTo looks for a call to the named symbol.
+func assertContainsCallTo(t *testing.T, insts []Inst, sym string) {
+	t.Helper()
+	for _, inst := range insts {
+		if inst.Op == "call" && inst.Dest.Kind == KText && inst.Dest.Value == sym {
+			return
+		}
+	}
+	assert.Fail(t, "no instruction calls the specified symbol", sym)
 }
 
 // isMem reports whether arg addresses memory at offset(reg).
