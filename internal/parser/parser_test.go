@@ -50,7 +50,6 @@ func TestParser_FunctionErr(t *testing.T) {
 		{"missing bracket 1", `fun main () -> int { return 0;`},
 		{"missing bracket 2", `fun main () -> int return 0; }`},
 		{"missing fun keyword", `main () -> int { return 0; }`},
-		{"missing fun name", `fun () -> int { return 0; }`},
 	}
 
 	for _, tt := range tests {
@@ -815,6 +814,35 @@ func TestParser_TypeErr(t *testing.T) {
 			assert.Error(t, err)
 		})
 	}
+}
+
+func TestParser_AnonymousFunc(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { return; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	assert.Nil(t, fun.Signature.Name)
+}
+
+func TestParser_FuncAsExpr(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { let f = fun () -> int { return 10; }; return; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 2)
+	innerFun := fun.List[0].List[2]
+
+	require.NotNil(t, innerFun.Signature)
+	assert.Nil(t, innerFun.Signature.Name)
+	assert.Len(t, innerFun.List, 1)
 }
 
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {

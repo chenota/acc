@@ -124,6 +124,14 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 			Pos:  left.Pos,
 			List: []*ir.Node{e},
 		}, nil
+	case lexer.KFunKw:
+		// return fun keyword back to token stream
+		p.t.Retreat()
+		f, ok := p.parseFunction()
+		if !ok {
+			return nil, diagnostic.NewError(left.Pos, "unable to parse function")
+		}
+		return f, nil
 	default:
 		return nil, diagnostic.NewError(left.Pos, "expected prefix or literal expression")
 	}

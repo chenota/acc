@@ -319,14 +319,10 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 		return nil, false
 	}
 
-	name, ok := p.parseIdent()
-	if !ok {
-		p.markErr("expected identifier")
-		p.t.Restore(loc)
-		return nil, false
+	if name, ok := p.parseIdent(); ok {
+		name.Parent = n
+		n.Signature.Name = name
 	}
-	name.Parent = n
-	n.Signature.Name = name
 
 	if _, ok := p.t.Expect(lexer.KLParen); !ok {
 		p.markErr("expected open parenthesis")

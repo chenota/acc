@@ -90,6 +90,12 @@ func (t *TokenList) Advance() {
 	}
 }
 
+func (t *TokenList) Retreat() {
+	if t.i > 0 {
+		t.i -= 1
+	}
+}
+
 func (t Token) ParseInteger() (*big.Int, bool) {
 	reducedText := strings.ReplaceAll(t.Text, `_`, ``)
 	return new(big.Int).SetString(reducedText, 10)
