@@ -1,6 +1,6 @@
 fun main () -> int {
     let x = 10;
-    let f = func(y int) {
+    let f = fun (y int) {
         return x + y;
     }
     x = 5;

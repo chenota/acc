@@ -1,8 +1,6 @@
 package parser
 
 import (
-	"errors"
-
 	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/ir"
 	"github.com/chenota/acc/internal/lexer"
@@ -15,11 +13,7 @@ func (p *parser) parseExpr() (*ir.Node, bool) {
 	if err != nil {
 		// important we restore the position here so unknown errors are marked at beginning of expression
 		p.t.Restore(loc)
-		if diagnosticErr, ok := errors.AsType[*diagnostic.Error](err); ok {
-			p.markErrDiagnostic(diagnosticErr)
-		} else {
-			p.markErr(err.Error())
-		}
+		p.markErrValue(err)
 		return nil, false
 	}
 

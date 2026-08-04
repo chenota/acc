@@ -7,7 +7,11 @@ import (
 )
 
 func TestType_String_Func(t *testing.T) {
-	assert.Equal(t, "(int,int) -> int", Function([]*Type{Int(), Int()}, Int()).String())
+	assert.Equal(t, "fun (int,int) -> int", Function([]*Type{Int(), Int()}, Int()).String())
+}
+
+func TestType_String_PointerToFunc(t *testing.T) {
+	assert.Equal(t, "*fun () -> ()", Pointer(Function(nil, Unit())).String())
 }
 
 func TestType_String_Pointer(t *testing.T) {

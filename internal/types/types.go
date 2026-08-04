@@ -76,7 +76,7 @@ func (t *Type) String() string {
 			params[i] = t.params[i].String()
 		}
 
-		return fmt.Sprintf("(%s) -> %v", strings.Join(params, ","), t.result)
+		return fmt.Sprintf("fun (%s) -> %v", strings.Join(params, ","), t.result)
 	case KPointer:
 		return fmt.Sprintf("*%v", t.result)
 	default:

@@ -1,4 +1,4 @@
-fun helper(f () -> int) int {
+fun helper(f fun () -> int) -> int {
     return f() + 2;
 }
 

@@ -186,9 +186,11 @@ Lambda functions let `acc` use functions as values.
 #### Type Grammar (CFG)
 
 ```
-<Type> := "(" <Typelist> ")" "->" <Type>
-        | "*" <Type>
-        | "int"
+<Type>     := "fun" "(" <Typelist> ")" ("->" <Type>)?
+            | "(" ")"
+            | "*" <Type>
+            | "int"
+<Typelist> := (<Type> ("," <Type>)*)?
 ```
 
 ### Vertical Slice 9: String Literals and File Output [Not Started]

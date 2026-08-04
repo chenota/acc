@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"math/big"
 	"strings"
 	"testing"
@@ -805,6 +806,17 @@ func TestParser_TypeErr(t *testing.T) {
 	}{
 		{"pointer missing subtype", `fun main () -> int { let p * = x; }`},
 		{"pointer result missing subtype", `fun main () -> * { return x; }`},
+		{"function type missing parameter list", `fun () -> fun {}`},
+		{"function type missing closing paren", `fun () -> fun (int -> int {}`},
+		{"function type missing result", `fun () -> fun (int) -> {}`},
+		{"function type missing result in declaration", `fun main () -> int { let f fun (int) -> = x; }`},
+		{"function type missing fun keyword", `fun () -> (int) -> int {}`},
+		{"type list trailing comma", `fun () -> fun (int,) {}`},
+		{"type list leading comma", `fun () -> fun (, int) {}`},
+		{"type list double comma", `fun () -> fun (int,, int) {}`},
+		{"type list missing comma", `fun () -> fun (int int) {}`},
+		{"unit type missing closing paren", `fun () -> ( {}`},
+		{"parenthesized type", `fun () -> (int) {}`},
 	}
 
 	for _, tt := range tests {
@@ -843,6 +855,62 @@ func TestParser_FuncAsExpr(t *testing.T) {
 	require.NotNil(t, innerFun.Signature)
 	assert.Nil(t, innerFun.Signature.Name)
 	assert.Len(t, innerFun.List, 1)
+}
+
+func TestParser_FunType(t *testing.T) {
+	tests := []struct {
+		name string
+		typ  string
+		want *types.Type
+	}{
+		{
+			"single param",
+			`fun (int) -> int`,
+			types.Function([]*types.Type{types.Int()}, types.Int()),
+		},
+		{
+			"implicit unit result",
+			`fun ()`,
+			types.Function(nil, types.Unit()),
+		},
+		{
+			"function result",
+			`fun () -> fun ()`,
+			types.Function(nil, types.Function(nil, types.Unit())),
+		},
+		{
+			"multiple params",
+			`fun (int, int) -> ()`,
+			types.Function([]*types.Type{types.Int(), types.Int()}, types.Unit()),
+		},
+		{
+			"function type param",
+			`fun (fun (int) -> int) -> int`,
+			types.Function([]*types.Type{types.Function([]*types.Type{types.Int()}, types.Int())}, types.Int()),
+		},
+		{
+			"pointer to function",
+			`*fun ()`,
+			types.Pointer(types.Function(nil, types.Unit())),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// each type is tested as the result type of an empty function
+			tokens := requireTokenize(t, fmt.Sprintf(`fun () -> %s {}`, tt.typ))
+
+			funcs, err := ParseProgram(tokens)
+			require.NoError(t, err)
+
+			require.Len(t, funcs, 1)
+			fun := funcs[0]
+
+			require.NotNil(t, fun.Signature)
+			require.NotNil(t, fun.Signature.Result)
+			assert.True(t, types.Equal(tt.want, fun.Signature.Result.Type))
+		})
+	}
 }
 
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {

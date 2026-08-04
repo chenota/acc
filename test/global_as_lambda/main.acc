@@ -1,4 +1,4 @@
-fun doubleAndCall(f (int, int) -> int, x int, y int) -> int {
+fun doubleAndCall(f fun (int, int) -> int, x int, y int) -> int {
     return f(x*2, y*2);
 }
 
