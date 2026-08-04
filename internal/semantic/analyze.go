@@ -14,13 +14,13 @@ func Analyze(functions []*ir.Node) error {
 
 	// register every global function's signature first
 	for _, f := range functions {
-		if err := registerFunction(globalScope, f); err != nil {
+		if err := registerGlobalFunction(globalScope, f); err != nil {
 			return err
 		}
 	}
 
 	for _, f := range functions {
-		if err := analyzeFunction(globalScope, f); err != nil {
+		if err := analyzeFunctionBody(globalScope, f); err != nil {
 			return err
 		}
 	}
@@ -135,9 +135,25 @@ func analyzeExpr(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 		return analyzeRef(scope, n)
 	case ir.OpDeref:
 		return analyzeDeref(scope, n)
+	case ir.OpFunction:
+		return analyzeLambda(scope, n)
 	default:
 		return diagnostic.NewError(n.Pos, "unknown expression operation: %d", n.Op)
 	}
+}
+
+func analyzeLambda(scope *ir.Table, n *ir.Node) error {
+	if n.Signature.Name.Ident() != "" {
+		return diagnostic.NewError(n.Pos, "lambda functions must not be named")
+	}
+
+	sigType, err := signatureType(n)
+	if err != nil {
+		return err
+	}
+	n.Type = sigType
+
+	return analyzeFunctionBody(scope, n)
 }
 
 func analyzeRef(scope *ir.Table, n *ir.Node) error {
@@ -309,27 +325,23 @@ func terminates(n *ir.Node) bool {
 	return n.Op == ir.OpReturn
 }
 
-func registerFunction(scope *ir.Table, f *ir.Node) error {
-	// resolve parameter types and set own type
-	var paramTypes []*types.Type
-	for _, p := range f.Signature.Params {
-		if err := analyzeParam(p); err != nil {
-			return err
-		}
-		paramTypes = append(paramTypes, p.Type)
+func registerGlobalFunction(scope *ir.Table, f *ir.Node) error {
+	if f.Signature.Name.Ident() == "" {
+		return diagnostic.NewError(f.Pos, "global functions must be named")
 	}
 
-	resultType := types.Unit()
-	if f.Signature.Result != nil {
-		resultType = f.Signature.Result.Type
+	// resolve parameter types and set own type
+	sigType, err := signatureType(f)
+	if err != nil {
+		return err
 	}
 
 	// TODO: widen this to any integer type once more than one exists.
-	if f.Signature.Name.Ident() == "main" && !types.Equal(resultType, types.Int()) {
-		return diagnostic.NewError(f.Pos, "main must return int, got %v", resultType)
+	if f.Signature.Name.Ident() == "main" && !types.Equal(sigType.Result(), types.Int()) {
+		return diagnostic.NewError(f.Pos, "main must return int, got %v", sigType.Result())
 	}
 
-	f.Type = types.Function(paramTypes, resultType)
+	f.Type = sigType
 
 	// register self onto scope
 	name := f.Signature.Name
@@ -342,7 +354,7 @@ func registerFunction(scope *ir.Table, f *ir.Node) error {
 	return nil
 }
 
-func analyzeFunction(scope *ir.Table, f *ir.Node) error {
+func analyzeFunctionBody(scope *ir.Table, f *ir.Node) error {
 	// need a child scope for function body
 	funScope := scope.NewChild()
 
@@ -369,6 +381,25 @@ func analyzeFunction(scope *ir.Table, f *ir.Node) error {
 	}
 
 	return nil
+}
+
+// signatureType resolves a function node's parameter and result types into the function's own type.
+func signatureType(f *ir.Node) (*types.Type, error) {
+	var paramTypes []*types.Type
+	for _, p := range f.Signature.Params {
+		if err := analyzeParam(p); err != nil {
+			return nil, err
+		}
+		paramTypes = append(paramTypes, p.Type)
+	}
+
+	// an omitted result type means the function returns unit
+	resultType := types.Unit()
+	if f.Signature.Result != nil {
+		resultType = f.Signature.Result.Type
+	}
+
+	return types.Function(paramTypes, resultType), nil
 }
 
 func analyzeParam(p *ir.Node) error {

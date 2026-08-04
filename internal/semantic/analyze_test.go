@@ -439,6 +439,51 @@ func TestAnalyze_Reference_NonLValue(t *testing.T) {
 	assert.Error(t, Analyze(funcs))
 }
 
+func TestAnalyze_GlobalName(t *testing.T) {
+	funcs := mustParse(t, `fun f () -> int { return 0; }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	// a named global is registered as a function symbol under that name
+	assert.Equal(t, "f", fun.Signature.Name.Ident())
+	require.NotNil(t, fun.Sym)
+	assert.Equal(t, "f", fun.Sym.Name)
+	assert.Equal(t, ir.SymFunc, fun.Sym.Kind)
+}
+
+func TestAnalyze_GlobalMissingName_Err(t *testing.T) {
+	funcs := mustParse(t, `fun () -> int { return 0; }`)
+
+	assert.Error(t, Analyze(funcs))
+}
+
+func TestAnalyze_LambdaUnnamed(t *testing.T) {
+	funcs := mustParse(t, `fun main () -> int { let f fun (int) -> int = fun (x int) -> int { return x; }; return f(1); }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	require.Len(t, funcs[0].List, 2)
+	decl := funcs[0].List[0]
+
+	require.Len(t, decl.List, 3)
+	lambda := decl.List[2]
+	require.Equal(t, ir.OpFunction, lambda.Op)
+	require.NotNil(t, lambda.Signature)
+
+	// the lambda carries no name of its own
+	assert.Nil(t, lambda.Signature.Name)
+}
+
+func TestAnalyze_LambdaNamed_Err(t *testing.T) {
+	funcs := mustParse(t, `fun main () -> int { let f fun (int) -> int = fun g (x int) -> int { return x; }; return f(1); }`)
+
+	assert.Error(t, Analyze(funcs))
+}
+
 func mustParse(t *testing.T, inputStr string) []*ir.Node {
 	t.Helper()
 

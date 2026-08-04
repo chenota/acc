@@ -58,7 +58,7 @@ type Signature struct {
 
 // Ident returns the identifier name carried by an OpIdent node.
 func (n *Node) Ident() string {
-	if n.Op != OpIdent {
+	if n == nil || n.Op != OpIdent {
 		return ""
 	}
 
