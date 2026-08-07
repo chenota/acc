@@ -449,6 +449,7 @@ func TestAnalyze_GlobalName(t *testing.T) {
 
 	// a named global is registered as a function symbol under that name
 	assert.Equal(t, "f", fun.Signature.Name.Ident())
+	assert.Equal(t, "f", fun.Signature.Label)
 	require.NotNil(t, fun.Sym)
 	assert.Equal(t, "f", fun.Sym.Name)
 	assert.Equal(t, ir.SymFunc, fun.Sym.Kind)
@@ -476,6 +477,7 @@ func TestAnalyze_LambdaUnnamed(t *testing.T) {
 
 	// the lambda carries no name of its own
 	assert.Nil(t, lambda.Signature.Name)
+	assert.Equal(t, "main.func0", lambda.Signature.Label)
 }
 
 func TestAnalyze_LambdaNamed_Err(t *testing.T) {

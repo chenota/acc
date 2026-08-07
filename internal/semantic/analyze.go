@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"fmt"
 	"math"
 	"math/big"
 
@@ -146,6 +147,10 @@ func analyzeLambda(scope *ir.Table, n *ir.Node) error {
 	if n.Signature.Name.Ident() != "" {
 		return diagnostic.NewError(n.Pos, "lambda functions must not be named")
 	}
+
+	encl := n.Predecessor(ir.OpFunction)
+	n.Signature.Label = fmt.Sprintf("%s.func%d", encl.Signature.Label, encl.Signature.ClosureCount)
+	encl.Signature.ClosureCount += 1
 
 	sigType, err := signatureType(n)
 	if err != nil {
@@ -329,6 +334,8 @@ func registerGlobalFunction(scope *ir.Table, f *ir.Node) error {
 	if f.Signature.Name.Ident() == "" {
 		return diagnostic.NewError(f.Pos, "global functions must be named")
 	}
+
+	f.Signature.Label = f.Signature.Name.Ident()
 
 	// resolve parameter types and set own type
 	sigType, err := signatureType(f)

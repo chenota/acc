@@ -54,6 +54,9 @@ type Signature struct {
 	Name   *Node
 	Params []*Node
 	Result *Node
+
+	Label        string
+	ClosureCount int
 }
 
 // Ident returns the identifier name carried by an OpIdent node.
