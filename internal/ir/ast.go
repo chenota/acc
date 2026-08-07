@@ -1,6 +1,8 @@
 package ir
 
 import (
+	"iter"
+
 	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/types"
 )
@@ -67,6 +69,35 @@ func (n *Node) Ident() string {
 
 	name, _ := n.Val.(string)
 	return name
+}
+
+// Children yields every node hanging off n
+func (n *Node) Children() iter.Seq[*Node] {
+	return func(yield func(*Node) bool) {
+		if n == nil {
+			return
+		}
+
+		if n.Signature != nil {
+			if n.Signature.Name != nil && !yield(n.Signature.Name) {
+				return
+			}
+			for _, param := range n.Signature.Params {
+				if param != nil && !yield(param) {
+					return
+				}
+			}
+			if n.Signature.Result != nil && !yield(n.Signature.Result) {
+				return
+			}
+		}
+
+		for _, child := range n.List {
+			if child != nil && !yield(child) {
+				return
+			}
+		}
+	}
 }
 
 // Predecessor finds the node's closest predecessor with the given op type

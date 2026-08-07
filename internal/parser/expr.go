@@ -165,7 +165,6 @@ func (p *parser) led(left *ir.Node, op lexer.Token) (*ir.Node, error) {
 				if err != nil {
 					return nil, err
 				}
-				arg.Parent = n
 				n.List = append(n.List, arg)
 				if _, ok := p.t.Expect(lexer.KComma); !ok {
 					break

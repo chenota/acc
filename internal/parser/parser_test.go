@@ -913,6 +913,126 @@ func TestParser_FunType(t *testing.T) {
 	}
 }
 
+func TestParser_ExprParentLinks(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { return -a + *&b; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+	require.Equal(t, ir.OpReturn, ret.Op)
+
+	require.Len(t, ret.List, 1)
+	plus := ret.List[0]
+	require.Equal(t, ir.OpPlus, plus.Op)
+	require.Len(t, plus.List, 2)
+	assert.Same(t, ret, plus.Parent)
+
+	negate := plus.List[0]
+	require.Equal(t, ir.OpNegate, negate.Op)
+	require.Len(t, negate.List, 1)
+	assert.Same(t, plus, negate.Parent)
+	assert.Same(t, negate, negate.List[0].Parent)
+
+	deref := plus.List[1]
+	require.Equal(t, ir.OpDeref, deref.Op)
+	require.Len(t, deref.List, 1)
+	assert.Same(t, plus, deref.Parent)
+
+	ref := deref.List[0]
+	require.Equal(t, ir.OpRef, ref.Op)
+	require.Len(t, ref.List, 1)
+	assert.Same(t, deref, ref.Parent)
+	assert.Same(t, ref, ref.List[0].Parent)
+
+	// the deepest operand must still find the function it lives in
+	assert.Same(t, fun, ref.List[0].Predecessor(ir.OpFunction))
+}
+
+func TestParser_CallParentLinks(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { return f(a, b); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	call := ret.List[0]
+	require.Equal(t, ir.OpCall, call.Op)
+
+	// callee followed by each argument
+	require.Len(t, call.List, 3)
+	assert.Same(t, call, call.List[0].Parent)
+	assert.Same(t, call, call.List[1].Parent)
+	assert.Same(t, call, call.List[2].Parent)
+
+	assert.Same(t, fun, call.List[2].Predecessor(ir.OpFunction))
+}
+
+func TestParser_LambdaParentLinks(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { return g(fun () -> int { return 1; }); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	call := ret.List[0]
+	require.Equal(t, ir.OpCall, call.Op)
+
+	require.Len(t, call.List, 2)
+	lambda := call.List[1]
+	require.Equal(t, ir.OpFunction, lambda.Op)
+	assert.Same(t, call, lambda.Parent)
+
+	// a lambda in expression position must resolve its enclosing function
+	assert.Same(t, fun, lambda.Predecessor(ir.OpFunction))
+}
+
+func TestParser_SignatureParentLinks(t *testing.T) {
+	tokens := requireTokenize(t, `fun main (a int, b int) -> int { return 0; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	// signature children hang off Signature rather than List, so they are easy
+	// for a tree walk to miss
+	require.NotNil(t, fun.Signature)
+	require.NotNil(t, fun.Signature.Name)
+	assert.Same(t, fun, fun.Signature.Name.Parent)
+
+	require.NotNil(t, fun.Signature.Result)
+	assert.Same(t, fun, fun.Signature.Result.Parent)
+
+	require.Len(t, fun.Signature.Params, 2)
+	assert.Same(t, fun, fun.Signature.Params[0].Parent)
+	assert.Same(t, fun, fun.Signature.Params[1].Parent)
+
+	// a param's own children are linked too, so the chain runs all the way down
+	first := fun.Signature.Params[0]
+	require.Len(t, first.List, 2)
+	assert.Same(t, first, first.List[0].Parent)
+	assert.Same(t, first, first.List[1].Parent)
+	assert.Same(t, fun, first.List[0].Predecessor(ir.OpFunction))
+}
+
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {
 	tokens, err := lexer.Tokenize(strings.NewReader(input))
 	require.NoError(t, err)

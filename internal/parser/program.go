@@ -31,7 +31,20 @@ func ParseProgram(t *lexer.TokenList) ([]*ir.Node, error) {
 		return nil, p.err
 	}
 
+	// final pass link children to parents
+	for _, s := range globalStmts {
+		link(s)
+	}
+
 	return globalStmts, nil
+}
+
+// link points every node in n's subtree at its direct parent.
+func link(n *ir.Node) {
+	for child := range n.Children() {
+		child.Parent = n
+		link(child)
+	}
 }
 
 func (p *parser) parseBlock() (*ir.Node, bool) {
@@ -55,7 +68,6 @@ func (p *parser) parseBlock() (*ir.Node, bool) {
 		if !ok {
 			break
 		}
-		s.Parent = n
 		stmts = append(stmts, s)
 	}
 	n.List = stmts
@@ -135,7 +147,6 @@ func (p *parser) parseAssignmentOp() (*ir.Node, bool) {
 		p.t.Restore(loc)
 		return nil, false
 	}
-	target.Parent = n
 
 	// as with plain assignment, no operator means this was never an assignment operation
 	opToken, ok := p.t.Peek()
@@ -166,7 +177,6 @@ func (p *parser) parseAssignmentOp() (*ir.Node, bool) {
 		p.t.Restore(loc)
 		return nil, false
 	}
-	e.Parent = n
 	n.List = []*ir.Node{target, e}
 
 	if _, ok = p.t.Expect(lexer.KSemicolon); !ok {
@@ -200,12 +210,10 @@ func (p *parser) parseDeclaration() (*ir.Node, bool) {
 		p.t.Restore(loc)
 		return nil, false
 	}
-	name.Parent = n
 	n.List[0] = name
 
 	// second element is either the declared type or nil if unspecified
 	if varType, ok := p.parseType(); ok {
-		varType.Parent = n
 		n.List[1] = varType
 	} else {
 		n.List[1] = nil
@@ -222,7 +230,6 @@ func (p *parser) parseDeclaration() (*ir.Node, bool) {
 		p.t.Restore(loc)
 		return nil, false
 	}
-	e.Parent = n
 	n.List[2] = e
 
 	if _, ok = p.t.Expect(lexer.KSemicolon); !ok {
@@ -248,7 +255,6 @@ func (p *parser) parseAssignment() (*ir.Node, bool) {
 		p.t.Restore(loc)
 		return nil, false
 	}
-	target.Parent = n
 
 	// without an equal sign this was never an assignment, so stay quiet and let another
 	// statement form report the error against the same tokens
@@ -262,7 +268,6 @@ func (p *parser) parseAssignment() (*ir.Node, bool) {
 		p.t.Restore(loc)
 		return nil, false
 	}
-	e.Parent = n
 	n.List = []*ir.Node{target, e}
 
 	if _, ok = p.t.Expect(lexer.KSemicolon); !ok {
@@ -290,7 +295,6 @@ func (p *parser) parseReturn() (*ir.Node, bool) {
 
 	e, ok := p.parseExpr()
 	if ok {
-		e.Parent = n
 		n.List = []*ir.Node{e}
 	}
 
@@ -320,7 +324,6 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 	}
 
 	if name, ok := p.parseIdent(); ok {
-		name.Parent = n
 		n.Signature.Name = name
 	}
 
@@ -332,7 +335,6 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 
 	var params []*ir.Node
 	if param, ok := p.parseParam(); ok {
-		param.Parent = n
 		params = append(params, param)
 
 		for {
@@ -340,7 +342,6 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 				break
 			}
 			if param, ok := p.parseParam(); ok {
-				param.Parent = n
 				params = append(params, param)
 			} else {
 				p.markErr("expected function parameter following comma")
@@ -363,7 +364,6 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 			p.t.Restore(loc)
 			return nil, false
 		}
-		returnType.Parent = n
 		n.Signature.Result = returnType
 	}
 
@@ -375,9 +375,6 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 
 	// flatten the parsed block into the function body
 	n.List = body.List
-	for _, child := range n.List {
-		child.Parent = n
-	}
 
 	return n, true
 }
@@ -396,14 +393,12 @@ func (p *parser) parseParam() (*ir.Node, bool) {
 		p.t.Restore(loc)
 		return nil, false
 	}
-	name.Parent = n
 
 	paramType, ok := p.parseType()
 	if !ok {
 		p.t.Restore(loc)
 		return nil, false
 	}
-	paramType.Parent = n
 	n.List = []*ir.Node{name, paramType}
 
 	return n, true
