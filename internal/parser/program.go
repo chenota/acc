@@ -313,7 +313,7 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 	n := &ir.Node{
 		Op:        ir.OpFunction,
 		Pos:       p.t.Pos(),
-		Signature: &ir.Signature{},
+		Signature: ir.NewSignature(),
 	}
 
 	_, ok := p.t.Expect(lexer.KFunKw)

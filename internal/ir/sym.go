@@ -19,6 +19,7 @@ type Sym struct {
 	Name string
 	Type *types.Type
 	Kind SymKind
+	Def  *Node
 }
 
 func NewTable() *Table {

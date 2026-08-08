@@ -115,6 +115,7 @@ func analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 	if sym == nil {
 		return diagnostic.NewError(nameNode.Pos, "variable re-declared: %v", nameNode.Ident())
 	}
+	sym.Def = n.Encl() // function context this variable was defined in
 	n.Sym = sym
 
 	return nil
@@ -148,7 +149,11 @@ func analyzeLambda(scope *ir.Table, n *ir.Node) error {
 		return diagnostic.NewError(n.Pos, "lambda functions must not be named")
 	}
 
-	encl := n.Predecessor(ir.OpFunction)
+	encl := n.Encl()
+	if encl == nil {
+		return diagnostic.NewError(n.Pos, "lambda without enclosing function")
+	}
+
 	n.Signature.Label = fmt.Sprintf("%s.func%d", encl.Signature.Label, encl.Signature.ClosureCount)
 	encl.Signature.ClosureCount += 1
 
@@ -274,6 +279,9 @@ func analyzeIdent(scope *ir.Table, n *ir.Node) error {
 	n.Type = existingSym.Type
 	n.Sym = existingSym
 
+	// make sure this usage's direct enclosing function captures the sym
+	n.Encl().Capture(existingSym)
+
 	return nil
 }
 
@@ -372,6 +380,7 @@ func analyzeFunctionBody(scope *ir.Table, f *ir.Node) error {
 		if sym == nil {
 			return diagnostic.NewError(pName.Pos, "parameter '%s' already declared", pName.Ident())
 		}
+		sym.Def = f // parameter defined in f
 		p.Sym = sym
 	}
 

@@ -2,6 +2,7 @@ package ir
 
 import (
 	"iter"
+	"maps"
 
 	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/types"
@@ -36,6 +37,22 @@ const (
 	OpDeref
 )
 
+type Signature struct {
+	Name   *Node
+	Params []*Node
+	Result *Node
+
+	Label        string
+	ClosureCount int
+	captures     map[*Sym]struct{}
+}
+
+func NewSignature() *Signature {
+	return &Signature{
+		captures: make(map[*Sym]struct{}),
+	}
+}
+
 type Node struct {
 	Parent *Node
 
@@ -50,15 +67,6 @@ type Node struct {
 	Sym *Sym
 
 	Val any
-}
-
-type Signature struct {
-	Name   *Node
-	Params []*Node
-	Result *Node
-
-	Label        string
-	ClosureCount int
 }
 
 // Ident returns the identifier name carried by an OpIdent node.
@@ -123,4 +131,27 @@ func (n *Node) IsLValue() bool {
 	}
 
 	return n.Op == OpIdent || n.Op == OpDeref
+}
+
+// Encl returns the node of this node's enclosing function
+func (n *Node) Encl() *Node {
+	return n.Predecessor(OpFunction)
+}
+
+func (n *Node) Capture(sy *Sym) {
+	// done capturing
+	if n == nil || sy.Def == n || sy.Kind == SymFunc {
+		return
+	}
+	// capture in self
+	n.Signature.captures[sy] = struct{}{}
+	// capture in direct enclosing function
+	n.Encl().Capture(sy)
+}
+
+func (n *Node) Captures() iter.Seq[*Sym] {
+	if n == nil || n.Signature == nil {
+		return func(func(*Sym) bool) {}
+	}
+	return maps.Keys(n.Signature.captures)
 }

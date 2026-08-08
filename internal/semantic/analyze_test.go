@@ -1,6 +1,7 @@
 package semantic
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -486,6 +487,84 @@ func TestAnalyze_LambdaNamed_Err(t *testing.T) {
 	assert.Error(t, Analyze(funcs))
 }
 
+func TestAnalyze_Capture(t *testing.T) {
+	funcs := mustParse(t, `fun main () -> int { let x = 10; let f fun (int) -> int = fun (y int) -> int { return x + y; }; return f(2); }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	main := funcs[0]
+	lambda := lambdaOfDecl(t, main, 1)
+
+	// x lives in main, so the lambda closes over it
+	assert.Equal(t, []string{"x"}, captureNames(lambda))
+
+	// and main itself, which owns x and f, closes over nothing
+	assert.Empty(t, captureNames(main))
+}
+
+func TestAnalyze_Capture_LambdaParam(t *testing.T) {
+	funcs := mustParse(t, `fun adderFactory (x int) -> fun (int) -> int { return fun (y int) -> int { return x + y; }; }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	factory := funcs[0]
+
+	require.Len(t, factory.List, 1)
+	ret := factory.List[0]
+	require.Equal(t, ir.OpReturn, ret.Op)
+	require.Len(t, ret.List, 1)
+	lambda := ret.List[0]
+	require.Equal(t, ir.OpFunction, lambda.Op)
+
+	// x is the factory's param and y is the lambda's own, so only x crosses the boundary
+	assert.Equal(t, []string{"x"}, captureNames(lambda))
+	assert.Empty(t, captureNames(factory))
+}
+
+func TestAnalyze_Capture_Transitive(t *testing.T) {
+	funcs := mustParse(t, `fun main () -> int { let x = 10; let f fun () -> int = fun () -> int { let g fun () -> int = fun () -> int { return x; }; return g(); }; return f(); }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	main := funcs[0]
+	outer := lambdaOfDecl(t, main, 1)
+	inner := lambdaOfDecl(t, outer, 0)
+
+	require.Equal(t, "main.func0", outer.Signature.Label)
+	require.Equal(t, "main.func0.func0", inner.Signature.Label)
+
+	// the middle lambda builds the inner one's environment, so it needs x too
+	assert.Equal(t, []string{"x"}, captureNames(inner))
+	assert.Equal(t, []string{"x"}, captureNames(outer))
+	assert.Empty(t, captureNames(main))
+}
+
+func TestAnalyze_Capture_AssignedVariable(t *testing.T) {
+	funcs := mustParse(t, `fun main () -> int { let x = 10; let f fun () -> int = fun () -> int { x = 5; return x; }; return f(); }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+	lambda := lambdaOfDecl(t, funcs[0], 1)
+
+	// writing to an outer variable captures it just as reading does
+	assert.Equal(t, []string{"x"}, captureNames(lambda))
+}
+
+func TestAnalyze_Capture_Recursion(t *testing.T) {
+	funcs := mustParse(t, `fun f (n int) -> int { return f(n); }`)
+
+	require.NoError(t, Analyze(funcs))
+
+	require.Len(t, funcs, 1)
+
+	// a function naming itself must not end up capturing itself
+	assert.Empty(t, captureNames(funcs[0]))
+}
+
 func mustParse(t *testing.T, inputStr string) []*ir.Node {
 	t.Helper()
 
@@ -496,4 +575,31 @@ func mustParse(t *testing.T, inputStr string) []*ir.Node {
 	require.NoError(t, err)
 
 	return funcs
+}
+
+// lambdaOfDecl pulls the lambda bound by the i'th statement of fun, which must be a declaration.
+func lambdaOfDecl(t *testing.T, fun *ir.Node, i int) *ir.Node {
+	t.Helper()
+
+	require.Greater(t, len(fun.List), i)
+	decl := fun.List[i]
+	require.Equal(t, ir.OpDeclaration, decl.Op)
+
+	require.Len(t, decl.List, 3)
+	lambda := decl.List[2]
+	require.Equal(t, ir.OpFunction, lambda.Op)
+	require.NotNil(t, lambda.Signature)
+
+	return lambda
+}
+
+// captureNames drains a function's capture set into sorted names, since map order is unspecified.
+func captureNames(fun *ir.Node) []string {
+	var names []string
+	for sym := range fun.Captures() {
+		names = append(names, sym.Name)
+	}
+	slices.Sort(names)
+
+	return names
 }
