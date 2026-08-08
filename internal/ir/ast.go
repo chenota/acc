@@ -155,3 +155,11 @@ func (n *Node) Captures() iter.Seq[*Sym] {
 	}
 	return maps.Keys(n.Signature.captures)
 }
+
+func (n *Node) NextClosureCount() int {
+	if n == nil || n.Signature == nil {
+		return -1
+	}
+	n.Signature.ClosureCount += 1
+	return n.Signature.ClosureCount - 1
+}

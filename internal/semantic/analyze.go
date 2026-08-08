@@ -154,8 +154,7 @@ func analyzeLambda(scope *ir.Table, n *ir.Node) error {
 		return diagnostic.NewError(n.Pos, "lambda without enclosing function")
 	}
 
-	n.Signature.Label = fmt.Sprintf("%s.func%d", encl.Signature.Label, encl.Signature.ClosureCount)
-	encl.Signature.ClosureCount += 1
+	n.Signature.Label = fmt.Sprintf("%s.func%d", encl.Signature.Label, encl.NextClosureCount())
 
 	sigType, err := signatureType(n)
 	if err != nil {
