@@ -14,9 +14,7 @@ import (
 )
 
 func TestAnalyze_Basic(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { return 0; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun main () -> int { return 0; }`)
 
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
@@ -33,9 +31,7 @@ func TestAnalyze_Basic(t *testing.T) {
 }
 
 func TestAnalyze_ParamTypes(t *testing.T) {
-	funcs := mustParse(t, `fun main (x int, y int) -> int { return 0; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun main (x int, y int) -> int { return 0; }`)
 
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
@@ -53,9 +49,7 @@ func TestAnalyze_ParamTypes(t *testing.T) {
 
 func TestAnalyze_NoReturnType(t *testing.T) {
 	// not main, which is required to return int
-	funcs := mustParse(t, `fun f (x int, y int) { return; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun f (x int, y int) { return; }`)
 
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
@@ -67,16 +61,14 @@ func TestAnalyze_NoReturnType(t *testing.T) {
 }
 
 func TestAnalyze_MissingReturn(t *testing.T) {
-	funcs := mustParse(t, `fun f () -> int { let x = 1; }`)
+	_, err := analyzeSrc(t, `fun f () -> int { let x = 1; }`)
 
-	assert.Error(t, Analyze(funcs))
+	assert.Error(t, err)
 }
 
 func TestAnalyze_UnitFunction_NeedsNoReturn(t *testing.T) {
 	// control falling off the end of a unit function is an implicit return
-	funcs := mustParse(t, `fun f (x *int) { *x = 15; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun f (x *int) { *x = 15; }`)
 
 	// no statement is synthesized to stand in for the implicit return
 	require.Len(t, funcs, 1)
@@ -85,21 +77,19 @@ func TestAnalyze_UnitFunction_NeedsNoReturn(t *testing.T) {
 }
 
 func TestAnalyze_MainMustReturnInt(t *testing.T) {
-	funcs := mustParse(t, `fun main () { }`)
+	_, err := analyzeSrc(t, `fun main () { }`)
 
-	assert.Error(t, Analyze(funcs))
+	assert.Error(t, err)
 }
 
 func TestAnalyze_NoReturnType_Err(t *testing.T) {
-	funcs := mustParse(t, `fun main (x int, y int) -> int { return; }`)
+	_, err := analyzeSrc(t, `fun main (x int, y int) -> int { return; }`)
 
-	assert.Error(t, Analyze(funcs))
+	assert.Error(t, err)
 }
 
 func TestAnalyze_CallAsStmt(t *testing.T) {
-	funcs := mustParse(t, `fun f () -> int { return 5; } fun main (x int, y int) -> int { f(); return x + y; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun f () -> int { return 5; } fun main (x int, y int) -> int { f(); return x + y; }`)
 
 	require.Len(t, funcs, 2)
 	fun := funcs[1]
@@ -111,21 +101,19 @@ func TestAnalyze_CallAsStmt(t *testing.T) {
 }
 
 func TestAnalyze_DuplicateParam(t *testing.T) {
-	funcs := mustParse(t, `fun main (x int, x int) -> int { return 0; }`)
+	_, err := analyzeSrc(t, `fun main (x int, x int) -> int { return 0; }`)
 
-	assert.Error(t, Analyze(funcs))
+	assert.Error(t, err)
 }
 
 func TestAnalyze_Overflow(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { return 2_147_483_648; }`)
+	_, err := analyzeSrc(t, `fun main () -> int { return 2_147_483_648; }`)
 
-	assert.Error(t, Analyze(funcs))
+	assert.Error(t, err)
 }
 
 func TestAnalyze_SimpleBop(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { return 1 + 2 * 3; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun main () -> int { return 1 + 2 * 3; }`)
 
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
@@ -142,15 +130,13 @@ func TestAnalyze_SimpleBop(t *testing.T) {
 }
 
 func TestAnalyze_BopInvalidType(t *testing.T) {
-	funcs := mustParse(t, `fun f () {} fun main () -> int { let x = 10; let y = &x + &x; return 0; }`)
+	_, err := analyzeSrc(t, `fun f () {} fun main () -> int { let x = 10; let y = &x + &x; return 0; }`)
 
-	require.Error(t, Analyze(funcs))
+	require.Error(t, err)
 }
 
 func TestAnalyze_VariableDeclaration(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let x int = 10; return 0; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun main () -> int { let x int = 10; return 0; }`)
 
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
@@ -170,9 +156,7 @@ func TestAnalyze_VariableDeclaration(t *testing.T) {
 }
 
 func TestAnalyze_VariableDeclaration_Inference(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let x = 10; return 0; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun main () -> int { let x = 10; return 0; }`)
 
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
@@ -192,15 +176,13 @@ func TestAnalyze_VariableDeclaration_Inference(t *testing.T) {
 }
 
 func TestAnalyze_VariableDeclaration_Redeclare(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let x = 10; let x = 15; return 0; }`)
+	_, err := analyzeSrc(t, `fun main () -> int { let x = 10; let x = 15; return 0; }`)
 
-	require.Error(t, Analyze(funcs))
+	require.Error(t, err)
 }
 
 func TestAnalyze_VariableUsage(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let x = 10; return x; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun main () -> int { let x = 10; return x; }`)
 
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
@@ -221,15 +203,13 @@ func TestAnalyze_VariableUsage(t *testing.T) {
 }
 
 func TestAnalyze_VariableUsage_BeforeDeclared(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { return x; }`)
+	_, err := analyzeSrc(t, `fun main () -> int { return x; }`)
 
-	require.Error(t, Analyze(funcs))
+	require.Error(t, err)
 }
 
 func TestAnalyze_Assignment(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let x int = 10; x = 15; return x; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun main () -> int { let x int = 10; x = 15; return x; }`)
 
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
@@ -244,9 +224,9 @@ func TestAnalyze_Assignment(t *testing.T) {
 }
 
 func TestAnalyze_Assignment_BeforeDeclared(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { x = 15; return x; }`)
+	_, err := analyzeSrc(t, `fun main () -> int { x = 15; return x; }`)
 
-	require.Error(t, Analyze(funcs))
+	require.Error(t, err)
 }
 
 func TestAnalyze_Assignment_InvalidLvalue(t *testing.T) {
@@ -261,16 +241,14 @@ func TestAnalyze_Assignment_InvalidLvalue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			funcs := mustParse(t, tt.test)
-			assert.Error(t, Analyze(funcs))
+			_, err := analyzeSrc(t, tt.test)
+			assert.Error(t, err)
 		})
 	}
 }
 
 func TestAnalyze_Negation(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let x = -10; return -x; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun main () -> int { let x = -10; return -x; }`)
 
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
@@ -287,9 +265,7 @@ func TestAnalyze_Negation(t *testing.T) {
 }
 
 func TestAnalyze_AssignmentOp(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let x int = 10; x += 15; return x; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun main () -> int { let x int = 10; x += 15; return x; }`)
 
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
@@ -301,9 +277,7 @@ func TestAnalyze_AssignmentOp(t *testing.T) {
 }
 
 func TestAnalyze_Call(t *testing.T) {
-	funcs := mustParse(t, `fun f (x int) -> int { return x; } fun main () -> int { return f(1); }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun f (x int) -> int { return x; } fun main () -> int { return f(1); }`)
 
 	require.Len(t, funcs, 2)
 	f := funcs[0]
@@ -330,9 +304,7 @@ func TestAnalyze_Call(t *testing.T) {
 }
 
 func TestAnalyze_Call_ZeroArgs(t *testing.T) {
-	funcs := mustParse(t, `fun f () -> int { return 0; } fun main () -> int { return f(); }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun f () -> int { return 0; } fun main () -> int { return f(); }`)
 
 	require.Len(t, funcs, 2)
 	main := funcs[1]
@@ -358,17 +330,15 @@ func TestAnalyze_CallErr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			funcs := mustParse(t, tt.test)
-			assert.Error(t, Analyze(funcs))
+			_, err := analyzeSrc(t, tt.test)
+			assert.Error(t, err)
 		})
 	}
 }
 
 func TestAnalyze_ForwardReference(t *testing.T) {
 	// main calls f, which is declared after main
-	funcs := mustParse(t, `fun main () -> int { return f(1); } fun f (x int) -> int { return x; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun main () -> int { return f(1); } fun f (x int) -> int { return x; }`)
 
 	require.Len(t, funcs, 2)
 	main := funcs[0]
@@ -383,15 +353,13 @@ func TestAnalyze_ForwardReference(t *testing.T) {
 }
 
 func TestAnalyze_DuplicateFunction(t *testing.T) {
-	funcs := mustParse(t, `fun f () -> int { return 0; } fun f () -> int { return 1; } fun main () -> int { return 0; }`)
+	_, err := analyzeSrc(t, `fun f () -> int { return 0; } fun f () -> int { return 1; } fun main () -> int { return 0; }`)
 
-	require.Error(t, Analyze(funcs))
+	require.Error(t, err)
 }
 
 func TestAnalyze_Reference(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let x int = 10; let p = &x; return 0; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun main () -> int { let x int = 10; let p = &x; return 0; }`)
 
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
@@ -409,9 +377,7 @@ func TestAnalyze_Reference(t *testing.T) {
 }
 
 func TestAnalyze_Deref(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let x int = 10; let p = &x; return *p; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun main () -> int { let x int = 10; let p = &x; return *p; }`)
 
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
@@ -429,21 +395,19 @@ func TestAnalyze_Deref(t *testing.T) {
 }
 
 func TestAnalyze_Deref_NonPointer(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let x int = 10; return *x; }`)
+	_, err := analyzeSrc(t, `fun main () -> int { let x int = 10; return *x; }`)
 
-	assert.Error(t, Analyze(funcs))
+	assert.Error(t, err)
 }
 
 func TestAnalyze_Reference_NonLValue(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let x int = 1; let p = &(x + 1); return 0; }`)
+	_, err := analyzeSrc(t, `fun main () -> int { let x int = 1; let p = &(x + 1); return 0; }`)
 
-	assert.Error(t, Analyze(funcs))
+	assert.Error(t, err)
 }
 
 func TestAnalyze_GlobalName(t *testing.T) {
-	funcs := mustParse(t, `fun f () -> int { return 0; }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun f () -> int { return 0; }`)
 
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
@@ -457,22 +421,16 @@ func TestAnalyze_GlobalName(t *testing.T) {
 }
 
 func TestAnalyze_GlobalMissingName_Err(t *testing.T) {
-	funcs := mustParse(t, `fun () -> int { return 0; }`)
+	_, err := analyzeSrc(t, `fun () -> int { return 0; }`)
 
-	assert.Error(t, Analyze(funcs))
+	assert.Error(t, err)
 }
 
 func TestAnalyze_LambdaUnnamed(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let f fun (int) -> int = fun (x int) -> int { return x; }; return f(1); }`)
+	funcs := mustAnalyze(t, `fun main () -> int { let f fun (int) -> int = fun (x int) -> int { return x; }; return f(1); }`)
 
-	require.NoError(t, Analyze(funcs))
-
-	require.Len(t, funcs, 1)
-	require.Len(t, funcs[0].List, 2)
-	decl := funcs[0].List[0]
-
-	require.Len(t, decl.List, 3)
-	lambda := decl.List[2]
+	require.Len(t, funcs, 2)
+	lambda := funcs[1]
 	require.Equal(t, ir.OpFunction, lambda.Op)
 	require.NotNil(t, lambda.Signature)
 
@@ -481,20 +439,34 @@ func TestAnalyze_LambdaUnnamed(t *testing.T) {
 	assert.Equal(t, "main.func0", lambda.Signature.Label)
 }
 
-func TestAnalyze_LambdaNamed_Err(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let f fun (int) -> int = fun g (x int) -> int { return x; }; return f(1); }`)
+func TestAnalyze_LiftsLambdas(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let f fun () -> int = fun () -> int { let g fun () -> int = fun () -> int { return 1; }; return g(); }; return f(); }`)
 
-	assert.Error(t, Analyze(funcs))
+	// globals come first, then every lambda the program contains
+	require.Len(t, funcs, 3)
+	assert.Equal(t, "main", funcs[0].Signature.Label)
+	assert.Equal(t, "main.func0", funcs[1].Signature.Label)
+	assert.Equal(t, "main.func0.func0", funcs[2].Signature.Label)
+
+	// lifting exposes the lambdas without detaching them from the tree they came from
+	require.Len(t, funcs[0].List, 2)
+	decl := funcs[0].List[0]
+	require.Len(t, decl.List, 3)
+	assert.Same(t, funcs[1], decl.List[2])
+}
+
+func TestAnalyze_LambdaNamed_Err(t *testing.T) {
+	_, err := analyzeSrc(t, `fun main () -> int { let f fun (int) -> int = fun g (x int) -> int { return x; }; return f(1); }`)
+
+	assert.Error(t, err)
 }
 
 func TestAnalyze_Capture(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let x = 10; let f fun (int) -> int = fun (y int) -> int { return x + y; }; return f(2); }`)
+	funcs := mustAnalyze(t, `fun main () -> int { let x = 10; let f fun (int) -> int = fun (y int) -> int { return x + y; }; return f(2); }`)
 
-	require.NoError(t, Analyze(funcs))
-
-	require.Len(t, funcs, 1)
+	require.Len(t, funcs, 2)
 	main := funcs[0]
-	lambda := lambdaOfDecl(t, main, 1)
+	lambda := funcByLabel(t, funcs, "main.func0")
 
 	// x lives in main, so the lambda closes over it
 	assert.Equal(t, []string{"x"}, captureNames(lambda))
@@ -504,19 +476,11 @@ func TestAnalyze_Capture(t *testing.T) {
 }
 
 func TestAnalyze_Capture_LambdaParam(t *testing.T) {
-	funcs := mustParse(t, `fun adderFactory (x int) -> fun (int) -> int { return fun (y int) -> int { return x + y; }; }`)
+	funcs := mustAnalyze(t, `fun adderFactory (x int) -> fun (int) -> int { return fun (y int) -> int { return x + y; }; }`)
 
-	require.NoError(t, Analyze(funcs))
-
-	require.Len(t, funcs, 1)
+	require.Len(t, funcs, 2)
 	factory := funcs[0]
-
-	require.Len(t, factory.List, 1)
-	ret := factory.List[0]
-	require.Equal(t, ir.OpReturn, ret.Op)
-	require.Len(t, ret.List, 1)
-	lambda := ret.List[0]
-	require.Equal(t, ir.OpFunction, lambda.Op)
+	lambda := funcByLabel(t, funcs, "adderFactory.func0")
 
 	// x is the factory's param and y is the lambda's own, so only x crosses the boundary
 	assert.Equal(t, []string{"x"}, captureNames(lambda))
@@ -524,17 +488,12 @@ func TestAnalyze_Capture_LambdaParam(t *testing.T) {
 }
 
 func TestAnalyze_Capture_Transitive(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let x = 10; let f fun () -> int = fun () -> int { let g fun () -> int = fun () -> int { return x; }; return g(); }; return f(); }`)
+	funcs := mustAnalyze(t, `fun main () -> int { let x = 10; let f fun () -> int = fun () -> int { let g fun () -> int = fun () -> int { return x; }; return g(); }; return f(); }`)
 
-	require.NoError(t, Analyze(funcs))
-
-	require.Len(t, funcs, 1)
+	require.Len(t, funcs, 3)
 	main := funcs[0]
-	outer := lambdaOfDecl(t, main, 1)
-	inner := lambdaOfDecl(t, outer, 0)
-
-	require.Equal(t, "main.func0", outer.Signature.Label)
-	require.Equal(t, "main.func0.func0", inner.Signature.Label)
+	outer := funcByLabel(t, funcs, "main.func0")
+	inner := funcByLabel(t, funcs, "main.func0.func0")
 
 	// the middle lambda builds the inner one's environment, so it needs x too
 	assert.Equal(t, []string{"x"}, captureNames(inner))
@@ -543,26 +502,54 @@ func TestAnalyze_Capture_Transitive(t *testing.T) {
 }
 
 func TestAnalyze_Capture_AssignedVariable(t *testing.T) {
-	funcs := mustParse(t, `fun main () -> int { let x = 10; let f fun () -> int = fun () -> int { x = 5; return x; }; return f(); }`)
+	funcs := mustAnalyze(t, `fun main () -> int { let x = 10; let f fun () -> int = fun () -> int { x = 5; return x; }; return f(); }`)
 
-	require.NoError(t, Analyze(funcs))
-
-	require.Len(t, funcs, 1)
-	lambda := lambdaOfDecl(t, funcs[0], 1)
+	require.Len(t, funcs, 2)
+	lambda := funcByLabel(t, funcs, "main.func0")
 
 	// writing to an outer variable captures it just as reading does
 	assert.Equal(t, []string{"x"}, captureNames(lambda))
 }
 
 func TestAnalyze_Capture_Recursion(t *testing.T) {
-	funcs := mustParse(t, `fun f (n int) -> int { return f(n); }`)
-
-	require.NoError(t, Analyze(funcs))
+	funcs := mustAnalyze(t, `fun f (n int) -> int { return f(n); }`)
 
 	require.Len(t, funcs, 1)
 
 	// a function naming itself must not end up capturing itself
 	assert.Empty(t, captureNames(funcs[0]))
+}
+
+// mustAnalyze parses and analyzes src, returning every function in the program, lifted lambdas included.
+func mustAnalyze(t *testing.T, src string) []*ir.Node {
+	t.Helper()
+
+	funcs, err := analyzeSrc(t, src)
+	require.NoError(t, err)
+
+	return funcs
+}
+
+// analyzeSrc parses src and runs analysis over it, handing back whatever the analyzer produced.
+func analyzeSrc(t *testing.T, src string) ([]*ir.Node, error) {
+	t.Helper()
+
+	return Analyze(mustParse(t, src))
+}
+
+// funcByLabel finds the lifted function carrying the given label.
+func funcByLabel(t *testing.T, funcs []*ir.Node, label string) *ir.Node {
+	t.Helper()
+
+	for _, f := range funcs {
+		if f.Signature != nil && f.Signature.Label == label {
+			return f
+		}
+	}
+
+	require.FailNowf(t, "no function with label", "label: %s", label)
+
+	return nil
 }
 
 func mustParse(t *testing.T, inputStr string) []*ir.Node {
@@ -575,22 +562,6 @@ func mustParse(t *testing.T, inputStr string) []*ir.Node {
 	require.NoError(t, err)
 
 	return funcs
-}
-
-// lambdaOfDecl pulls the lambda bound by the i'th statement of fun, which must be a declaration.
-func lambdaOfDecl(t *testing.T, fun *ir.Node, i int) *ir.Node {
-	t.Helper()
-
-	require.Greater(t, len(fun.List), i)
-	decl := fun.List[i]
-	require.Equal(t, ir.OpDeclaration, decl.Op)
-
-	require.Len(t, decl.List, 3)
-	lambda := decl.List[2]
-	require.Equal(t, ir.OpFunction, lambda.Op)
-	require.NotNil(t, lambda.Signature)
-
-	return lambda
 }
 
 // captureNames drains a function's capture set into sorted names, since map order is unspecified.

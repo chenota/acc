@@ -4,50 +4,56 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 
 	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/ir"
 	"github.com/chenota/acc/internal/types"
 )
 
-func Analyze(functions []*ir.Node) error {
+func Analyze(globalFuncs []*ir.Node) ([]*ir.Node, error) {
 	globalScope := ir.NewTable()
+	a := &analyzer{}
 
 	// register every global function's signature first
-	for _, f := range functions {
-		if err := registerGlobalFunction(globalScope, f); err != nil {
-			return err
+	for _, f := range globalFuncs {
+		if err := a.registerGlobalFunction(globalScope, f); err != nil {
+			return nil, err
 		}
 	}
 
-	for _, f := range functions {
-		if err := analyzeFunctionBody(globalScope, f); err != nil {
-			return err
+	for _, f := range globalFuncs {
+		if err := a.analyzeFunctionBody(globalScope, f); err != nil {
+			return nil, err
 		}
 	}
 
-	return nil
+	return slices.Concat(globalFuncs, a.lambdas), nil
 }
 
-func analyzeStmt(scope *ir.Table, n *ir.Node) error {
+type analyzer struct {
+	lambdas []*ir.Node
+}
+
+func (a *analyzer) analyzeStmt(scope *ir.Table, n *ir.Node) error {
 	switch n.Op {
 	case ir.OpReturn:
-		return analyzeReturn(scope, n)
+		return a.analyzeReturn(scope, n)
 	case ir.OpDeclaration:
-		return analyzeDeclaration(scope, n)
+		return a.analyzeDeclaration(scope, n)
 	case ir.OpAssignment:
-		return analyzeAssignment(scope, n)
+		return a.analyzeAssignment(scope, n)
 	case ir.OpPlusEq, ir.OpMinusEq, ir.OpDivEq, ir.OpTimesEq:
 		// assignment operators have same structure and use same typing rules as regular assignment
-		return analyzeAssignment(scope, n)
+		return a.analyzeAssignment(scope, n)
 	case ir.OpCall:
-		return analyzeCall(scope, n)
+		return a.analyzeCall(scope, n)
 	default:
 		return diagnostic.NewError(n.Pos, "unknown statement operation: %d", n.Op)
 	}
 }
 
-func analyzeAssignment(scope *ir.Table, n *ir.Node) error {
+func (a *analyzer) analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 	if len(n.List) != 2 {
 		return diagnostic.NewError(n.Pos, "variable assignment missing target or expression")
 	}
@@ -60,12 +66,12 @@ func analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 	}
 
 	// resolve the target as an expression
-	if err := analyzeExpr(scope, target, nil); err != nil {
+	if err := a.analyzeExpr(scope, target, nil); err != nil {
 		return err
 	}
 
 	// analyze the expression with hint of the target's type
-	if err := analyzeExpr(scope, e, target.Type); err != nil {
+	if err := a.analyzeExpr(scope, e, target.Type); err != nil {
 		return err
 	}
 
@@ -77,7 +83,7 @@ func analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 	return nil
 }
 
-func analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
+func (a *analyzer) analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 	if len(n.List) != 3 {
 		return diagnostic.NewError(n.Pos, "variable declaration missing components")
 	}
@@ -90,14 +96,14 @@ func analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 		hint = typeNode.Type
 	}
 
-	if err := analyzeExpr(scope, e, hint); err != nil {
+	if err := a.analyzeExpr(scope, e, hint); err != nil {
 		return err
 	}
 
 	// we need a concrete type at this point to resolve any unknowns. must re-analyze with hint if type changes.
 	defaultType := e.Type.ToDefault()
 	if !types.Equal(defaultType, e.Type) {
-		if err := analyzeExpr(scope, e, defaultType); err != nil {
+		if err := a.analyzeExpr(scope, e, defaultType); err != nil {
 			return err
 		}
 		if !types.Equal(e.Type, defaultType) {
@@ -121,30 +127,30 @@ func analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 	return nil
 }
 
-func analyzeExpr(scope *ir.Table, n *ir.Node, hint *types.Type) error {
+func (a *analyzer) analyzeExpr(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 	switch n.Op {
 	case ir.OpInt:
-		return analyzeInt(n, hint)
+		return a.analyzeInt(n, hint)
 	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
-		return analyzeBop(scope, n, hint)
+		return a.analyzeBop(scope, n, hint)
 	case ir.OpIdent:
-		return analyzeIdent(scope, n)
+		return a.analyzeIdent(scope, n)
 	case ir.OpNegate:
-		return analyzeNegate(scope, n, hint)
+		return a.analyzeNegate(scope, n, hint)
 	case ir.OpCall:
-		return analyzeCall(scope, n)
+		return a.analyzeCall(scope, n)
 	case ir.OpRef:
-		return analyzeRef(scope, n)
+		return a.analyzeRef(scope, n)
 	case ir.OpDeref:
-		return analyzeDeref(scope, n)
+		return a.analyzeDeref(scope, n)
 	case ir.OpFunction:
-		return analyzeLambda(scope, n)
+		return a.analyzeLambda(scope, n)
 	default:
 		return diagnostic.NewError(n.Pos, "unknown expression operation: %d", n.Op)
 	}
 }
 
-func analyzeLambda(scope *ir.Table, n *ir.Node) error {
+func (a *analyzer) analyzeLambda(scope *ir.Table, n *ir.Node) error {
 	if n.Signature.Name.Ident() != "" {
 		return diagnostic.NewError(n.Pos, "lambda functions must not be named")
 	}
@@ -156,16 +162,18 @@ func analyzeLambda(scope *ir.Table, n *ir.Node) error {
 
 	n.Signature.Label = fmt.Sprintf("%s.func%d", encl.Signature.Label, encl.NextClosureCount())
 
-	sigType, err := signatureType(n)
+	sigType, err := a.signatureType(n)
 	if err != nil {
 		return err
 	}
 	n.Type = sigType
 
-	return analyzeFunctionBody(scope, n)
+	a.lambdas = append(a.lambdas, n)
+
+	return a.analyzeFunctionBody(scope, n)
 }
 
-func analyzeRef(scope *ir.Table, n *ir.Node) error {
+func (a *analyzer) analyzeRef(scope *ir.Table, n *ir.Node) error {
 	if len(n.List) < 1 {
 		return diagnostic.NewError(n.Pos, "ref without argument")
 	}
@@ -177,7 +185,7 @@ func analyzeRef(scope *ir.Table, n *ir.Node) error {
 		return diagnostic.NewError(sub.Pos, "cannot take reference of non-addressable expression")
 	}
 
-	if err := analyzeExpr(scope, sub, nil); err != nil {
+	if err := a.analyzeExpr(scope, sub, nil); err != nil {
 		return err
 	}
 
@@ -187,13 +195,13 @@ func analyzeRef(scope *ir.Table, n *ir.Node) error {
 	return nil
 }
 
-func analyzeDeref(scope *ir.Table, n *ir.Node) error {
+func (a *analyzer) analyzeDeref(scope *ir.Table, n *ir.Node) error {
 	if len(n.List) < 1 {
 		return diagnostic.NewError(n.Pos, "deref without argument")
 	}
 
 	sub := n.List[0]
-	if err := analyzeExpr(scope, sub, nil); err != nil {
+	if err := a.analyzeExpr(scope, sub, nil); err != nil {
 		return err
 	}
 
@@ -207,14 +215,14 @@ func analyzeDeref(scope *ir.Table, n *ir.Node) error {
 	return nil
 }
 
-func analyzeCall(scope *ir.Table, n *ir.Node) error {
+func (a *analyzer) analyzeCall(scope *ir.Table, n *ir.Node) error {
 	if len(n.List) < 1 {
 		return diagnostic.NewError(n.Pos, "call without a callee")
 	}
 
 	// analyze the expression being called
 	callee := n.List[0]
-	if err := analyzeExpr(scope, callee, nil); err != nil {
+	if err := a.analyzeExpr(scope, callee, nil); err != nil {
 		return err
 	}
 
@@ -236,7 +244,7 @@ func analyzeCall(scope *ir.Table, n *ir.Node) error {
 		arg := args[i]
 		param := params[i]
 
-		if err := analyzeExpr(scope, arg, param); err != nil {
+		if err := a.analyzeExpr(scope, arg, param); err != nil {
 			return err
 		}
 
@@ -251,14 +259,14 @@ func analyzeCall(scope *ir.Table, n *ir.Node) error {
 	return nil
 }
 
-func analyzeNegate(scope *ir.Table, n *ir.Node, hint *types.Type) error {
+func (a *analyzer) analyzeNegate(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 	if len(n.List) != 1 {
 		return diagnostic.NewError(n.Pos, "negation without an argument")
 	}
 
 	// analyze sub-expression with hint
 	e := n.List[0]
-	if err := analyzeExpr(scope, e, hint); err != nil {
+	if err := a.analyzeExpr(scope, e, hint); err != nil {
 		return err
 	}
 
@@ -268,7 +276,7 @@ func analyzeNegate(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 	return nil
 }
 
-func analyzeIdent(scope *ir.Table, n *ir.Node) error {
+func (a *analyzer) analyzeIdent(scope *ir.Table, n *ir.Node) error {
 	// need an existing symbol for this ident
 	existingSym := scope.Sym(n.Ident())
 	if existingSym == nil {
@@ -284,7 +292,7 @@ func analyzeIdent(scope *ir.Table, n *ir.Node) error {
 	return nil
 }
 
-func analyzeBop(scope *ir.Table, n *ir.Node, hint *types.Type) error {
+func (a *analyzer) analyzeBop(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 	// extract left and right operands
 	if len(n.List) != 2 {
 		return diagnostic.NewError(n.Pos, "binary operator without two operands")
@@ -293,21 +301,21 @@ func analyzeBop(scope *ir.Table, n *ir.Node, hint *types.Type) error {
 	right := n.List[1]
 
 	// figure out types of left and right operands given context
-	if err := analyzeExpr(scope, left, hint); err != nil {
+	if err := a.analyzeExpr(scope, left, hint); err != nil {
 		return err
 	}
-	if err := analyzeExpr(scope, right, hint); err != nil {
+	if err := a.analyzeExpr(scope, right, hint); err != nil {
 		return err
 	}
 
 	// attempt to resolve flexible types
 	switch {
 	case left.Type.IsUntypedNumeric() && right.Type.IsConcreteNumeric():
-		if err := analyzeExpr(scope, left, right.Type); err != nil {
+		if err := a.analyzeExpr(scope, left, right.Type); err != nil {
 			return err
 		}
 	case left.Type.IsConcreteNumeric() && right.Type.IsUntypedNumeric():
-		if err := analyzeExpr(scope, right, left.Type); err != nil {
+		if err := a.analyzeExpr(scope, right, left.Type); err != nil {
 			return err
 		}
 	}
@@ -337,7 +345,7 @@ func terminates(n *ir.Node) bool {
 	return n.Op == ir.OpReturn
 }
 
-func registerGlobalFunction(scope *ir.Table, f *ir.Node) error {
+func (a *analyzer) registerGlobalFunction(scope *ir.Table, f *ir.Node) error {
 	if f.Signature.Name.Ident() == "" {
 		return diagnostic.NewError(f.Pos, "global functions must be named")
 	}
@@ -345,7 +353,7 @@ func registerGlobalFunction(scope *ir.Table, f *ir.Node) error {
 	f.Signature.Label = f.Signature.Name.Ident()
 
 	// resolve parameter types and set own type
-	sigType, err := signatureType(f)
+	sigType, err := a.signatureType(f)
 	if err != nil {
 		return err
 	}
@@ -368,7 +376,7 @@ func registerGlobalFunction(scope *ir.Table, f *ir.Node) error {
 	return nil
 }
 
-func analyzeFunctionBody(scope *ir.Table, f *ir.Node) error {
+func (a *analyzer) analyzeFunctionBody(scope *ir.Table, f *ir.Node) error {
 	// need a child scope for function body
 	funScope := scope.NewChild()
 
@@ -385,7 +393,7 @@ func analyzeFunctionBody(scope *ir.Table, f *ir.Node) error {
 
 	// analyze types of body statements
 	for _, s := range f.List {
-		if err := analyzeStmt(funScope, s); err != nil {
+		if err := a.analyzeStmt(funScope, s); err != nil {
 			return err
 		}
 	}
@@ -399,10 +407,10 @@ func analyzeFunctionBody(scope *ir.Table, f *ir.Node) error {
 }
 
 // signatureType resolves a function node's parameter and result types into the function's own type.
-func signatureType(f *ir.Node) (*types.Type, error) {
+func (a *analyzer) signatureType(f *ir.Node) (*types.Type, error) {
 	var paramTypes []*types.Type
 	for _, p := range f.Signature.Params {
-		if err := analyzeParam(p); err != nil {
+		if err := a.analyzeParam(p); err != nil {
 			return nil, err
 		}
 		paramTypes = append(paramTypes, p.Type)
@@ -417,7 +425,7 @@ func signatureType(f *ir.Node) (*types.Type, error) {
 	return types.Function(paramTypes, resultType), nil
 }
 
-func analyzeParam(p *ir.Node) error {
+func (a *analyzer) analyzeParam(p *ir.Node) error {
 	if len(p.List) != 2 {
 		return diagnostic.NewError(p.Pos, "parameter missing type")
 	}
@@ -428,7 +436,7 @@ func analyzeParam(p *ir.Node) error {
 	return nil
 }
 
-func analyzeReturn(scope *ir.Table, r *ir.Node) error {
+func (a *analyzer) analyzeReturn(scope *ir.Table, r *ir.Node) error {
 	// grab first function we can find in the AST
 	currentFunc := r.Predecessor(ir.OpFunction)
 
@@ -441,7 +449,7 @@ func analyzeReturn(scope *ir.Table, r *ir.Node) error {
 	// determine type of sub-expression
 	if len(r.List) > 0 {
 		e := r.List[0]
-		if err := analyzeExpr(scope, e, expectedOut); err != nil {
+		if err := a.analyzeExpr(scope, e, expectedOut); err != nil {
 			return err
 		}
 		if !types.Equal(e.Type, expectedOut) {
@@ -457,7 +465,7 @@ func analyzeReturn(scope *ir.Table, r *ir.Node) error {
 	return nil
 }
 
-func analyzeInt(i *ir.Node, hint *types.Type) error {
+func (a *analyzer) analyzeInt(i *ir.Node, hint *types.Type) error {
 	i.Type = types.UntypedInt()
 
 	intVal := i.Val.(*big.Int)

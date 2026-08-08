@@ -32,11 +32,12 @@ func Compile(r FileDetail, w io.Writer, opts ...Option) error {
 		return err
 	}
 
-	if err := semantic.Analyze(ast); err != nil {
+	allFuncs, err := semantic.Analyze(ast)
+	if err != nil {
 		return err
 	}
 
-	ssaValues, err := ssa.BuildAndAllocate(ast)
+	ssaValues, err := ssa.BuildAndAllocate(allFuncs)
 	if err != nil {
 		return err
 	}

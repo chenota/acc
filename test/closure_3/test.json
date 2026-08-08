@@ -1,5 +1,5 @@
 {
-  "name": "Closure With Changed Value",
+  "name": "Closure Passed As Argument",
   "tags": ["vs8", "wip"],
   "status": 13
 }

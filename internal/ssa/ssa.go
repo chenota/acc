@@ -8,12 +8,13 @@ import (
 func BuildAndAllocate(program []*ir.Node) ([]*Func, error) {
 	m := newModule()
 
-	// declare every top-level function for forward-reference capabaility
+	// declare every function for forward-reference capabaility
 	for _, n := range program {
 		if n.Op != ir.OpFunction {
 			return nil, diagnostic.NewError(n.Pos, "expected function node")
 		}
-		m.declare(n.Sym.Name)
+		// a lifted lambda has no symbol of its own, so functions are keyed by label
+		m.declare(n.Signature.Label)
 	}
 
 	// build every body. this is looking ahead a bit but basically this will eventually allow all lambdas to get added to the module

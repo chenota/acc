@@ -246,9 +246,10 @@ func requireGeneratesProgram(t *testing.T, src string) []Inst {
 	funcs, err := parser.ParseProgram(tokens)
 	require.NoError(t, err)
 
-	require.NoError(t, semantic.Analyze(funcs))
+	allFuncs, err := semantic.Analyze(funcs)
+	require.NoError(t, err)
 
-	ssaFuncs, err := ssa.BuildAndAllocate(funcs)
+	ssaFuncs, err := ssa.BuildAndAllocate(allFuncs)
 	require.NoError(t, err)
 
 	p, err := GenerateProgram(ssaFuncs)

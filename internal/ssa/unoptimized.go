@@ -11,7 +11,7 @@ import (
 // buildFuncBody fills in the pre-created shell f from its AST node n.
 func (m *Module) buildFuncBody(n *ir.Node) error {
 	// look up function in module
-	f := m.lookup(n.Sym.Name)
+	f := m.lookup(n.Signature.Label)
 	if f == nil {
 		return diagnostic.NewError(n.Pos, "could not find function in module")
 	}

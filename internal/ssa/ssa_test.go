@@ -446,8 +446,9 @@ func requireBuildSSA(t *testing.T, src string) []*Func {
 	require.NoError(t, err)
 	funcs, err := parser.ParseProgram(tokens)
 	require.NoError(t, err)
-	require.NoError(t, semantic.Analyze(funcs))
-	result, err := BuildAndAllocate(funcs)
+	newFuncs, err := semantic.Analyze(funcs)
+	require.NoError(t, err)
+	result, err := BuildAndAllocate(newFuncs)
 	require.NoError(t, err)
 	return result
 }

@@ -1,5 +1,5 @@
 {
-  "name": "Closure With Changed Value",
+  "name": "Immediately Invoked Lambda",
   "tags": ["vs8", "wip"],
   "status": 7
 }
