@@ -325,6 +325,9 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 
 	if name, ok := p.parseIdent(); ok {
 		n.Signature.Name = name
+	} else {
+		// no name means anonymous function
+		n.Signature.Name = nil
 	}
 
 	if _, ok := p.t.Expect(lexer.KLParen); !ok {
