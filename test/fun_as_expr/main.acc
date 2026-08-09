@@ -1,6 +1,6 @@
 fun main () -> int {
-    let f = fun (x int) {
+    let f = fun (x int) -> int {
         return x * 2;
-    }
+    };
     return f(21);
 }

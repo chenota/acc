@@ -4,8 +4,8 @@ fun helper(f fun () -> int) -> int {
 
 fun main () -> int {
     let x = 10;
-    let f = fun () {
+    let f = fun () -> int {
         return x + 1;
-    }
+    };
     return helper(f);
 }
