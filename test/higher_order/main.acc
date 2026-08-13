@@ -3,7 +3,7 @@ fun add (x int, y int) -> int {
 }
 
 fun adderFactory (x int) -> fun (int) -> int {
-    return fun (y int) { return x + y; };
+    return fun (y int) -> int { return x + y; };
 }
 
 fun main () -> int {
