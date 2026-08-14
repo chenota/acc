@@ -94,10 +94,11 @@ func (m Mask) Contains(r Register) bool {
 }
 
 var (
-	CallerSaved  = NewMask(RegA, RegC, RegD, RegSI, RegDI, Reg8, Reg9, Reg10, Reg11)
-	CalleeSaved  = NewMask(RegB, Reg12, Reg13, Reg14, Reg15)
-	Reserved     = NewMask(RegSP, RegBP)
-	Allocatable  = Reserved.Complement()
-	ReturnTarget = RegA
-	Args         = []Register{RegDI, RegSI, RegD, RegC, Reg8, Reg9} // order matters here so putting in a list
+	CallerSaved    = NewMask(RegA, RegC, RegD, RegSI, RegDI, Reg8, Reg9, Reg10, Reg11)
+	CalleeSaved    = NewMask(RegB, Reg12, Reg13, Reg14, Reg15)
+	Reserved       = NewMask(RegSP, RegBP)
+	Allocatable    = Reserved.Complement()
+	ReturnTarget   = RegA
+	Args           = []Register{RegDI, RegSI, RegD, RegC, Reg8, Reg9} // order matters here so putting in a list
+	ClosureContext = Reg10
 )

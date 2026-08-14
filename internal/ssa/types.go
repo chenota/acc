@@ -28,6 +28,15 @@ const (
 	OpSignExtend // sign-extends the accumulator into the high register (cdq/cqo)
 	OpParam      // incoming function argument - more of a placeholder for a location than an acutal value in its own right
 	OpLocalAddr  // address bound to a static stack slot
+	OpClosurePtr
+	OpClosureCall
+)
+
+// Operand layout of OpClosureCall.
+const (
+	ClosureCallCode   = 0 // address to jump to
+	ClosureCallObject = 1 // closure object, passed in register.ClosureContext
+	ClosureCallArgs   = 2 // ordinary arguments start here
 )
 
 type Value struct {
@@ -47,13 +56,25 @@ type Value struct {
 
 // Clobbers reports the registers this value destroys when it executes.
 func (v *Value) Clobbers() register.Mask {
-	if v.Op == OpStaticCall {
+	if v.IsCall() {
 		// for now calls are considered to clobber all caller-saved registers
-		// TODO: make this more intelligent by only clobbering caller-saved registers that the callee actually uses
+		// TODO: make this more intelligent by only clobbering caller-saved registers that the callee actually uses.
 		return register.CallerSaved
 	}
 
 	return register.NewMask()
+}
+
+func (v *Value) IsCall() bool {
+	return v.Op == OpStaticCall || v.Op == OpClosureCall
+}
+
+// CallArgs returns the operands of a call that are ABI arguments
+func (v *Value) CallArgs() []*Value {
+	if v.Op == OpClosureCall {
+		return v.Args[ClosureCallArgs:]
+	}
+	return v.Args
 }
 
 func (v *Value) IsUnaryOp() bool {
@@ -366,9 +387,12 @@ func (f *Func) localsSize() int {
 func (f *Func) maxOutgoingSize() int {
 	var max int
 	for v := range f.UnorderedValues() {
-		if v.Op == OpStaticCall && len(v.Args) > len(register.Args) {
+		if !v.IsCall() {
+			continue
+		}
+		if args := v.CallArgs(); len(args) > len(register.Args) {
 			// each outgoing stack slot uses 8 bytes
-			outgoingSize := stackSlotSize * (len(v.Args) - len(register.Args))
+			outgoingSize := stackSlotSize * (len(args) - len(register.Args))
 			if outgoingSize > max {
 				max = outgoingSize
 			}

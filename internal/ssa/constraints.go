@@ -8,10 +8,21 @@ const stackSlotSize = 8
 
 func lowerConstraints(f *Func) {
 	lowerParams(f)
+	lowerClosurePtr(f)
 	lowerDivides(f)
 	lowerCalls(f)
 	// important that lowerReturns runs after lowerCalls so it targets the correct value
 	lowerReturns(f)
+}
+
+// lowerClosurePtr pins the incoming closure object to the register the caller left it in.
+func lowerClosurePtr(f *Func) {
+	for v := range f.UnorderedValues() {
+		if v.Op != OpClosurePtr {
+			continue
+		}
+		v.Loc = NewReg(register.ClosureContext)
+	}
 }
 
 func lowerParams(f *Func) {
@@ -77,18 +88,26 @@ func lowerDivides(f *Func) {
 
 func lowerCalls(f *Func) {
 	for v := range f.UnorderedValues() {
-		if v.Op != OpStaticCall {
+		if !v.IsCall() {
 			continue
 		}
 
-		for i, arg := range v.Args {
+		callArgs := v.CallArgs()
+		base := len(v.Args) - len(callArgs)
+
+		for i, arg := range callArgs {
 			// first 6 args go in registers
 			if i < len(register.Args) {
-				v.Args[i] = copyIn(f, v, arg, register.Args[i])
+				v.Args[base+i] = copyIn(f, v, arg, register.Args[i])
 				continue
 			}
 			// the rest are written to the outgoing area at the bottom of this function's frame
-			v.Args[i] = copyToOutgoingStack(f, v, arg, i-len(register.Args))
+			v.Args[base+i] = copyToOutgoingStack(f, v, arg, i-len(register.Args))
+		}
+
+		// the context register only has a meaning at the call itself, so pin it last.
+		if v.Op == OpClosureCall {
+			v.Args[ClosureCallObject] = copyIn(f, v, v.Args[ClosureCallObject], register.ClosureContext)
 		}
 
 		v.Loc = NewReg(register.RegA)
