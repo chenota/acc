@@ -43,13 +43,11 @@ func TestProgram(t *testing.T) {
 				require.FileExists(t, mainFile, "each source directory must contain a main file")
 
 				// on failure dump the assembly acc generated so it's debuggable
-				if verboseFail {
-					defer func() {
-						if t.Failed() {
-							dumpAssembly(t, mainFile)
-						}
-					}()
-				}
+				defer func() {
+					if t.Failed() && verboseFail {
+						dumpAssembly(t, mainFile)
+					}
+				}()
 
 				binaryPath := compileProgram(t, mainFile)
 				defer os.Remove(binaryPath)
