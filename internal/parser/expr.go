@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"strings"
+
 	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/ir"
 	"github.com/chenota/acc/internal/lexer"
@@ -178,6 +180,36 @@ func (p *parser) led(left *ir.Node, op lexer.Token) (*ir.Node, error) {
 		}
 
 		return n, nil
+	case op.Kind == lexer.KDot:
+		tok, ok := p.t.Peek()
+		if !ok {
+			return nil, diagnostic.NewError(op.Pos, "empty dot operator")
+		}
+		p.t.Advance()
+
+		n := &ir.Node{
+			Op:   ir.OpDot,
+			Pos:  left.Pos,
+			List: []*ir.Node{left},
+		}
+
+		switch tok.Kind {
+		case lexer.KInteger:
+			if strings.Contains(tok.Text, "_") {
+				return nil, diagnostic.NewError(tok.Pos, "integer literals in dot operators cannot contain underscores")
+			}
+			fallthrough
+		case lexer.KIdentifier:
+			right, err := p.nud(tok)
+			if err != nil {
+				return nil, err
+			}
+			n.List = append(n.List, right)
+		default:
+			return nil, diagnostic.NewError(tok.Pos, "invalid token for dot access: %v", tok)
+		}
+
+		return n, nil
 	default:
 		return nil, diagnostic.NewError(op.Pos, "expected infix operator")
 	}
@@ -195,7 +227,7 @@ func isRightAssociative(lexer.Token) bool {
 }
 
 func isOperator(t lexer.Token) bool {
-	return bopFrom(t) != ir.OpUnknown || t.Kind == lexer.KLParen
+	return bopFrom(t) != ir.OpUnknown || t.Kind == lexer.KLParen || t.Kind == lexer.KDot
 }
 
 // unary binding power should be tighter than any binary operator but looser than a call
@@ -207,8 +239,8 @@ func bindingPower(t lexer.Token) int {
 		return 10
 	case lexer.KStar, lexer.KDiv:
 		return 20
-	// function call
-	case lexer.KLParen:
+	// function call, dot operator
+	case lexer.KLParen, lexer.KDot:
 		return 40
 	default:
 		return 0

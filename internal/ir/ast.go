@@ -35,6 +35,7 @@ const (
 	OpCall
 	OpRef
 	OpDeref
+	OpDot
 )
 
 type Signature struct {
