@@ -173,9 +173,30 @@ We need referenced values to make closures work.
 <Type> := "*" <Type>
 ```
 
-### Vertical Slice 8: Lambda Functions [Work in Progress]
+### Vertical Slice 8: Tuples [Work in Progress]
 
-Lambda functions let `acc` use functions as values.
+I was halfway through implementing closures when I realized I need some kind of fielded type for storing captured values. Yikes! Decided to go with tuples since they're all I need and the easiest to get off the ground.
+
+#### Expression Grammar (CFG)
+
+```
+<Call>     := <Call> "(" <Exprlist> ")"
+            | <Call> "." <Integer>
+            | <Atom>
+<Atom>     := "(" <Exprlist> ")"
+<Exprlist> := (<Expression> ("," <Expression>)* ","?)?
+```
+
+#### Type Grammar (CFG)
+
+```
+<Type>     := "(" <Typelist> ")"
+<Typelist> := (<Type> ("," <Type>)* ","?)?
+```
+
+### Vertical Slice 9: Closures [Work in Progress]
+
+Closures let `acc` use functions as values.
 
 #### Expression Grammar (CFG)
 
@@ -187,12 +208,12 @@ Lambda functions let `acc` use functions as values.
 
 ```
 <Type>     := "fun" "(" <Typelist> ")" ("->" <Type>)?
-            | "(" ")"
+            | "(" <Typelist> ")"
             | "*" <Type>
             | "int"
-<Typelist> := (<Type> ("," <Type>)*)?
+<Typelist> := (<Type> ("," <Type>)* ","?)?
 ```
 
-### Vertical Slice 9: String Literals and File Output [Not Started]
+### Vertical Slice 10: String Literals and File Output [Not Started]
 
 With functions and variables out of the way, we can finally add a format print which greatly expands the usefulness of the `acc` language.
