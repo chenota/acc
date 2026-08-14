@@ -28,6 +28,7 @@ const (
 	KMulEq
 	KDivEq
 	KRef
+	KDot
 )
 
 type tokenRule struct {
@@ -40,7 +41,6 @@ var rules = []tokenRule{
 	{KIntKw, mustAnchor(`int`)},
 	{KReturnKw, mustAnchor(`return`)},
 	{KLetKw, mustAnchor(`let`)},
-	{KComma, mustAnchor(`,`)},
 	{KArrow, mustAnchor(`->`)},
 	{KPlusEq, mustAnchor(`\+=`)},
 	{KMinusEq, mustAnchor(`-=`)},
@@ -57,6 +57,8 @@ var rules = []tokenRule{
 	{KEqual, mustAnchor(`=`)},
 	{KSemicolon, mustAnchor(`;`)},
 	{KRef, mustAnchor(`&`)},
+	{KDot, mustAnchor(`\.`)},
+	{KComma, mustAnchor(`,`)},
 	{KInteger, mustAnchor(`[0-9]+(_[0-9]+)*`)},
 	{KIdentifier, mustAnchor(`[a-zA-Z_][a-zA-Z0-9_]*`)},
 	{KNewLines, mustAnchor(`\n+`)},
