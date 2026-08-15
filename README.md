@@ -35,7 +35,7 @@ make testp
 ## Vertical Slices
 
 To help with maintainability, I'm planning to write this compiler in a series of vertical slices that each introduce a specific and well-tested feature. Once a feature is introduced, I cannot break it or else I'm FIRED! For each vertical slice I'll provide a goal and an updated grammar for the various parts of the language.
- 
+
 ### Vertical Slice 1: Exit Code [Complete]
 
 The first goal of this language is to have a main function that can return an exit code. This is really groundbreaking stuff!
@@ -43,42 +43,36 @@ The first goal of this language is to have a main function that can return an ex
 #### Program Grammar (PEG)
 
 ```
-<Program>   := <Function>
-<Function>  := "fun" "main" "(" ")" "->" <Type> <Block>
-<Block>     := "{" <Statement> "}"
-<Statement> := "return" <Expression> ";"
+Program   <- Function
+Function  <- "fun" "main" "(" ")" "->" Type Block
+Block     <- "{" Statement "}"
+Statement <- "return" Expression ";"
 ```
 
-#### Expression Grammar (CFG)
+#### Expression Grammar (EBNF)
 
 ```
-<Expression> := <Integer>
-<Integer>    := /[0-9]+/
+Expression = Integer ;
 ```
 
-#### Type Grammar (CFG)
+#### Type Grammar (EBNF)
 
 ```
-<Type> := "int"
+Type = "int" ;
 ```
 
 ### Vertical Slice 2: Constant Arithmetic [Complete]
 
 Return an exit code from the result of an arithmetic expression; this is deceptively simple since `acc` is going to implement constant folding but it's a necessary setup for the future.
 
-#### Expression Grammar (CFG)
+#### Expression Grammar (EBNF)
 
 ```
-<Expression> := <Add>
-<Add>        := <Add> "+" <Mul>
-              | <Add> "-" <Mul>
-              | <Mul>
-<Mul>        := <Mul> "*" <Atom>
-              | <Mul> "/" <Atom>
-              | <Atom>
-<Atom>       := <Integer>
-              | "(" <Expression> ")"
-<Integer>    := /[0-9]+/
+Expression = Add ;
+Add        = Mul { ( "+" | "-" ) Mul } ;
+Mul        = Atom { ( "*" | "/" ) Atom } ;
+Atom       = Integer
+           | "(" Expression ")" ;
 ```
 
 ### Vertical Slice 3: Variables [Complete]
@@ -88,29 +82,41 @@ Return an exit code from the result of an arithmetic expression; this is decepti
 #### Program Grammar (PEG)
 
 ```
-<Statement> := "return" <Expression> ";"
-             | "let" <Ident> <Type>? "=" <Expression> ";"
-             | <Ident> "=" <Expression> ";"
+Program     <- Function
+Function    <- "fun" "main" "(" ")" "->" Type Block
+Block       <- "{" Statement* "}"
+Statement   <- Declaration / Assignment / Return
+Declaration <- "let" Ident Type? "=" Expression ";"
+Assignment  <- Ident "=" Expression ";"
+Return      <- "return" Expression ";"
 ```
 
-#### Expression Grammar (CFG)
+#### Expression Grammar (EBNF)
 
 ```
-<Atom> := <Ident>
+Expression = Add ;
+Add        = Mul { ( "+" | "-" ) Mul } ;
+Mul        = Atom { ( "*" | "/" ) Atom } ;
+Atom       = Integer
+           | Ident
+           | "(" Expression ")" ;
 ```
 
 ### Vertical Slice 4: Negation [Complete]
 
 I want to get negative numbers out of the way now and they can help us introduce some foundational concepts like unary operations.
 
-#### Expression Grammar (CFG)
+#### Expression Grammar (EBNF)
 
 ```
-<Mul>   := <Mul> "*" <Atom>
-         | <Mul> "/" <Atom>
-         | <Unary>
-<Unary> := "-" <Atom>
-         | <Atom>
+Expression = Add ;
+Add        = Mul { ( "+" | "-" ) Mul } ;
+Mul        = Unary { ( "*" | "/" ) Unary } ;
+Unary      = "-" Unary
+           | Atom ;
+Atom       = Integer
+           | Ident
+           | "(" Expression ")" ;
 ```
 
 ### Vertical Slice 5: Assignment Operators [Complete]
@@ -120,13 +126,14 @@ Another low-hanging fruit I'd like to knock out is assignment operators since ev
 #### Program Grammar (PEG)
 
 ```
-<Program>   := <Function>
-<Function>  := "fun" "main" "(" ")" "->" <Type> <Block>
-<Block>     := "{" <Statement> "}"
-<Statement> := "return" <Expression> ";"
-             | "let" <Ident> <Type>? "=" <Expression> ";"
-             | <Ident> "=" <Expression> ";"
-             | <Ident> ("+=" | "-=" | "*=" | "/=") <Expression> ";"
+Program      <- Function
+Function     <- "fun" "main" "(" ")" "->" Type Block
+Block        <- "{" Statement* "}"
+Statement    <- Declaration / Assignment / AssignmentOp / Return
+Declaration  <- "let" Ident Type? "=" Expression ";"
+Assignment   <- Ident "=" Expression ";"
+AssignmentOp <- Ident ( "+=" / "-=" / "*=" / "/=" ) Expression ";"
+Return       <- "return" Expression ";"
 ```
 
 ### Vertical Slice 6: Global Functions [Complete]
@@ -136,82 +143,138 @@ We can build on Vertical Slice 3 and add the last foundational construct we need
 #### Program Grammar (PEG)
 
 ```
-<Program>    := <Function>+
-<Function>   := "fun" <Ident> "(" <Paramlist> ")" "->" <Type> <Block>
-<Block>      := "{" <Statement> "}"
-<Statement>  := "return" <Expression> ";"
-              | "let" <Ident> <Type>? "=" <Expression> ";"
-              | <Ident> "=" <Expression> ";"
-              | <Ident> ("+=" | "-=" | "*=" | "/=") <Expression> ";"
+Program      <- Function+
+Function     <- "fun" Ident "(" Paramlist ")" "->" Type Block
+Paramlist    <- ( Param ( "," Param )* )?
+Param        <- Ident Type
+Block        <- "{" Statement* "}"
+Statement    <- Declaration / Assignment / AssignmentOp / Return
+Declaration  <- "let" Ident Type? "=" Expression ";"
+Assignment   <- Ident "=" Expression ";"
+AssignmentOp <- Ident ( "+=" / "-=" / "*=" / "/=" ) Expression ";"
+Return       <- "return" Expression ";"
 ```
 
-#### Expression Grammar (CFG)
+#### Expression Grammar (EBNF)
 
 ```
-<Unary>      := "-" <Call>
-              | <Call>
-<Call>       := <Atom> "(" <Exprlist> ")"
-              | <Atom>
+Expression = Add ;
+Add        = Mul { ( "+" | "-" ) Mul } ;
+Mul        = Unary { ( "*" | "/" ) Unary } ;
+Unary      = "-" Unary
+           | Postfix ;
+Postfix    = Atom { "(" [ Exprlist ] ")" } ;
+Exprlist   = Expression { "," Expression } ;
+Atom       = Integer
+           | Ident
+           | "(" Expression ")" ;
 ```
 
 ### Vertical Slice 7: Pointers [Complete]
 
 We need referenced values to make closures work.
 
-#### Expression Grammar (CFG)
+#### Program Grammar (PEG)
 
 ```
-<Unary> := "-" <Call>
-         | "&" <Call>
-         | "*" <Call>
-         | <Call>
+Program       <- Function+
+Function      <- "fun" Ident "(" Paramlist ")" ( "->" Type )? Block
+Paramlist     <- ( Param ( "," Param )* )?
+Param         <- Ident Type
+Block         <- "{" Statement* "}"
+Statement     <- Declaration / Assignment / AssignmentOp / Return / CallStatement
+Declaration   <- "let" Ident Type? "=" Expression ";"
+Assignment    <- Expression "=" Expression ";"
+AssignmentOp  <- Expression ( "+=" / "-=" / "*=" / "/=" ) Expression ";"
+Return        <- "return" Expression? ";"
+CallStatement <- Expression ";"
 ```
 
-#### Type Grammar (CFG)
+#### Expression Grammar (EBNF)
 
 ```
-<Type> := "*" <Type>
+Expression = Add ;
+Add        = Mul { ( "+" | "-" ) Mul } ;
+Mul        = Unary { ( "*" | "/" ) Unary } ;
+Unary      = ( "-" | "&" | "*" ) Unary
+           | Postfix ;
+Postfix    = Atom { "(" [ Exprlist ] ")" } ;
+Exprlist   = Expression { "," Expression } ;
+Atom       = Integer
+           | Ident
+           | "(" Expression ")" ;
+```
+
+#### Type Grammar (EBNF)
+
+```
+Type = "*" Type
+     | "int" ;
 ```
 
 ### Vertical Slice 8: Tuples [Work in Progress]
 
 I was halfway through implementing closures when I realized I need some kind of fielded type for storing captured values. Yikes! Decided to go with tuples since they're all I need and the easiest to get off the ground.
 
-#### Expression Grammar (CFG)
+#### Expression Grammar (EBNF)
 
 ```
-<Call>     := <Call> "(" <Exprlist> ")"
-            | <Call> "." <Integer>
-            | <Atom>
-<Atom>     := "(" <Exprlist> ")"
-<Exprlist> := (<Expression> ("," <Expression>)* ","?)?
+Expression = Add ;
+Add        = Mul { ( "+" | "-" ) Mul } ;
+Mul        = Unary { ( "*" | "/" ) Unary } ;
+Unary      = ( "-" | "&" | "*" ) Unary
+           | Postfix ;
+Postfix    = Atom { Call | Field } ;
+Call       = "(" [ Exprlist ] ")" ;
+Field      = "." ( Integer | Ident ) ;
+Exprlist   = Expression { "," Expression } [ "," ] ;
+Atom       = Integer
+           | Ident
+           | "(" [ Exprlist ] ")" ;
 ```
 
-#### Type Grammar (CFG)
+#### Type Grammar (EBNF)
 
 ```
-<Type>     := "(" <Typelist> ")"
-<Typelist> := (<Type> ("," <Type>)* ","?)?
+Type     = "*" Type
+         | "(" [ Typelist ] ")"
+         | "int" ;
+Typelist = Type { "," Type } [ "," ] ;
 ```
 
 ### Vertical Slice 9: Closures [Work in Progress]
 
 Closures let `acc` use functions as values.
 
-#### Expression Grammar (CFG)
+#### Expression Grammar (EBNF)
 
 ```
-<Atom> := "fun" "(" <Paramlist> ")" "->" <Type> <Block>
+Expression = Add ;
+Add        = Mul { ( "+" | "-" ) Mul } ;
+Mul        = Unary { ( "*" | "/" ) Unary } ;
+Unary      = ( "-" | "&" | "*" ) Unary
+           | Postfix ;
+Postfix    = Atom { Call | Field } ;
+Call       = "(" [ Exprlist ] ")" ;
+Field      = "." ( Integer | Ident ) ;
+Exprlist   = Expression { "," Expression } [ "," ] ;
+Atom       = Integer
+           | Ident
+           | Lambda
+           | "(" [ Exprlist ] ")" ;
+Lambda     = "fun" "(" Paramlist ")" [ "->" Type ] Block ;
 ```
 
-#### Type Grammar (CFG)
+`Paramlist` and `Block` are the same rules as in the program grammar.
+
+#### Type Grammar (EBNF)
 
 ```
-<Type>     := "fun" "(" <Typelist> ")" ("->" <Type>)?
-            | "(" <Typelist> ")"
-            | "*" <Type>
-            | "int"
-<Typelist> := (<Type> ("," <Type>)* ","?)?
+Type     = "fun" "(" [ Typelist ] ")" [ "->" Type ]
+         | "*" Type
+         | "(" [ Typelist ] ")"
+         | "int" ;
+Typelist = Type { "," Type } [ "," ] ;
 ```
 
 ### Vertical Slice 10: String Literals and File Output [Not Started]
