@@ -815,7 +815,11 @@ func TestParser_TypeErr(t *testing.T) {
 		{"type list double comma", `fun () -> fun (int,, int) {}`},
 		{"type list missing comma", `fun () -> fun (int int) {}`},
 		{"unit type missing closing paren", `fun () -> ( {}`},
-		{"parenthesized type", `fun () -> (int) {}`},
+		{"tuple type leading comma", `fun () -> (, int) {}`},
+		{"tuple type double comma", `fun () -> (int,, int) {}`},
+		{"tuple type missing comma", `fun () -> (int int) {}`},
+		{"tuple type comma by itself", `fun () -> (,) {}`},
+		{"tuple type unclosed", `fun () -> (int, int {}`},
 	}
 
 	for _, tt := range tests {
@@ -1105,6 +1109,103 @@ func TestParser_FunctionTypeTrailingComma(t *testing.T) {
 	declType := decl.List[1]
 	require.NotNil(t, declType)
 	assert.True(t, types.Equal(types.Function([]*types.Type{types.Int(), types.Int()}, types.Int()), declType.Type))
+}
+
+func TestParser_UnitType(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { let u () = x; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	decl := fun.List[0]
+
+	require.Len(t, decl.List, 3)
+	varType := decl.List[1]
+	require.NotNil(t, varType)
+	assert.True(t, types.Equal(types.Unit(), varType.Type))
+}
+
+func TestParser_ParenthesizedType(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { let p (int) = x; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	decl := fun.List[0]
+
+	require.Len(t, decl.List, 3)
+	varType := decl.List[1]
+	require.NotNil(t, varType)
+
+	assert.True(t, types.Equal(types.Int(), varType.Type))
+}
+
+func TestParser_SingleElementTupleType(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { let p (int,) = x; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	decl := fun.List[0]
+
+	require.Len(t, decl.List, 3)
+	varType := decl.List[1]
+	require.NotNil(t, varType)
+
+	assert.True(t, types.Equal(types.Tuple([]*types.Type{types.Int()}), varType.Type))
+	assert.False(t, types.Equal(types.Int(), varType.Type))
+}
+
+func TestParser_TupleType(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { let p (int, *int, int) = x; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	decl := fun.List[0]
+
+	require.Len(t, decl.List, 3)
+	varType := decl.List[1]
+	require.NotNil(t, varType)
+
+	expected := types.Tuple([]*types.Type{types.Int(), types.Pointer(types.Int()), types.Int()})
+	assert.True(t, types.Equal(expected, varType.Type))
+}
+
+func TestParser_NestedTupleType(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { let p ((int, int), int) = x; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	decl := fun.List[0]
+
+	require.Len(t, decl.List, 3)
+	varType := decl.List[1]
+	require.NotNil(t, varType)
+
+	inner := types.Tuple([]*types.Type{types.Int(), types.Int()})
+	assert.True(t, types.Equal(types.Tuple([]*types.Type{inner, types.Int()}), varType.Type))
 }
 
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {

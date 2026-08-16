@@ -14,12 +14,13 @@ const (
 	KInt
 	KFunction
 	KPointer
+	KTuple
 )
 
 type Type struct {
 	kind Kind // making this private so outside callers are forced to use Equal.
 
-	// for KFunction
+	// for KFunction and KTuple
 	params []*Type
 	result *Type
 }
@@ -34,6 +35,19 @@ func Equal(a *Type, b *Type) bool {
 		if !Equal(a.result, b.result) {
 			return false
 		}
+		if len(a.params) != len(b.params) {
+			return false
+		}
+		for i := range a.params {
+			if !Equal(a.params[i], b.params[i]) {
+				return false
+			}
+		}
+		return true
+	}
+
+	// tuple comparison
+	if a.kind == KTuple && b.kind == KTuple {
 		if len(a.params) != len(b.params) {
 			return false
 		}
@@ -77,6 +91,18 @@ func (t *Type) String() string {
 		}
 
 		return fmt.Sprintf("fun (%s) -> %v", strings.Join(params, ","), t.result)
+	case KTuple:
+		elems := make([]string, len(t.params))
+		for i := range t.params {
+			elems[i] = t.params[i].String()
+		}
+
+		// a single element needs the trailing comma to read back as a tuple
+		if len(elems) == 1 {
+			return fmt.Sprintf("(%s,)", elems[0])
+		}
+
+		return fmt.Sprintf("(%s)", strings.Join(elems, ", "))
 	case KPointer:
 		return fmt.Sprintf("*%v", t.result)
 	default:
@@ -98,6 +124,14 @@ func (t *Type) IsFunction() bool {
 	}
 
 	return t.kind == KFunction
+}
+
+func (t *Type) IsTuple() bool {
+	if t == nil {
+		return false
+	}
+
+	return t.kind == KTuple
 }
 
 func (t *Type) IsPointer() bool {
@@ -152,6 +186,13 @@ func Unit() *Type {
 	return &Type{kind: KUnit}
 }
 
+func Tuple(elems []*Type) *Type {
+	return &Type{
+		kind:   KTuple,
+		params: elems,
+	}
+}
+
 func Pointer(sub *Type) *Type {
 	return &Type{
 		kind:   KPointer,
@@ -166,6 +207,13 @@ func (t *Type) Size() int {
 		return 0
 	case KInt:
 		return 4
+	case KTuple:
+		// tuple layout does not pad or align elements yet
+		size := 0
+		for _, elem := range t.params {
+			size += elem.Size()
+		}
+		return size
 	default:
 		return 8
 	}
@@ -183,6 +231,6 @@ func (t *Type) ToDefault() *Type {
 }
 
 func (t *Type) IsScalar() bool {
-	// every type is a scalar right now
-	return true
+	// every type but a tuple fits in a register right now
+	return !t.IsTuple()
 }

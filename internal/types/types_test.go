@@ -18,6 +18,14 @@ func TestType_String_Pointer(t *testing.T) {
 	assert.Equal(t, "*int", Pointer(Int()).String())
 }
 
+func TestType_String_Tuple(t *testing.T) {
+	assert.Equal(t, "(int, int)", Tuple([]*Type{Int(), Int()}).String())
+}
+
+func TestType_String_SingleElementTuple(t *testing.T) {
+	assert.Equal(t, "(int,)", Tuple([]*Type{Int()}).String())
+}
+
 func TestEqual_Pointers(t *testing.T) {
 	assert.True(t, Equal(Pointer(Int()), Pointer(Int())))
 }

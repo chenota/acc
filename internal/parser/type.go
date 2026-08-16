@@ -46,17 +46,50 @@ func (p *parser) typ() (*types.Type, error) {
 	case lexer.KLParen:
 		p.t.Advance()
 
-		if _, ok := p.t.Expect(lexer.KRParen); !ok {
-			return nil, diagnostic.NewError(p.t.Pos(), "expected closing parenthesis in unit type")
-		}
-
-		return types.Unit(), nil
+		return p.parenType()
 	case lexer.KIntKw:
 		p.t.Advance()
 
 		return types.Int(), nil
 	default:
 		return nil, diagnostic.NewError(tok.Pos, "expected type")
+	}
+}
+
+// parenType parses everything that follows an opening parenthesis in type position
+func (p *parser) parenType() (*types.Type, error) {
+	var elems []*types.Type
+	var hasComma bool
+
+	for {
+		if _, ok := p.t.Expect(lexer.KRParen); ok {
+			break
+		}
+
+		elem, err := p.typ()
+		if err != nil {
+			return nil, err
+		}
+		elems = append(elems, elem)
+
+		// a comma allows another element type or a closing parenthesis
+		if _, ok := p.t.Expect(lexer.KComma); ok {
+			hasComma = true
+			continue
+		}
+
+		if _, ok := p.t.Expect(lexer.KRParen); !ok {
+			return nil, diagnostic.NewError(p.t.Pos(), "expected ',' or closing parenthesis ')' to match opening parenthesis")
+		}
+		break
+	}
+
+	if len(elems) == 0 {
+		return types.Unit(), nil
+	} else if len(elems) == 1 && !hasComma {
+		return elems[0], nil
+	} else {
+		return types.Tuple(elems), nil
 	}
 }
 
