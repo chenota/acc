@@ -70,16 +70,26 @@ func (p *parser) functionType() (*types.Type, error) {
 	}
 
 	var params []*types.Type
-	if _, ok := p.t.Expect(lexer.KRParen); !ok {
-		var err error
-		params, err = p.typeList()
+	for {
+		if _, ok := p.t.Expect(lexer.KRParen); ok {
+			break
+		}
+
+		param, err := p.typ()
 		if err != nil {
 			return nil, err
 		}
+		params = append(params, param)
+
+		// a comma allows another parameter type or a closing parenthesis
+		if _, ok := p.t.Expect(lexer.KComma); ok {
+			continue
+		}
 
 		if _, ok := p.t.Expect(lexer.KRParen); !ok {
-			return nil, diagnostic.NewError(p.t.Pos(), "missing closing parenthesis in function type")
+			return nil, diagnostic.NewError(p.t.Pos(), "expected ',' or closing parenthesis ')' to match opening parenthesis in function type")
 		}
+		break
 	}
 
 	if _, ok := p.t.Expect(lexer.KArrow); !ok {
@@ -92,27 +102,4 @@ func (p *parser) functionType() (*types.Type, error) {
 	}
 
 	return types.Function(params, result), nil
-}
-
-func (p *parser) typeList() ([]*types.Type, error) {
-	// parse head
-	head, err := p.typ()
-	if err != nil {
-		return nil, err
-	}
-	l := []*types.Type{head}
-
-	// parse rest of list in a loop
-	for {
-		if _, ok := p.t.Expect(lexer.KComma); !ok {
-			return l, nil
-		}
-
-		v, err := p.typ()
-		if err != nil {
-			return nil, err
-		}
-
-		l = append(l, v)
-	}
 }

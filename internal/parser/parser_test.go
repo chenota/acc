@@ -453,13 +453,14 @@ func TestParser_ParamErr(t *testing.T) {
 		name string
 		test string
 	}{
-		{"trailing comma", `fun main (x int,) -> int { return 0; }`},
 		{"leading comma", `fun main (, x int) -> int { return 0; }`},
 		{"double comma", `fun main (x int,, y int) -> int { return 0; }`},
 		{"missing comma", `fun main (x int y int) -> int { return 0; }`},
 		{"missing param type", `fun main (x) -> int { return 0; }`},
+		{"missing param type after comma", `fun main (x,) -> int { return 0; }`},
 		{"missing param name", `fun main (int) -> int { return 0; }`},
 		{"comma only", `fun main (,) -> int { return 0; }`},
+		{"unclosed param list", `fun main (x int, -> int { return 0; }`},
 	}
 
 	for _, tt := range tests {
@@ -607,7 +608,6 @@ func TestParser_CallErr(t *testing.T) {
 		name string
 		test string
 	}{
-		{"trailing comma", `fun main () -> int { return f(1,); }`},
 		{"leading comma", `fun main () -> int { return f(,1); }`},
 		{"double comma", `fun main () -> int { return f(1,,2); }`},
 		{"missing comma", `fun main () -> int { return f(1 2); }`},
@@ -811,7 +811,6 @@ func TestParser_TypeErr(t *testing.T) {
 		{"function type missing result", `fun () -> fun (int) -> {}`},
 		{"function type missing result in declaration", `fun main () -> int { let f fun (int) -> = x; }`},
 		{"function type missing fun keyword", `fun () -> (int) -> int {}`},
-		{"type list trailing comma", `fun () -> fun (int,) {}`},
 		{"type list leading comma", `fun () -> fun (, int) {}`},
 		{"type list double comma", `fun () -> fun (int,, int) {}`},
 		{"type list missing comma", `fun () -> fun (int int) {}`},
@@ -1046,6 +1045,66 @@ func TestParser_TupleErr(t *testing.T) {
 			assert.Error(t, err)
 		})
 	}
+}
+
+func TestParser_CallTrailingComma(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { return f(1, 2,); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	call := ret.List[0]
+
+	assert.Equal(t, ir.OpCall, call.Op)
+
+	require.Len(t, call.List, 3)
+	assert.Equal(t, ir.OpIdent, call.List[0].Op)
+	assert.Equal(t, ir.OpInt, call.List[1].Op)
+	assert.Equal(t, ir.OpInt, call.List[2].Op)
+}
+
+func TestParser_ParamsTrailingComma(t *testing.T) {
+	tokens := requireTokenize(t, `fun main (x int, y int,) -> int { return 0; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.NotNil(t, fun.Signature)
+	require.Len(t, fun.Signature.Params, 2)
+
+	assert.Equal(t, ir.OpParam, fun.Signature.Params[0].Op)
+	assert.True(t, types.Equal(types.Int(), fun.Signature.Params[0].List[1].Type))
+	assert.Equal(t, ir.OpParam, fun.Signature.Params[1].Op)
+	assert.True(t, types.Equal(types.Int(), fun.Signature.Params[1].List[1].Type))
+}
+
+func TestParser_FunctionTypeTrailingComma(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { let f fun (int, int,) -> int = g; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	decl := fun.List[0]
+	assert.Equal(t, ir.OpDeclaration, decl.Op)
+
+	require.Len(t, decl.List, 3)
+	declType := decl.List[1]
+	require.NotNil(t, declType)
+	assert.True(t, types.Equal(types.Function([]*types.Type{types.Int(), types.Int()}, types.Int()), declType.Type))
 }
 
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {

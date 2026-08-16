@@ -91,7 +91,7 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 			}
 
 			if _, ok := p.t.Expect(lexer.KRParen); !ok {
-				return nil, diagnostic.NewError(p.t.Pos(), "expected ',' or closing parenthisis ')' to match opening parenthisis")
+				return nil, diagnostic.NewError(p.t.Pos(), "expected ',' or closing parenthesis ')' to match opening parenthesis")
 			}
 			break
 		}
@@ -189,23 +189,26 @@ func (p *parser) led(left *ir.Node, op lexer.Token) (*ir.Node, error) {
 			List: []*ir.Node{left},
 		}
 
-		// skip args if we encounter an rparen
-		if next, ok := p.t.Peek(); ok && next.Kind != lexer.KRParen {
-			for {
-				arg, err := p.expr(0)
-				if err != nil {
-					return nil, err
-				}
-				n.List = append(n.List, arg)
-				if _, ok := p.t.Expect(lexer.KComma); !ok {
-					break
-				}
+		for {
+			if _, ok := p.t.Expect(lexer.KRParen); ok {
+				break
 			}
-		}
 
-		// expect matching rparen
-		if _, ok := p.t.Expect(lexer.KRParen); !ok {
-			return nil, diagnostic.NewError(p.t.Pos(), "expected matching right parenthisis")
+			arg, err := p.expr(0)
+			if err != nil {
+				return nil, err
+			}
+			n.List = append(n.List, arg)
+
+			// a comma allows another argument or a closing parenthesis
+			if _, ok := p.t.Expect(lexer.KComma); ok {
+				continue
+			}
+
+			if _, ok := p.t.Expect(lexer.KRParen); !ok {
+				return nil, diagnostic.NewError(p.t.Pos(), "expected ',' or closing parenthesis ')' to match opening parenthesis")
+			}
+			break
 		}
 
 		return n, nil

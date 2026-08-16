@@ -337,29 +337,31 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 	}
 
 	var params []*ir.Node
-	if param, ok := p.parseParam(); ok {
+	for {
+		if _, ok := p.t.Expect(lexer.KRParen); ok {
+			break
+		}
+
+		param, ok := p.parseParam()
+		if !ok {
+			p.t.Restore(loc)
+			return nil, false
+		}
 		params = append(params, param)
 
-		for {
-			if _, ok := p.t.Expect(lexer.KComma); !ok {
-				break
-			}
-			if param, ok := p.parseParam(); ok {
-				params = append(params, param)
-			} else {
-				p.markErr("expected function parameter following comma")
-				p.t.Restore(loc)
-				return nil, false
-			}
+		// a comma allows another parameter or a closing parenthesis
+		if _, ok := p.t.Expect(lexer.KComma); ok {
+			continue
 		}
+
+		if _, ok := p.t.Expect(lexer.KRParen); !ok {
+			p.markErr("expected ',' or closing parenthesis to match open parenthesis")
+			p.t.Restore(loc)
+			return nil, false
+		}
+		break
 	}
 	n.Signature.Params = params
-
-	if _, ok := p.t.Expect(lexer.KRParen); !ok {
-		p.markErr("expected closing parenthesis to match open parenthesis")
-		p.t.Restore(loc)
-		return nil, false
-	}
 
 	if _, ok := p.t.Expect(lexer.KArrow); ok {
 		returnType, ok := p.parseType()
