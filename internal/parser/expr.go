@@ -71,16 +71,45 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 			Val: intVal,
 		}, nil
 	case lexer.KLParen:
-		e, err := p.expr(0)
-		if err != nil {
-			return nil, err
+		var elist []*ir.Node
+		var hasComma bool
+
+		for {
+			if _, ok := p.t.Expect(lexer.KRParen); ok {
+				break
+			}
+
+			e, err := p.expr(0)
+			if err != nil {
+				return nil, err
+			}
+			elist = append(elist, e)
+
+			if _, ok := p.t.Expect(lexer.KComma); ok {
+				hasComma = true
+				continue
+			}
+
+			if _, ok := p.t.Expect(lexer.KRParen); !ok {
+				return nil, diagnostic.NewError(p.t.Pos(), "expected ',' or closing parenthisis ')' to match opening parenthisis")
+			}
+			break
 		}
 
-		if _, ok := p.t.Expect(lexer.KRParen); !ok {
-			return nil, diagnostic.NewError(p.t.Pos(), "expected closing parenthisis ')' to match opening parenthisis")
+		if len(elist) == 0 {
+			return &ir.Node{
+				Op:  ir.OpUnit,
+				Pos: left.Pos,
+			}, nil
+		} else if len(elist) == 1 && !hasComma {
+			return elist[0], nil
+		} else {
+			return &ir.Node{
+				Op:   ir.OpTuple,
+				Pos:  left.Pos,
+				List: elist,
+			}, nil
 		}
-
-		return e, nil
 	case lexer.KIdentifier:
 		return &ir.Node{
 			Op:  ir.OpIdent,

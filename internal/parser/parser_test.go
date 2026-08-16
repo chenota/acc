@@ -958,6 +958,96 @@ func TestParser_DotBadInt(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestParser_Unit(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { return (); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	e := ret.List[0]
+
+	assert.Equal(t, ir.OpUnit, e.Op)
+	assert.Empty(t, e.List)
+}
+
+func TestParser_SingleElementTuple(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { return (x,); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	tuple := ret.List[0]
+
+	assert.Equal(t, ir.OpTuple, tuple.Op)
+
+	require.Len(t, tuple.List, 1)
+	assert.Equal(t, ir.OpIdent, tuple.List[0].Op)
+	assert.Equal(t, "x", tuple.List[0].Ident())
+}
+
+func TestParser_Tuple(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { return (x, y, z); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	tuple := ret.List[0]
+
+	assert.Equal(t, ir.OpTuple, tuple.Op)
+
+	require.Len(t, tuple.List, 3)
+	assert.Equal(t, ir.OpIdent, tuple.List[0].Op)
+	assert.Equal(t, "x", tuple.List[0].Ident())
+	assert.Equal(t, ir.OpIdent, tuple.List[1].Op)
+	assert.Equal(t, "y", tuple.List[1].Ident())
+	assert.Equal(t, ir.OpIdent, tuple.List[2].Op)
+	assert.Equal(t, "z", tuple.List[2].Ident())
+}
+
+func TestParser_TupleErr(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"missing separator", `fun () { return (1 2); }`},
+		{"missing separator after comma", `fun () { return (1, 2 3); }`},
+		{"missing closing parenthesis", `fun () { return (1 + 2; }`},
+		{"missing closing parenthesis after comma", `fun () { return (1, 2; }`},
+		{"leading comma", `fun () { return (, 1); }`},
+		{"consecutive commas", `fun () { return (1,, 2); }`},
+		{"comma by itself", `fun () { return (,); }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := requireTokenize(t, tt.test)
+			_, err := ParseProgram(tokens)
+			assert.Error(t, err)
+		})
+	}
+}
+
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {
 	tokens, err := lexer.Tokenize(strings.NewReader(input))
 	require.NoError(t, err)

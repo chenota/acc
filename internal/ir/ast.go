@@ -36,6 +36,8 @@ const (
 	OpRef
 	OpDeref
 	OpDot
+	OpUnit
+	OpTuple
 )
 
 type Signature struct {
