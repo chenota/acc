@@ -133,7 +133,7 @@ func (n *Node) IsLValue() bool {
 		return false
 	}
 
-	return n.Op == OpIdent || n.Op == OpDeref
+	return n.Op == OpIdent || n.Op == OpDeref || n.Op == OpDot
 }
 
 // Encl returns the node of this node's enclosing function

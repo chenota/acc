@@ -145,9 +145,81 @@ func (a *analyzer) analyzeExpr(scope *ir.Table, n *ir.Node, hint *types.Type) er
 		return a.analyzeDeref(scope, n)
 	case ir.OpFunction:
 		return a.analyzeLambda(scope, n)
+	case ir.OpTuple:
+		return a.analyzeTuple(scope, n, hint)
+	case ir.OpUnit:
+		n.Type = types.Unit()
+		return nil
+	case ir.OpDot:
+		return a.analyzeDot(scope, n)
 	default:
 		return diagnostic.NewError(n.Pos, "unknown expression operation: %d", n.Op)
 	}
+}
+
+func (a *analyzer) analyzeDot(scope *ir.Table, n *ir.Node) error {
+	if len(n.List) != 2 {
+		return diagnostic.NewError(n.Pos, "dot without two elements")
+	}
+
+	left := n.List[0]
+	if err := a.analyzeExpr(scope, left, nil); err != nil {
+		return err
+	}
+	if !left.Type.IsTuple() {
+		// TODO: Way in the future expand this out to idents for record access
+		return diagnostic.NewError(n.Pos, "dot on non-tuple")
+	}
+
+	right := n.List[1]
+	if right.Op != ir.OpInt {
+		return diagnostic.NewError(right.Pos, "tuples must be accessed with integer literals")
+	}
+	if err := a.analyzeExpr(scope, right, nil); err != nil {
+		return err
+	}
+
+	rightVal := right.Val.(*big.Int)
+	if !rightVal.IsInt64() || rightVal.Sign() < 0 || rightVal.Int64() >= int64(len(left.Type.Params())) {
+		return diagnostic.NewError(right.Pos, "field out-of-range for tuple")
+	}
+
+	n.Type = left.Type.Params()[rightVal.Int64()]
+	return nil
+}
+
+func (a *analyzer) analyzeTuple(scope *ir.Table, n *ir.Node, hint *types.Type) error {
+	// hint is only valid if it's the same shape as the tuple
+	useHint := hint.IsTuple() && len(hint.Params()) == len(n.List)
+
+	typeList := make([]*types.Type, len(n.List))
+	for i, e := range n.List {
+		var elemHint *types.Type
+		if useHint {
+			elemHint = hint.Params()[i]
+		}
+
+		if err := a.analyzeExpr(scope, e, elemHint); err != nil {
+			return err
+		}
+
+		// any element left untyped gets defaulted
+		defaultType := e.Type.ToDefault()
+		if !types.Equal(defaultType, e.Type) {
+			if err := a.analyzeExpr(scope, e, defaultType); err != nil {
+				return err
+			}
+			if !types.Equal(e.Type, defaultType) {
+				return diagnostic.NewError(e.Pos, "unable to resolve incomplete type: want %v, got %v", defaultType, e.Type)
+			}
+		}
+
+		typeList[i] = e.Type
+	}
+
+	n.Type = types.Tuple(typeList)
+
+	return nil
 }
 
 func (a *analyzer) analyzeLambda(scope *ir.Table, n *ir.Node) error {

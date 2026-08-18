@@ -520,6 +520,98 @@ func TestAnalyze_Capture_Recursion(t *testing.T) {
 	assert.Empty(t, captureNames(funcs[0]))
 }
 
+func TestAnalyze_Tuple(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let x (int, ()) = (5, ()); return x.0; }`)
+
+	require.Len(t, funcs, 1)
+	f := funcs[0]
+
+	require.Len(t, f.List, 2)
+	e := f.List[0]
+
+	require.Len(t, e.List, 3)
+	assert.True(t, types.Equal(e.List[2].Type, types.Tuple([]*types.Type{types.Int(), types.Unit()})))
+}
+
+func TestAnalyze_Tuple_Inference(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let x = (5, ()); return x.0; }`)
+
+	require.Len(t, funcs, 1)
+	f := funcs[0]
+
+	require.Len(t, f.List, 2)
+	e := f.List[0]
+
+	require.Len(t, e.List, 3)
+	assert.True(t, types.Equal(e.List[2].Type, types.Tuple([]*types.Type{types.Int(), types.Unit()})))
+}
+
+func TestAnalyze_Tuple_Direct(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { return (1, 2).0; }`)
+
+	require.Len(t, funcs, 1)
+	f := funcs[0]
+
+	require.Len(t, f.List, 1)
+	e := f.List[0]
+
+	require.Len(t, e.List, 1)
+	dot := e.List[0]
+
+	// an unhinted tuple literal resolves its own elements, so the projection is a concrete int
+	require.Len(t, dot.List, 2)
+	assert.True(t, types.Equal(dot.List[0].Type, types.Tuple([]*types.Type{types.Int(), types.Int()})))
+	assert.True(t, types.Equal(dot.Type, types.Int()))
+}
+
+func TestAnalyze_Tuple_Nested(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let x = ((1, 2), 3); return x.1; }`)
+
+	require.Len(t, funcs, 1)
+	f := funcs[0]
+
+	require.Len(t, f.List, 2)
+	e := f.List[0]
+
+	require.Len(t, e.List, 3)
+	inner := types.Tuple([]*types.Type{types.Int(), types.Int()})
+	assert.True(t, types.Equal(e.List[2].Type, types.Tuple([]*types.Type{inner, types.Int()})))
+}
+
+func TestAnalyze_Tuple_LValue(t *testing.T) {
+	funcs := mustAnalyze(t, `fun f (x (int, ())) { x.0 = 15; }`)
+
+	require.Len(t, funcs, 1)
+	f := funcs[0]
+
+	require.Len(t, f.List, 1)
+	e := f.List[0]
+
+	require.Len(t, e.List, 2)
+	assert.Equal(t, ir.OpDot, e.List[0].Op)
+	assert.True(t, types.Equal(e.List[1].Type, types.Int()))
+}
+
+func TestAnalyze_Tuple_Dot_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"field past end", `fun main () -> int { let x (int,) = (1,); return x.1; }`},
+		{"field past end of larger tuple", `fun main () -> int { let x (int, int) = (1, 2); return x.2; }`},
+		{"field beyond int64", `fun main () -> int { let x (int,) = (1,); return x.99999999999999999999; }`},
+		{"named field", `fun main () -> int { let y int = 0; let x (int, int) = (1, 2); return x.y; }`},
+		{"dot on non-tuple", `fun main () -> int { let x int = 1; return x.0; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			assert.Error(t, err)
+		})
+	}
+}
+
 // mustAnalyze parses and analyzes src, returning every function in the program, lifted lambdas included.
 func mustAnalyze(t *testing.T, src string) []*ir.Node {
 	t.Helper()

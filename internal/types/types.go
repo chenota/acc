@@ -221,10 +221,14 @@ func (t *Type) Size() int {
 
 func (t *Type) ToDefault() *Type {
 	switch {
-	case t == nil:
-		return Unit()
 	case Equal(t, UntypedInt()):
 		return Int()
+	case t.IsTuple():
+		elems := make([]*Type, len(t.params))
+		for i := range t.params {
+			elems[i] = t.params[i].ToDefault()
+		}
+		return Tuple(elems)
 	default:
 		return t
 	}
