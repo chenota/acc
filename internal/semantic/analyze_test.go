@@ -592,6 +592,20 @@ func TestAnalyze_Tuple_LValue(t *testing.T) {
 	assert.True(t, types.Equal(e.List[1].Type, types.Int()))
 }
 
+func TestAnalyze_Tuple_Ref(t *testing.T) {
+	funcs := mustAnalyze(t, `fun f (x (int, ())) -> int { let y = &x.0; return *y; }`)
+
+	require.Len(t, funcs, 1)
+	f := funcs[0]
+
+	require.Len(t, f.List, 2)
+	e := f.List[1]
+
+	require.Len(t, e.List, 1)
+	assert.Equal(t, ir.OpDeref, e.List[0].Op)
+	assert.True(t, types.Equal(e.List[0].Type, types.Int()))
+}
+
 func TestAnalyze_Tuple_Dot_Err(t *testing.T) {
 	tests := []struct {
 		name string
