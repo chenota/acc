@@ -168,7 +168,7 @@ func (a *analyzer) analyzeDot(scope *ir.Table, n *ir.Node) error {
 	}
 	if !left.Type.IsTuple() {
 		// TODO: Way in the future expand this out to idents for record access
-		return diagnostic.NewError(n.Pos, "dot on non-tuple")
+		return diagnostic.NewError(n.Pos, "dot on non-tuple type: %v", left.Type)
 	}
 
 	right := n.List[1]
@@ -179,10 +179,13 @@ func (a *analyzer) analyzeDot(scope *ir.Table, n *ir.Node) error {
 		return err
 	}
 
+	// analyzed without a hint so that an out-of-range field reports as such rather than as an overflow
 	rightVal := right.Val.(*big.Int)
 	if !rightVal.IsInt64() || rightVal.Sign() < 0 || rightVal.Int64() >= int64(len(left.Type.Params())) {
-		return diagnostic.NewError(right.Pos, "field out-of-range for tuple")
+		return diagnostic.NewError(right.Pos, "field %v out-of-range for tuple %v", rightVal, left.Type)
 	}
+
+	right.Type = types.Int()
 
 	n.Type = left.Type.Params()[rightVal.Int64()]
 	return nil
