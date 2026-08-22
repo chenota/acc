@@ -47,7 +47,7 @@ func (a *analyzer) analyzeStmt(scope *ir.Table, n *ir.Node) error {
 		// assignment operators have same structure and use same typing rules as regular assignment
 		return a.analyzeAssignment(scope, n)
 	case ir.OpCall:
-		return a.analyzeCall(scope, n)
+		return a.inferCall(scope, n)
 	default:
 		return diagnostic.NewError(n.Pos, "unknown statement operation: %d", n.Op)
 	}
@@ -65,13 +65,13 @@ func (a *analyzer) analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 		return diagnostic.NewError(target.Pos, "invalid assignment target: expression is not assignable")
 	}
 
-	// resolve the target as an expression
-	if err := a.analyzeExpr(scope, target, nil); err != nil {
+	// an lvalue carries its own type, so the target is always synthesized
+	if err := a.inferExpr(scope, target); err != nil {
 		return err
 	}
 
-	// analyze the expression with hint of the target's type
-	if err := a.analyzeExpr(scope, e, target.Type); err != nil {
+	// the target's type is what the context expects of the right-hand side
+	if err := a.checkExpr(scope, e, target.Type); err != nil {
 		return err
 	}
 
@@ -91,29 +91,28 @@ func (a *analyzer) analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 	typeNode := n.List[1]
 	e := n.List[2]
 
-	var hint *types.Type
+	var want *types.Type
 	if typeNode != nil {
-		hint = typeNode.Type
+		want = typeNode.Type
 	}
 
-	if err := a.analyzeExpr(scope, e, hint); err != nil {
+	// an annotation puts us in checking mode; without one there is nothing to check against
+	if want != nil {
+		if err := a.checkExpr(scope, e, want); err != nil {
+			return err
+		}
+	} else if err := a.inferExpr(scope, e); err != nil {
 		return err
 	}
 
-	// we need a concrete type at this point to resolve any unknowns. must re-analyze with hint if type changes.
-	defaultType := e.Type.ToDefault()
-	if !types.Equal(defaultType, e.Type) {
-		if err := a.analyzeExpr(scope, e, defaultType); err != nil {
-			return err
-		}
-		if !types.Equal(e.Type, defaultType) {
-			return diagnostic.NewError(n.Pos, "unable to resolve incomplete type: want %v, got %v", defaultType, e.Type)
-		}
+	// the variable's type lands in the symbol table, so it has to be concrete by now
+	if err := a.materialize(scope, e); err != nil {
+		return err
 	}
 
 	// wanted type must equal got type
-	if hint != nil && !types.Equal(hint, e.Type) {
-		return diagnostic.NewError(n.Pos, "variable declaration with mismatched types: want %v, got %v", hint, e.Type)
+	if want != nil && !types.Equal(want, e.Type) {
+		return diagnostic.NewError(n.Pos, "variable declaration with mismatched types: want %v, got %v", want, e.Type)
 	}
 
 	// register self in scope; will get nil if variable already exists in scope
@@ -127,43 +126,78 @@ func (a *analyzer) analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 	return nil
 }
 
-func (a *analyzer) analyzeExpr(scope *ir.Table, n *ir.Node, hint *types.Type) error {
+// inferExpr synthesizes n's type from the expression alone, with no expectation from context.
+func (a *analyzer) inferExpr(scope *ir.Table, n *ir.Node) error {
 	switch n.Op {
 	case ir.OpInt:
-		return a.analyzeInt(n, hint)
+		n.Type = types.UntypedInt()
+		return nil
 	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
-		return a.analyzeBop(scope, n, hint)
+		return a.inferBop(scope, n)
 	case ir.OpIdent:
-		return a.analyzeIdent(scope, n)
+		return a.inferIdent(scope, n)
 	case ir.OpNegate:
-		return a.analyzeNegate(scope, n, hint)
+		return a.inferNegate(scope, n)
 	case ir.OpCall:
-		return a.analyzeCall(scope, n)
+		return a.inferCall(scope, n)
 	case ir.OpRef:
-		return a.analyzeRef(scope, n)
+		return a.inferRef(scope, n)
 	case ir.OpDeref:
-		return a.analyzeDeref(scope, n)
+		return a.inferDeref(scope, n)
 	case ir.OpFunction:
-		return a.analyzeLambda(scope, n)
+		return a.inferLambda(scope, n)
 	case ir.OpTuple:
-		return a.analyzeTuple(scope, n, hint)
+		return a.inferTuple(scope, n)
 	case ir.OpUnit:
 		n.Type = types.Unit()
 		return nil
 	case ir.OpDot:
-		return a.analyzeDot(scope, n)
+		return a.inferDot(scope, n)
 	default:
 		return diagnostic.NewError(n.Pos, "unknown expression operation: %d", n.Op)
 	}
 }
 
-func (a *analyzer) analyzeDot(scope *ir.Table, n *ir.Node) error {
+func (a *analyzer) checkExpr(scope *ir.Table, n *ir.Node, want *types.Type) error {
+	switch n.Op {
+	case ir.OpInt:
+		return a.checkInt(n, want)
+	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
+		return a.checkBop(scope, n, want)
+	case ir.OpNegate:
+		return a.checkNegate(scope, n, want)
+	case ir.OpTuple:
+		return a.checkTuple(scope, n, want)
+	default:
+		// nothing to push down, so synthesize and let the caller compare
+		return a.inferExpr(scope, n)
+	}
+}
+
+// materialize settles any untyped part of n's type on its default
+func (a *analyzer) materialize(scope *ir.Table, n *ir.Node) error {
+	defaultType := n.Type.ToDefault()
+	if types.Equal(defaultType, n.Type) {
+		return nil
+	}
+
+	if err := a.checkExpr(scope, n, defaultType); err != nil {
+		return err
+	}
+	if !types.Equal(n.Type, defaultType) {
+		return diagnostic.NewError(n.Pos, "unable to resolve incomplete type: want %v, got %v", defaultType, n.Type)
+	}
+
+	return nil
+}
+
+func (a *analyzer) inferDot(scope *ir.Table, n *ir.Node) error {
 	if len(n.List) != 2 {
 		return diagnostic.NewError(n.Pos, "dot without two elements")
 	}
 
 	left := n.List[0]
-	if err := a.analyzeExpr(scope, left, nil); err != nil {
+	if err := a.inferExpr(scope, left); err != nil {
 		return err
 	}
 	if !left.Type.IsTuple() {
@@ -175,11 +209,11 @@ func (a *analyzer) analyzeDot(scope *ir.Table, n *ir.Node) error {
 	if right.Op != ir.OpInt {
 		return diagnostic.NewError(right.Pos, "tuples must be accessed with integer literals")
 	}
-	if err := a.analyzeExpr(scope, right, nil); err != nil {
+	if err := a.inferExpr(scope, right); err != nil {
 		return err
 	}
 
-	// analyzed without a hint so that an out-of-range field reports as such rather than as an overflow
+	// synthesized rather than checked so that an out-of-range field reports as such rather than as an overflow
 	rightVal := right.Val.(*big.Int)
 	if !rightVal.IsInt64() || rightVal.Sign() < 0 || rightVal.Int64() >= int64(len(left.Type.Params())) {
 		return diagnostic.NewError(right.Pos, "field %v out-of-range for tuple %v", rightVal, left.Type)
@@ -191,30 +225,15 @@ func (a *analyzer) analyzeDot(scope *ir.Table, n *ir.Node) error {
 	return nil
 }
 
-func (a *analyzer) analyzeTuple(scope *ir.Table, n *ir.Node, hint *types.Type) error {
-	// hint is only valid if it's the same shape as the tuple
-	useHint := hint.IsTuple() && len(hint.Params()) == len(n.List)
-
+// inferTuple types a tuple literal with nothing expected of it.
+func (a *analyzer) inferTuple(scope *ir.Table, n *ir.Node) error {
 	typeList := make([]*types.Type, len(n.List))
 	for i, e := range n.List {
-		var elemHint *types.Type
-		if useHint {
-			elemHint = hint.Params()[i]
-		}
-
-		if err := a.analyzeExpr(scope, e, elemHint); err != nil {
+		if err := a.inferExpr(scope, e); err != nil {
 			return err
 		}
-
-		// any element left untyped gets defaulted
-		defaultType := e.Type.ToDefault()
-		if !types.Equal(defaultType, e.Type) {
-			if err := a.analyzeExpr(scope, e, defaultType); err != nil {
-				return err
-			}
-			if !types.Equal(e.Type, defaultType) {
-				return diagnostic.NewError(e.Pos, "unable to resolve incomplete type: want %v, got %v", defaultType, e.Type)
-			}
+		if err := a.materialize(scope, e); err != nil {
+			return err
 		}
 
 		typeList[i] = e.Type
@@ -225,7 +244,30 @@ func (a *analyzer) analyzeTuple(scope *ir.Table, n *ir.Node, hint *types.Type) e
 	return nil
 }
 
-func (a *analyzer) analyzeLambda(scope *ir.Table, n *ir.Node) error {
+// checkTuple pushes each component of want into the element sitting at that position.
+func (a *analyzer) checkTuple(scope *ir.Table, n *ir.Node, want *types.Type) error {
+	if !want.IsTuple() || len(want.Params()) != len(n.List) {
+		return a.inferTuple(scope, n)
+	}
+
+	typeList := make([]*types.Type, len(n.List))
+	for i, e := range n.List {
+		if err := a.checkExpr(scope, e, want.Params()[i]); err != nil {
+			return err
+		}
+		if err := a.materialize(scope, e); err != nil {
+			return err
+		}
+
+		typeList[i] = e.Type
+	}
+
+	n.Type = types.Tuple(typeList)
+
+	return nil
+}
+
+func (a *analyzer) inferLambda(scope *ir.Table, n *ir.Node) error {
 	if n.Signature.Name.Ident() != "" {
 		return diagnostic.NewError(n.Pos, "lambda functions must not be named")
 	}
@@ -248,7 +290,7 @@ func (a *analyzer) analyzeLambda(scope *ir.Table, n *ir.Node) error {
 	return a.analyzeFunctionBody(scope, n)
 }
 
-func (a *analyzer) analyzeRef(scope *ir.Table, n *ir.Node) error {
+func (a *analyzer) inferRef(scope *ir.Table, n *ir.Node) error {
 	if len(n.List) < 1 {
 		return diagnostic.NewError(n.Pos, "ref without argument")
 	}
@@ -260,7 +302,7 @@ func (a *analyzer) analyzeRef(scope *ir.Table, n *ir.Node) error {
 		return diagnostic.NewError(sub.Pos, "cannot take reference of non-addressable expression")
 	}
 
-	if err := a.analyzeExpr(scope, sub, nil); err != nil {
+	if err := a.inferExpr(scope, sub); err != nil {
 		return err
 	}
 
@@ -270,13 +312,13 @@ func (a *analyzer) analyzeRef(scope *ir.Table, n *ir.Node) error {
 	return nil
 }
 
-func (a *analyzer) analyzeDeref(scope *ir.Table, n *ir.Node) error {
+func (a *analyzer) inferDeref(scope *ir.Table, n *ir.Node) error {
 	if len(n.List) < 1 {
 		return diagnostic.NewError(n.Pos, "deref without argument")
 	}
 
 	sub := n.List[0]
-	if err := a.analyzeExpr(scope, sub, nil); err != nil {
+	if err := a.inferExpr(scope, sub); err != nil {
 		return err
 	}
 
@@ -290,14 +332,14 @@ func (a *analyzer) analyzeDeref(scope *ir.Table, n *ir.Node) error {
 	return nil
 }
 
-func (a *analyzer) analyzeCall(scope *ir.Table, n *ir.Node) error {
+func (a *analyzer) inferCall(scope *ir.Table, n *ir.Node) error {
 	if len(n.List) < 1 {
 		return diagnostic.NewError(n.Pos, "call without a callee")
 	}
 
 	// analyze the expression being called
 	callee := n.List[0]
-	if err := a.analyzeExpr(scope, callee, nil); err != nil {
+	if err := a.inferExpr(scope, callee); err != nil {
 		return err
 	}
 
@@ -319,7 +361,8 @@ func (a *analyzer) analyzeCall(scope *ir.Table, n *ir.Node) error {
 		arg := args[i]
 		param := params[i]
 
-		if err := a.analyzeExpr(scope, arg, param); err != nil {
+		// the parameter is what this position expects of the argument
+		if err := a.checkExpr(scope, arg, param); err != nil {
 			return err
 		}
 
@@ -334,14 +377,13 @@ func (a *analyzer) analyzeCall(scope *ir.Table, n *ir.Node) error {
 	return nil
 }
 
-func (a *analyzer) analyzeNegate(scope *ir.Table, n *ir.Node, hint *types.Type) error {
-	if len(n.List) != 1 {
-		return diagnostic.NewError(n.Pos, "negation without an argument")
+func (a *analyzer) inferNegate(scope *ir.Table, n *ir.Node) error {
+	e, err := negateOperand(n)
+	if err != nil {
+		return err
 	}
 
-	// analyze sub-expression with hint
-	e := n.List[0]
-	if err := a.analyzeExpr(scope, e, hint); err != nil {
+	if err := a.inferExpr(scope, e); err != nil {
 		return err
 	}
 
@@ -351,7 +393,30 @@ func (a *analyzer) analyzeNegate(scope *ir.Table, n *ir.Node, hint *types.Type) 
 	return nil
 }
 
-func (a *analyzer) analyzeIdent(scope *ir.Table, n *ir.Node) error {
+func (a *analyzer) checkNegate(scope *ir.Table, n *ir.Node, want *types.Type) error {
+	e, err := negateOperand(n)
+	if err != nil {
+		return err
+	}
+
+	if err := a.checkExpr(scope, e, want); err != nil {
+		return err
+	}
+
+	n.Type = e.Type
+
+	return nil
+}
+
+func negateOperand(n *ir.Node) (*ir.Node, error) {
+	if len(n.List) != 1 {
+		return nil, diagnostic.NewError(n.Pos, "negation without an argument")
+	}
+
+	return n.List[0], nil
+}
+
+func (a *analyzer) inferIdent(scope *ir.Table, n *ir.Node) error {
 	// need an existing symbol for this ident
 	existingSym := scope.Sym(n.Ident())
 	if existingSym == nil {
@@ -367,30 +432,51 @@ func (a *analyzer) analyzeIdent(scope *ir.Table, n *ir.Node) error {
 	return nil
 }
 
-func (a *analyzer) analyzeBop(scope *ir.Table, n *ir.Node, hint *types.Type) error {
-	// extract left and right operands
-	if len(n.List) != 2 {
-		return diagnostic.NewError(n.Pos, "binary operator without two operands")
-	}
-	left := n.List[0]
-	right := n.List[1]
-
-	// figure out types of left and right operands given context
-	if err := a.analyzeExpr(scope, left, hint); err != nil {
-		return err
-	}
-	if err := a.analyzeExpr(scope, right, hint); err != nil {
+func (a *analyzer) inferBop(scope *ir.Table, n *ir.Node) error {
+	left, right, err := bopOperands(n)
+	if err != nil {
 		return err
 	}
 
-	// attempt to resolve flexible types
+	if err := a.inferExpr(scope, left); err != nil {
+		return err
+	}
+	if err := a.inferExpr(scope, right); err != nil {
+		return err
+	}
+
+	return a.settleBop(scope, n, left, right)
+}
+
+// checkBop hands the expectation to both operands: these operators are homogeneous, so whatever
+// the context wants of the result it wants of each side too.
+func (a *analyzer) checkBop(scope *ir.Table, n *ir.Node, want *types.Type) error {
+	left, right, err := bopOperands(n)
+	if err != nil {
+		return err
+	}
+
+	if err := a.checkExpr(scope, left, want); err != nil {
+		return err
+	}
+	if err := a.checkExpr(scope, right, want); err != nil {
+		return err
+	}
+
+	return a.settleBop(scope, n, left, right)
+}
+
+// settleBop resolves an operand still left untyped against a concrete sibling, then validates the
+// pair and types the operator. Shared by both modes: an expectation that failed to reach an operand
+// (or that never existed) leaves the same situation behind either way.
+func (a *analyzer) settleBop(scope *ir.Table, n *ir.Node, left *ir.Node, right *ir.Node) error {
 	switch {
 	case left.Type.IsUntypedNumeric() && right.Type.IsConcreteNumeric():
-		if err := a.analyzeExpr(scope, left, right.Type); err != nil {
+		if err := a.checkExpr(scope, left, right.Type); err != nil {
 			return err
 		}
 	case left.Type.IsConcreteNumeric() && right.Type.IsUntypedNumeric():
-		if err := a.analyzeExpr(scope, right, left.Type); err != nil {
+		if err := a.checkExpr(scope, right, left.Type); err != nil {
 			return err
 		}
 	}
@@ -409,6 +495,14 @@ func (a *analyzer) analyzeBop(scope *ir.Table, n *ir.Node, hint *types.Type) err
 	n.Type = left.Type
 
 	return nil
+}
+
+func bopOperands(n *ir.Node) (*ir.Node, *ir.Node, error) {
+	if len(n.List) != 2 {
+		return nil, nil, diagnostic.NewError(n.Pos, "binary operator without two operands")
+	}
+
+	return n.List[0], n.List[1], nil
 }
 
 // terminates reports whether control cannot flow past n.
@@ -524,7 +618,9 @@ func (a *analyzer) analyzeReturn(scope *ir.Table, r *ir.Node) error {
 	// determine type of sub-expression
 	if len(r.List) > 0 {
 		e := r.List[0]
-		if err := a.analyzeExpr(scope, e, expectedOut); err != nil {
+
+		// the signature's result type is what a return expression is checked against
+		if err := a.checkExpr(scope, e, expectedOut); err != nil {
 			return err
 		}
 		if !types.Equal(e.Type, expectedOut) {
@@ -540,12 +636,13 @@ func (a *analyzer) analyzeReturn(scope *ir.Table, r *ir.Node) error {
 	return nil
 }
 
-func (a *analyzer) analyzeInt(i *ir.Node, hint *types.Type) error {
+// checkInt types an integer literal against want, rejecting a value that will not fit
+func (a *analyzer) checkInt(i *ir.Node, want *types.Type) error {
 	i.Type = types.UntypedInt()
 
 	intVal := i.Val.(*big.Int)
 
-	if types.Equal(hint, types.Int()) {
+	if types.Equal(want, types.Int()) {
 		max32 := big.NewInt(math.MaxInt32)
 		min32 := big.NewInt(math.MinInt32)
 		if intVal.Cmp(max32) > 0 || intVal.Cmp(min32) < 0 {
