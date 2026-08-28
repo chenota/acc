@@ -30,6 +30,7 @@ const (
 	OpLocalAddr  // address bound to a static stack slot
 	OpClosurePtr
 	OpClosureCall
+	OpUnit
 )
 
 // Operand layout of OpClosureCall.

@@ -198,9 +198,15 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 		return b.genRef(expr)
 	case ir.OpDeref:
 		return b.genDeref(expr)
+	case ir.OpUnit:
+		return b.genUnit(expr)
 	default:
 		return nil, diagnostic.NewError(expr.Pos, "unknown expression operation: %d", expr.Op)
 	}
+}
+
+func (b *builder) genUnit(*ir.Node) (*Value, error) {
+	return b.targetFunc.appendValue(OpUnit, types.Unit(), b.currentBlock), nil
 }
 
 func (b *builder) genRef(expr *ir.Node) (*Value, error) {
