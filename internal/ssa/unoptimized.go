@@ -143,22 +143,19 @@ func (b *builder) genDecl(n *ir.Node) error {
 		return diagnostic.NewError(n.Pos, "variable declaration missing type or expression")
 	}
 
-	exprVal, err := b.genExpr(n.List[2])
-	if err != nil {
-		return err
-	}
-
-	// make sure this isn't already allocated
 	if _, ok := b.vars[n.Sym]; ok {
 		return diagnostic.NewError(n.Pos, "variable already allocated: %s", n.List[0].Ident())
 	}
 
 	// reserve a slot for the new variable
-	slot := b.targetFunc.newSlot(n.Sym, exprVal.Type)
+	slot := b.targetFunc.newSlot(n.Sym, n.Sym.Type)
+
+	// generate n into the slot
+	if err := b.genExprInto(addr{Slot: slot}, n.List[2]); err != nil {
+		return err
+	}
+
 	b.vars[n.Sym] = slot
-
-	b.genStoreTo(addr{Slot: slot}, exprVal)
-
 	return nil
 }
 
@@ -167,19 +164,14 @@ func (b *builder) genAssign(n *ir.Node) error {
 		return diagnostic.NewError(n.Pos, "variable assignment missing target or expression")
 	}
 
-	exprVal, err := b.genExpr(n.List[1])
-	if err != nil {
-		return err
-	}
-
+	// figure out destination we're assigning to
 	dest, err := b.genLValue(n.List[0])
 	if err != nil {
 		return err
 	}
 
-	b.genStoreTo(dest, exprVal)
-
-	return nil
+	// generate new value into destination
+	return b.genExprInto(dest, n.List[1])
 }
 
 func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
@@ -203,6 +195,17 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 	default:
 		return nil, diagnostic.NewError(expr.Pos, "unknown expression operation: %d", expr.Op)
 	}
+}
+
+// genExprInto generates an expression value into an area of memory
+func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
+	// scalar case
+	v, err := b.genExpr(expr)
+	if err != nil {
+		return err
+	}
+	b.genStoreTo(dest, v)
+	return nil
 }
 
 func (b *builder) genUnit(*ir.Node) (*Value, error) {
