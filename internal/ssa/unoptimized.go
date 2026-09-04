@@ -192,9 +192,33 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 		return b.genDeref(expr)
 	case ir.OpUnit:
 		return b.genUnit(expr)
+	case ir.OpDot:
+		place, err := b.genPlace(expr)
+		if err != nil {
+			return nil, err
+		}
+		return b.genLoadFrom(place, expr.Type), nil
 	default:
 		return nil, diagnostic.NewError(expr.Pos, "unknown expression operation: %d", expr.Op)
 	}
+}
+
+// genPlace returns an addressable bucket for expr
+func (b *builder) genPlace(expr *ir.Node) (addr, error) {
+	switch expr.Op {
+	case ir.OpIdent, ir.OpDeref, ir.OpDot:
+		// idents, derefs, dots all valid lvalues we can reuse that logic
+		return b.genLValue(expr)
+	}
+
+	// all others need a new address
+	a := addr{
+		Slot: b.targetFunc.newSlot(nil, expr.Type),
+	}
+	if err := b.genExprInto(a, expr); err != nil {
+		return addr{}, err
+	}
+	return a, nil
 }
 
 // genExprInto generates an expression value into an area of memory
@@ -294,6 +318,15 @@ func (b *builder) genLValue(expr *ir.Node) (addr, error) {
 			return addr{}, err
 		}
 		return addr{Ptr: ptr}, nil
+	case ir.OpDot:
+		// get the address of the dot'ed tuple
+		base, err := b.genPlace(expr.List[0])
+		if err != nil {
+			return addr{}, err
+		}
+		// dot field stored as a big Int we need to convert it (gross)
+		idx := int(expr.List[0].Val.(*big.Int).Int64())
+		return base.OffsetBy(expr.List[0].Type.Offset(idx)), nil
 	}
 	return addr{}, diagnostic.NewError(expr.Pos, "invalid op for lvalue: %v", expr.Op)
 }
