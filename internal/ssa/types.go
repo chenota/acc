@@ -31,7 +31,6 @@ const (
 	OpClosurePtr
 	OpClosureCall
 	OpUnit
-	OpTuple
 )
 
 // Operand layout of OpClosureCall.
