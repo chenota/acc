@@ -199,12 +199,28 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 
 // genExprInto generates an expression value into an area of memory
 func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
-	// scalar case
-	v, err := b.genExpr(expr)
-	if err != nil {
-		return err
+	switch expr.Op {
+	case ir.OpTuple:
+		params := expr.Type.Params()
+
+		if len(expr.List) != len(params) {
+			return diagnostic.NewError(expr.Pos, "tuple has %d elements but its type has %d", len(expr.List), len(params))
+		}
+
+		// each element goes directly into its field in the tuple
+		for i := range params {
+			if err := b.genExprInto(dest.OffsetBy(expr.Type.Offset(i)), expr.List[i]); err != nil {
+				return err
+			}
+		}
+	default:
+		v, err := b.genExpr(expr)
+		if err != nil {
+			return err
+		}
+		b.genStoreTo(dest, v)
 	}
-	b.genStoreTo(dest, v)
+
 	return nil
 }
 
@@ -251,8 +267,14 @@ func (b *builder) genDeref(expr *ir.Node) (*Value, error) {
 }
 
 type addr struct {
-	Slot *Slot  // frame slot referenced directly
-	Ptr  *Value // an address computed at runtime
+	Slot   *Slot  // frame slot referenced directly
+	Ptr    *Value // an address computed at runtime
+	Offset int    // offset from address
+}
+
+func (a addr) OffsetBy(bytes int) addr {
+	a.Offset += bytes
+	return a
 }
 
 func (b *builder) genLValue(expr *ir.Node) (addr, error) {
@@ -281,11 +303,13 @@ func (b *builder) genLoadFrom(dest addr, t *types.Type) *Value {
 	if dest.Slot != nil {
 		v := b.targetFunc.appendValue(OpStaticLoad, t, b.currentBlock)
 		v.Value = dest.Slot
+		v.Offset = dest.Offset
 		return v
 	}
 
 	v := b.targetFunc.appendValue(OpLoad, t, b.currentBlock)
 	v.Args = []*Value{dest.Ptr}
+	v.Offset = dest.Offset
 	return v
 }
 
@@ -295,11 +319,13 @@ func (b *builder) genStoreTo(dest addr, val *Value) *Value {
 		v := b.targetFunc.appendValue(OpStaticStore, val.Type, b.currentBlock)
 		v.Args = []*Value{val}
 		v.Value = dest.Slot
+		v.Offset = dest.Offset
 		return v
 	}
 
 	v := b.targetFunc.appendValue(OpStore, val.Type, b.currentBlock)
 	v.Args = []*Value{val, dest.Ptr}
+	v.Offset = dest.Offset
 	return v
 }
 

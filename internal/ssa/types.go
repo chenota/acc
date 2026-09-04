@@ -51,6 +51,9 @@ type Value struct {
 
 	Value any
 
+	// Offset is the byte offset from the slot or pointer this value addresses.
+	Offset int
+
 	Loc Location
 
 	hints map[register.Register]int // hints stores the number of hints this value has per register

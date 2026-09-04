@@ -13,9 +13,9 @@ func layoutFrame(f *Func) {
 
 	var offset int
 	for _, s := range f.Slots {
-		byteSize := s.Type.Size()
-		offset += byteSize
-		offset = (offset + byteSize - 1) &^ (byteSize - 1)
+		align := s.Type.Align()
+		offset += s.Type.Size()
+		offset = (offset + align - 1) &^ (align - 1)
 		s.Loc = NewFrame(-offset)
 	}
 }

@@ -154,7 +154,7 @@ func generateValue(v *ssa.Value) []Inst {
 func generateLocalAddr(v *ssa.Value) Inst {
 	return Inst{
 		Op:   "leaq", // always use the quadword version of this
-		Src1: slotArg(v.Slot()),
+		Src1: slotArg(v.Slot(), v.Offset),
 		Dest: toArg(v),
 	}
 }
@@ -163,14 +163,14 @@ func generateStore(v *ssa.Value) Inst {
 	return Inst{
 		Op:   movOp(v.Type.Size()),
 		Src1: toArg(v.Args[0]),
-		Dest: indirect(v.Args[1]),
+		Dest: indirect(v.Args[1], v.Offset),
 	}
 }
 
 func generateLoad(v *ssa.Value) Inst {
 	return Inst{
 		Op:   movOp(v.Type.Size()),
-		Src1: indirect(v.Args[0]),
+		Src1: indirect(v.Args[0], v.Offset),
 		Dest: toArg(v),
 	}
 }
@@ -248,7 +248,7 @@ func generateConstInt(v *ssa.Value) Inst {
 func generateStaticLoad(v *ssa.Value) Inst {
 	return Inst{
 		Op:   movOp(v.Type.Size()),
-		Src1: slotArg(v.Slot()),
+		Src1: slotArg(v.Slot(), v.Offset),
 		Dest: toArg(v),
 	}
 }
@@ -257,24 +257,24 @@ func generateStaticStore(v *ssa.Value) Inst {
 	return Inst{
 		Op:   movOp(v.Type.Size()),
 		Src1: toArg(v.Args[0]),
-		Dest: slotArg(v.Slot()),
+		Dest: slotArg(v.Slot(), v.Offset),
 	}
 }
 
 // slotArg is the memory operand addressing a slot in the current frame.
-func slotArg(s *ssa.Slot) Arg {
+func slotArg(s *ssa.Slot, offset int) Arg {
 	return Arg{
 		Kind:  KMemory,
 		Reg:   s.Loc.Reg,
-		Value: s.Loc.Offset,
+		Value: s.Loc.Offset + offset,
 	}
 }
 
-func indirect(ptr *ssa.Value) Arg {
+func indirect(ptr *ssa.Value, offset int) Arg {
 	return Arg{
 		Kind:  KMemory,
 		Reg:   ptr.Loc.Reg,
-		Value: 0,
+		Value: offset,
 	}
 }
 
@@ -397,13 +397,10 @@ func text(v string) Arg {
 	return Arg{Kind: KText, Value: v}
 }
 
-// symbol maps a source-level name to its assembly symbol, applying the target's
-// C symbol convention (see symbolPrefix).
 func symbol(name string) string {
 	return symbolPrefix + name
 }
 
-// funcLabel is the assembly symbol for a function.
 func funcLabel(f *ssa.Func) string {
 	return symbol(f.Name())
 }

@@ -158,6 +158,16 @@ func (t *Type) Result() *Type {
 	return t.result
 }
 
+// Offset returns the byte offset of field i within a tuple.
+func (t *Type) Offset(i int) int {
+	var offset int
+	for _, elem := range t.params[:i] {
+		offset = roundUp(offset, elem.Align()) + elem.Size()
+	}
+
+	return roundUp(offset, t.params[i].Align())
+}
+
 func (t *Type) IsUnit() bool {
 	if t == nil {
 		return false
@@ -208,15 +218,37 @@ func (t *Type) Size() int {
 	case KInt:
 		return 4
 	case KTuple:
-		// tuple layout does not pad or align elements yet
-		size := 0
+		var size int
 		for _, elem := range t.params {
-			size += elem.Size()
+			size = roundUp(size, elem.Align()) + elem.Size()
 		}
-		return size
+		return roundUp(size, t.Align())
 	default:
 		return 8
 	}
+}
+
+// Align returns the address alignment the type requires, in bytes.
+func (t *Type) Align() int {
+	switch t.kind {
+	case KUnit:
+		return 1
+	case KInt:
+		return 4
+	case KTuple:
+		align := 1
+		for _, elem := range t.params {
+			align = max(align, elem.Align())
+		}
+		return align
+	default:
+		return 8
+	}
+}
+
+// roundUp rounds x up to the next multiple of align
+func roundUp(x, align int) int {
+	return (x + align - 1) &^ (align - 1)
 }
 
 func (t *Type) ToDefault() *Type {
