@@ -207,7 +207,7 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 func (b *builder) genPlace(expr *ir.Node) (addr, error) {
 	switch expr.Op {
 	case ir.OpIdent, ir.OpDeref, ir.OpDot:
-		// idents, derefs, dots all valid lvalues we can reuse that logic
+		// idents, derefs, dots already refer to addresable locations so grab that address
 		return b.genLValue(expr)
 	}
 
