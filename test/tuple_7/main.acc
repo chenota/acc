@@ -1,0 +1,4 @@
+fun main () -> int {
+    let t = ((1, 2), 3);
+    return t.0.1 + t.1;
+}

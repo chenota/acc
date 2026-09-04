@@ -1,0 +1,6 @@
+fun main () -> int {
+    let a = 30;
+    let x = (12, &a);
+    let y = x;
+    return y.0 + *y.1;
+}

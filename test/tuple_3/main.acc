@@ -1,0 +1,4 @@
+fun main () -> int {
+    let t = (10, 32);
+    return t.0 + t.1;
+}

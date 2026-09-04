@@ -1,0 +1,9 @@
+fun make () -> *(int, int) {
+    let t = (40, 2);
+    return &t;
+}
+
+fun main () -> int {
+    let p = make();
+    return (*p).0 + (*p).1;
+}

@@ -1,0 +1,6 @@
+fun main () -> int {
+    let a = 10;
+    let t = (2, &a);
+    *t.1 = 40;
+    return a + t.0;
+}
