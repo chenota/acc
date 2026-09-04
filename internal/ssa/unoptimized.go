@@ -325,7 +325,7 @@ func (b *builder) genLValue(expr *ir.Node) (addr, error) {
 			return addr{}, err
 		}
 		// dot field stored as a big Int we need to convert it (gross)
-		idx := int(expr.List[0].Val.(*big.Int).Int64())
+		idx := int(expr.List[1].Val.(*big.Int).Int64())
 		return base.OffsetBy(expr.List[0].Type.Offset(idx)), nil
 	}
 	return addr{}, diagnostic.NewError(expr.Pos, "invalid op for lvalue: %v", expr.Op)
