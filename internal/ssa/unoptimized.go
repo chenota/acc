@@ -205,8 +205,7 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 
 // genPlace returns an addressable bucket for expr
 func (b *builder) genPlace(expr *ir.Node) (addr, error) {
-	switch expr.Op {
-	case ir.OpIdent, ir.OpDeref, ir.OpDot:
+	if isPlace(expr) {
 		// idents, derefs, dots already refer to addresable locations so grab that address
 		return b.genLValue(expr)
 	}
@@ -238,6 +237,16 @@ func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
 			}
 		}
 	default:
+		// existing tuples must be copied
+		if expr.Type.IsTuple() && isPlace(expr) {
+			src, err := b.genLValue(expr)
+			if err != nil {
+				return err
+			}
+			b.genCopyFields(dest, src, expr.Type)
+			return nil
+		}
+
 		v, err := b.genExpr(expr)
 		if err != nil {
 			return err
@@ -246,6 +255,28 @@ func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
 	}
 
 	return nil
+}
+
+// isPlace reports whether expr denotes an existing addressable location.
+func isPlace(expr *ir.Node) bool {
+	switch expr.Op {
+	case ir.OpIdent, ir.OpDeref, ir.OpDot:
+		return true
+	}
+	return false
+}
+
+// genCopyFields copies src into dest for composite types (e.g., tuples)
+func (b *builder) genCopyFields(dest, src addr, t *types.Type) {
+	if !t.IsTuple() {
+		b.genStoreTo(dest, b.genLoadFrom(src, t))
+		return
+	}
+
+	for i, elem := range t.Params() {
+		offset := t.Offset(i)
+		b.genCopyFields(dest.OffsetBy(offset), src.OffsetBy(offset), elem)
+	}
 }
 
 func (b *builder) genUnit(*ir.Node) (*Value, error) {
