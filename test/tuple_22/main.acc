@@ -1,0 +1,8 @@
+fun make () -> (int, int) {
+    return (24, 7);
+}
+
+fun main () -> int {
+    let r = make();
+    return r.0 + r.1;
+}

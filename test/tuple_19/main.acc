@@ -1,0 +1,9 @@
+fun make () -> (int, int) {
+    let t = (20, 13);
+    return t;
+}
+
+fun main () -> int {
+    let r = make();
+    return r.0 + r.1;
+}

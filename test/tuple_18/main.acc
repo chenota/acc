@@ -1,0 +1,8 @@
+fun sum (t (int, int)) -> int {
+    return t.0 + t.1;
+}
+
+fun main () -> int {
+    let a = (40, 2);
+    return sum(a);
+}
