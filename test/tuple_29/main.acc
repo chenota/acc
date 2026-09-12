@@ -1,0 +1,8 @@
+fun f (p1 int, p2 int, p3 int, p4 int, p5 int, p6 int, t (int, int)) -> int {
+    return p1 + p2 + p3 + p4 + p5 + p6 + t.0 + t.1;
+}
+
+fun main () -> int {
+    let a = (30, 6);
+    return f(1, 1, 1, 1, 1, 1, a);
+}

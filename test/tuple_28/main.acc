@@ -1,0 +1,9 @@
+fun f (a (int, int), b (int, int)) -> int {
+    return a.0 + a.1 + b.0 + b.1;
+}
+
+fun main () -> int {
+    let x = (20, 2);
+    let y = (10, 10);
+    return f(x, y);
+}

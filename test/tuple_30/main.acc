@@ -1,0 +1,9 @@
+fun f (t (int, *int)) -> int {
+    return t.0 + *t.1;
+}
+
+fun main () -> int {
+    let x = 2;
+    let a = (40, &x);
+    return f(a);
+}

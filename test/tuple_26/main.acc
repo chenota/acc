@@ -1,0 +1,8 @@
+fun f (t (int,)) -> int {
+    return t.0;
+}
+
+fun main () -> int {
+    let a = (42,);
+    return f(a);
+}
