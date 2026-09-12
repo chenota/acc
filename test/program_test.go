@@ -3,9 +3,11 @@ package test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"testing"
@@ -109,9 +111,19 @@ func compileProgram(t *testing.T, mainFile string) string {
 		"-o", tmpBinary.Name(),
 	})
 
-	require.NoError(t, root.Execute(), "failed to compile program")
+	require.NoError(t, safeExecute(root.Execute), "failed to compile program")
 
 	return tmpBinary.Name()
+}
+
+func safeExecute(run func() error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("compiler panicked: %v\n%s", r, debug.Stack())
+		}
+	}()
+
+	return run()
 }
 
 func verifyStatus(t *testing.T, config testConfig, actualStatus int) {
@@ -164,7 +176,7 @@ func dumpAssembly(t *testing.T, mainFile string) {
 		"-S",
 		"-o", tmpAsm.Name(),
 	})
-	if err := root.Execute(); err != nil {
+	if err := safeExecute(root.Execute); err != nil {
 		t.Logf("could not generate assembly for %s: %v", mainFile, err)
 		return
 	}
