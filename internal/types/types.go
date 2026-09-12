@@ -1,6 +1,7 @@
 package types
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -249,6 +250,42 @@ func (t *Type) Align() int {
 // roundUp rounds x up to the next multiple of align
 func roundUp(x, align int) int {
 	return (x + align - 1) &^ (align - 1)
+}
+
+type Leaf struct {
+	Offset int
+	Type   *Type
+}
+
+// Leaves flattens t into its atomic constituents
+func (t *Type) Leaves() ([]Leaf, error) {
+	if t == nil || t.kind == KUnknown {
+		return nil, errors.New("unknown type")
+	}
+
+	switch t.kind {
+	case KUnit:
+		// empty type doesn't need a register
+		return nil, nil
+	case KTuple:
+		var leaves []Leaf
+		for i, elem := range t.params {
+			base := t.Offset(i)
+
+			sub, err := elem.Leaves()
+			if err != nil {
+				return nil, err
+			}
+
+			for _, l := range sub {
+				leaves = append(leaves, Leaf{Offset: base + l.Offset, Type: l.Type})
+			}
+		}
+		return leaves, nil
+	default:
+		// everything else already fits in a register
+		return []Leaf{{Offset: 0, Type: t}}, nil
+	}
 }
 
 func (t *Type) ToDefault() *Type {
