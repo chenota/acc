@@ -1,0 +1,7 @@
+fun main () -> int {
+    let t = (1, 42);
+    let p = &t;
+    let q = &(*p).1;
+    *q = 17;
+    return t.1;
+}

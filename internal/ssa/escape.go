@@ -48,7 +48,7 @@ func escapeAnalysis(f *Func) []*Slot {
 			relax(slotNode(v.Slot()), d)
 		case OpLoad: // v = *args[0] alleviates deficit
 			relax(valueNode(v.Args[0]), d+1)
-		case OpCopy: // v = args[0], args[0] in herits deficit of v
+		case OpCopy, OpFieldAddr: // v = args[0] (offset does not change the level), args[0] inherits deficit of v
 			relax(valueNode(v.Args[0]), d)
 		}
 	}

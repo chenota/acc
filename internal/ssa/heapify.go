@@ -21,6 +21,13 @@ func heapify(f *Func, escaped []*Slot) {
 		for v := range f.SlotValues(slot) {
 			switch v.Op {
 			case OpLocalAddr:
+				// a field address keeps its offset, just from the new base
+				if v.Offset != 0 {
+					v.Op = OpFieldAddr
+					v.Args = []*Value{heapPtr}
+					v.Value = nil
+					continue
+				}
 				// the slot's address is now whatever the allocation handed back
 				f.redirectUses(v, heapPtr)
 				f.removeValue(v)

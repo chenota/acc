@@ -126,6 +126,8 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateStaticStore(v))
 	case ssa.OpLocalAddr:
 		insts = append(insts, generateLocalAddr(v))
+	case ssa.OpFieldAddr:
+		insts = append(insts, generateFieldAddr(v))
 	case ssa.OpStore:
 		insts = append(insts, generateStore(v))
 	case ssa.OpLoad:
@@ -155,6 +157,14 @@ func generateLocalAddr(v *ssa.Value) Inst {
 	return Inst{
 		Op:   "leaq", // always use the quadword version of this
 		Src1: slotArg(v.Slot(), v.Offset),
+		Dest: toArg(v),
+	}
+}
+
+func generateFieldAddr(v *ssa.Value) Inst {
+	return Inst{
+		Op:   "leaq", // always use the quadword version of this
+		Src1: indirect(v.Args[0], v.Offset),
 		Dest: toArg(v),
 	}
 }

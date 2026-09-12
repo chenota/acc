@@ -1,0 +1,5 @@
+fun main () -> int {
+    let t = (1, 42);
+    let p = &t.1;
+    return *p;
+}

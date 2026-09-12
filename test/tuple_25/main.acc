@@ -1,0 +1,8 @@
+fun f () -> *int {
+    let t = (1, 42);
+    return &t.1;
+}
+
+fun main () -> int {
+    return *f();
+}

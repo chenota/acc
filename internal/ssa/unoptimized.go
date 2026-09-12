@@ -293,14 +293,23 @@ func (b *builder) genRef(expr *ir.Node) (*Value, error) {
 		return nil, err
 	}
 
-	// already returning the address nothing more to do
+	// the base address already exists, so the field is a walk forward from it
 	if dest.Ptr != nil {
-		return dest.Ptr, nil
+		if dest.Offset == 0 {
+			return dest.Ptr, nil
+		}
+
+		v := b.targetFunc.appendValue(OpFieldAddr, expr.Type, b.currentBlock)
+		v.Args = []*Value{dest.Ptr}
+		v.Offset = dest.Offset
+
+		return v, nil
 	}
 
 	// take the address of the stack slot
 	v := b.targetFunc.appendValue(OpLocalAddr, expr.Type, b.currentBlock)
 	v.Value = dest.Slot
+	v.Offset = dest.Offset
 
 	return v, nil
 }

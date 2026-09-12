@@ -28,6 +28,7 @@ const (
 	OpSignExtend // sign-extends the accumulator into the high register (cdq/cqo)
 	OpParam      // incoming function argument - more of a placeholder for a location than an acutal value in its own right
 	OpLocalAddr  // address bound to a static stack slot
+	OpFieldAddr  // address at Offset from the pointer in Args[0]
 	OpClosurePtr
 	OpClosureCall
 	OpUnit
@@ -50,8 +51,7 @@ type Value struct {
 
 	Value any
 
-	// Offset is the byte offset from the slot or pointer this value addresses.
-	Offset int
+	Offset int // byte offset from the slot or pointer this value addresses.
 
 	Loc Location
 
