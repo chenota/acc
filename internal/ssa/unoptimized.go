@@ -22,7 +22,9 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 	f.Entry = entry
 	b.currentBlock = entry
 
-	b.bindParams(n.Signature.Params)
+	if err := b.bindParams(n.Signature.Params); err != nil {
+		return err
+	}
 
 	for _, stmt := range n.List {
 		if err := b.genStatement(stmt); err != nil {
@@ -38,31 +40,55 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 	return nil
 }
 
+// paramLeaf is one atomic piece of a parameter
+type paramLeaf struct {
+	param  int
+	offset int
+	typ    *types.Type
+	value  *Value
+	copy   *Value
+}
+
 // bindParams materializes incoming arguments at the top of the entry block.
-func (b *builder) bindParams(params []*ir.Node) {
-	// append parameter as value
-	incoming := make([]*Value, len(params))
+func (b *builder) bindParams(params []*ir.Node) error {
+	var leaves []paramLeaf
 	for i, p := range params {
-		v := b.targetFunc.appendValue(OpParam, p.Type, b.currentBlock)
+		parts, err := p.Type.Leaves()
+		if err != nil {
+			return diagnostic.NewError(p.Pos, "parameter type %v has no register layout: %v", p.Type, err)
+		}
+
+		for _, part := range parts {
+			leaves = append(leaves, paramLeaf{param: i, offset: part.Offset, typ: part.Type})
+		}
+	}
+
+	// append every incoming leaf as a restricted param value
+	for i := range leaves {
+		v := b.targetFunc.appendValue(OpParam, leaves[i].typ, b.currentBlock)
 		v.Value = i
-		incoming[i] = v
+		leaves[i].value = v
 	}
 
-	// copy each parameter into non-restricted slot
-	copies := make([]*Value, len(params))
+	// copy each leaf into a non-restricted slot
+	for i := range leaves {
+		param := b.targetFunc.appendValue(OpCopy, leaves[i].typ, b.currentBlock)
+		param.Args = []*Value{leaves[i].value}
+		leaves[i].copy = param
+	}
+
+	// give each copied parameter a stack slot
+	slots := make([]*Slot, len(params))
 	for i, p := range params {
-		param := b.targetFunc.appendValue(OpCopy, p.Type, b.currentBlock)
-		param.Args = []*Value{incoming[i]}
-		copies[i] = param
+		slots[i] = b.targetFunc.newSlot(p.Sym, p.Type)
+		b.vars[p.Sym] = slots[i]
 	}
 
-	// parameters are variables so store them on the stack like any other variable
-	for i, p := range params {
-		slot := b.targetFunc.newSlot(p.Sym, p.Type)
-		b.vars[p.Sym] = slot
-
-		b.genStoreTo(addr{Slot: slot}, copies[i])
+	for _, leaf := range leaves {
+		b.genStoreTo(addr{Slot: slots[leaf.param], Offset: leaf.offset}, leaf.copy)
 	}
+
+	return nil
 }
 
 type builder struct {
@@ -402,6 +428,40 @@ func (b *builder) genStoreTo(dest addr, val *Value) *Value {
 	return v
 }
 
+// genArg evaluates arg into a flat list of atomic values
+func (b *builder) genArg(arg *ir.Node) ([]*Value, error) {
+	leaves, err := arg.Type.Leaves()
+	if err != nil {
+		return nil, diagnostic.NewError(arg.Pos, "argument type %v has no register layout: %v", arg.Type, err)
+	}
+
+	// load tuples from their place in memory
+	if arg.Type.IsTuple() {
+		place, err := b.genPlace(arg)
+		if err != nil {
+			return nil, err
+		}
+
+		vals := make([]*Value, len(leaves))
+		for i, leaf := range leaves {
+			vals[i] = b.genLoadFrom(place.OffsetBy(leaf.Offset), leaf.Type)
+		}
+		return vals, nil
+	}
+
+	v, err := b.genExpr(arg)
+	if err != nil {
+		return nil, err
+	}
+
+	// if no leaves then there's nothing we care about just return
+	if len(leaves) == 0 {
+		return nil, nil
+	}
+
+	return []*Value{v}, nil
+}
+
 func (b *builder) genCall(expr *ir.Node) (*Value, error) {
 	if len(expr.List) < 1 {
 		return nil, diagnostic.NewError(expr.Pos, "call without a callee")
@@ -415,11 +475,11 @@ func (b *builder) genCall(expr *ir.Node) (*Value, error) {
 	args := expr.List[1:]
 	var argVals []*Value
 	for _, arg := range args {
-		argVal, err := b.genExpr(arg)
+		vals, err := b.genArg(arg)
 		if err != nil {
 			return nil, err
 		}
-		argVals = append(argVals, argVal)
+		argVals = append(argVals, vals...)
 	}
 
 	v := b.targetFunc.appendValue(OpStaticCall, expr.Type, b.currentBlock)

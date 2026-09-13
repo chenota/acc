@@ -1,0 +1,8 @@
+fun f (p int, t ((int, int), (int, (int, int)))) -> int {
+    return p + t.0.0 + t.0.1 + t.1.0 + t.1.1.0 + t.1.1.1;
+}
+
+fun main () -> int {
+    let x = ((1, 2), (3, (4, 30)));
+    return f(2, x);
+}

@@ -266,6 +266,51 @@ func TestMaxOutgoingSize_WidestCallWins(t *testing.T) {
 	assert.Equal(t, 24, requireFunc(t, funcs, "main").maxOutgoingSize())
 }
 
+func TestLowerParams_TupleParamSplitsIntoLeaves(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun target (t (int, int, int, ())) -> int { return t.0; }`)
+
+	f := requireFunc(t, funcs, "target")
+	params := findValues(f.Entry.Values, OpParam)
+
+	// four items in tuple - 1 unit type that should get ignored
+	require.Len(t, params, 3)
+
+	assert.Equal(t, LocRegister, params[0].Loc.Kind)
+	assert.Equal(t, register.RegDI, params[0].Loc.Reg)
+
+	assert.Equal(t, LocRegister, params[1].Loc.Kind)
+	assert.Equal(t, register.RegSI, params[1].Loc.Reg)
+
+	assert.Equal(t, LocRegister, params[2].Loc.Kind)
+	assert.Equal(t, register.RegD, params[2].Loc.Reg)
+
+	// each leaf carries its own atomic type, never the aggregate
+	assert.True(t, types.Equal(types.Int(), params[0].Type))
+	assert.True(t, types.Equal(types.Int(), params[1].Type))
+	assert.True(t, types.Equal(types.Int(), params[2].Type))
+}
+
+func TestLowerCalls_TupleArgSplitsIntoLeaves(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun target (t (int, int, int)) -> int { return t.0; }
+		fun main () -> int { let a = (1, 2, 3); return target(a); }
+	`)
+
+	call := requireCall(t, funcs, "main")
+
+	// the caller splits the argument the same way the callee expects to receive it
+	require.Len(t, call.Args, 3)
+
+	assert.Equal(t, LocRegister, call.Args[0].Loc.Kind)
+	assert.Equal(t, register.RegDI, call.Args[0].Loc.Reg)
+
+	assert.Equal(t, LocRegister, call.Args[1].Loc.Kind)
+	assert.Equal(t, register.RegSI, call.Args[1].Loc.Reg)
+
+	assert.Equal(t, LocRegister, call.Args[2].Loc.Kind)
+	assert.Equal(t, register.RegD, call.Args[2].Loc.Reg)
+}
+
 func TestGenSsa_Ref_KeepsAddressedSlotInFrame(t *testing.T) {
 	funcs := requireBuildSSA(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
 
