@@ -30,3 +30,13 @@ func Reverse[T any](seq iter.Seq[T]) iter.Seq[T] {
 		}
 	}
 }
+
+func Second[T1, T2 any](seq iter.Seq2[T1, T2]) iter.Seq[T2] {
+	return func(yield func(T2) bool) {
+		for _, v := range seq {
+			if !yield(v) {
+				return
+			}
+		}
+	}
+}

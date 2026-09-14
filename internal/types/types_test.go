@@ -43,46 +43,34 @@ func TestEqual_Pointer_NotPointer(t *testing.T) {
 }
 
 func TestLeaves_Scalar(t *testing.T) {
-	leaves, err := Int().Leaves()
-
-	assert.NoError(t, err)
-	assert.Equal(t, []int{0}, leafOffsets(leaves))
-	assert.True(t, Equal(Int(), leaves[0].Type))
+	assert.Equal(t, []int{0}, leafOffsets(Int()))
 }
 
 func TestLeaves_Tuple(t *testing.T) {
-	leaves, err := Tuple([]*Type{Int(), Int()}).Leaves()
-
-	assert.NoError(t, err)
-	assert.Equal(t, []int{0, 4}, leafOffsets(leaves))
+	assert.Equal(t, []int{0, 4}, leafOffsets(Tuple([]*Type{Int(), Int()})))
 }
 
 func TestLeaves_TupleSkipsPadding(t *testing.T) {
 	// an int followed by a pointer pads bytes 4-7 to align the pointer
-	leaves, err := Tuple([]*Type{Int(), Pointer(Int())}).Leaves()
-
-	assert.NoError(t, err)
-	assert.Equal(t, []int{0, 8}, leafOffsets(leaves))
+	assert.Equal(t, []int{0, 8}, leafOffsets(Tuple([]*Type{Int(), Pointer(Int())})))
 }
 
 func TestLeaves_NestedTuple(t *testing.T) {
-	leaves, err := Tuple([]*Type{Tuple([]*Type{Int(), Int()}), Int()}).Leaves()
-
-	assert.NoError(t, err)
-	assert.Equal(t, []int{0, 4, 8}, leafOffsets(leaves))
+	assert.Equal(t, []int{0, 4, 8}, leafOffsets(Tuple([]*Type{Tuple([]*Type{Int(), Int()}), Int()})))
 }
 
 func TestLeaves_UnitField(t *testing.T) {
-	leaves, err := Tuple([]*Type{Int(), Unit()}).Leaves()
-
-	assert.NoError(t, err)
-	assert.Equal(t, []int{0}, leafOffsets(leaves))
+	assert.Equal(t, []int{0}, leafOffsets(Tuple([]*Type{Int(), Unit()})))
 }
 
-func leafOffsets(leaves []Leaf) []int {
-	offsets := make([]int, len(leaves))
-	for i, l := range leaves {
-		offsets[i] = l.Offset
+func TestLeaves_Unit(t *testing.T) {
+	assert.Empty(t, leafOffsets(Unit()))
+}
+
+func leafOffsets(t *Type) []int {
+	var offsets []int
+	for offset := range t.Leaves() {
+		offsets = append(offsets, offset)
 	}
 	return offsets
 }

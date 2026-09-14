@@ -1,8 +1,8 @@
 package types
 
 import (
-	"errors"
 	"fmt"
+	"iter"
 	"strings"
 )
 
@@ -252,39 +252,32 @@ func roundUp(x, align int) int {
 	return (x + align - 1) &^ (align - 1)
 }
 
-type Leaf struct {
-	Offset int
-	Type   *Type
+// Leaves yields the atomic components of t
+func (t *Type) Leaves() iter.Seq2[int, *Type] {
+	return func(yield func(int, *Type) bool) {
+		t.leaves(0, yield)
+	}
 }
 
-// Leaves flattens t into its atomic constituents
-func (t *Type) Leaves() ([]Leaf, error) {
-	if t == nil || t.kind == KUnknown {
-		return nil, errors.New("unknown type")
+func (t *Type) leaves(base int, yield func(int, *Type) bool) bool {
+	if t == nil {
+		return false
 	}
 
 	switch t.kind {
 	case KUnit:
 		// empty type doesn't need a register
-		return nil, nil
+		return true
 	case KTuple:
-		var leaves []Leaf
 		for i, elem := range t.params {
-			base := t.Offset(i)
-
-			sub, err := elem.Leaves()
-			if err != nil {
-				return nil, err
-			}
-
-			for _, l := range sub {
-				leaves = append(leaves, Leaf{Offset: base + l.Offset, Type: l.Type})
+			if !elem.leaves(base+t.Offset(i), yield) {
+				return false
 			}
 		}
-		return leaves, nil
+		return true
 	default:
 		// everything else already fits in a register
-		return []Leaf{{Offset: 0, Type: t}}, nil
+		return yield(base, t)
 	}
 }
 

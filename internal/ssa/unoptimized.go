@@ -2,9 +2,11 @@ package ssa
 
 import (
 	"math/big"
+	"slices"
 
 	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/ir"
+	"github.com/chenota/acc/internal/iterutil"
 	"github.com/chenota/acc/internal/types"
 )
 
@@ -22,9 +24,7 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 	f.Entry = entry
 	b.currentBlock = entry
 
-	if err := b.bindParams(n.Signature.Params); err != nil {
-		return err
-	}
+	b.bindParams(n.Signature.Params)
 
 	for _, stmt := range n.List {
 		if err := b.genStatement(stmt); err != nil {
@@ -40,55 +40,38 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 	return nil
 }
 
-// paramLeaf is one atomic piece of a parameter
-type paramLeaf struct {
-	param  int
-	offset int
-	typ    *types.Type
-	value  *Value
-	copy   *Value
-}
-
 // bindParams materializes incoming arguments at the top of the entry block.
-func (b *builder) bindParams(params []*ir.Node) error {
-	var leaves []paramLeaf
-	for i, p := range params {
-		parts, err := p.Type.Leaves()
-		if err != nil {
-			return diagnostic.NewError(p.Pos, "parameter type %v has no register layout: %v", p.Type, err)
-		}
-
-		for _, part := range parts {
-			leaves = append(leaves, paramLeaf{param: i, offset: part.Offset, typ: part.Type})
-		}
+func (b *builder) bindParams(params []*ir.Node) {
+	// flatten the whole signature into ABI order
+	var incomingTypes []*types.Type
+	for _, p := range params {
+		leafTypes := slices.Collect(iterutil.Second(p.Type.Leaves()))
+		incomingTypes = append(incomingTypes, leafTypes...)
 	}
 
-	// append every incoming leaf as a restricted param value
-	for i := range leaves {
-		v := b.targetFunc.appendValue(OpParam, leaves[i].typ, b.currentBlock)
+	// append every incomingValues leaf as a restricted param value
+	incomingValues := make([]*Value, len(incomingTypes))
+	for i, t := range incomingTypes {
+		v := b.targetFunc.appendValue(OpParam, t, b.currentBlock)
 		v.Value = i
-		leaves[i].value = v
+		incomingValues[i] = v
 	}
 
 	// copy each leaf into a non-restricted slot
-	for i := range leaves {
-		param := b.targetFunc.appendValue(OpCopy, leaves[i].typ, b.currentBlock)
-		param.Args = []*Value{leaves[i].value}
-		leaves[i].copy = param
+	copies := make([]*Value, len(incomingValues))
+	for i, v := range incomingValues {
+		c := b.targetFunc.appendValue(OpCopy, v.Type, b.currentBlock)
+		c.Args = []*Value{v}
+		copies[i] = c
 	}
 
-	// give each copied parameter a stack slot
-	slots := make([]*Slot, len(params))
-	for i, p := range params {
-		slots[i] = b.targetFunc.newSlot(p.Sym, p.Type)
-		b.vars[p.Sym] = slots[i]
+	// reassemble each parameter from the leaves it owns into its own stack slot
+	for _, p := range params {
+		slot := b.targetFunc.newSlot(p.Sym, p.Type)
+		b.vars[p.Sym] = slot
+		// update copies to just the unused tail from implode
+		copies = b.implode(addr{Slot: slot}, p.Type, copies)
 	}
-
-	for _, leaf := range leaves {
-		b.genStoreTo(addr{Slot: slots[leaf.param], Offset: leaf.offset}, leaf.copy)
-	}
-
-	return nil
 }
 
 type builder struct {
@@ -292,16 +275,10 @@ func isPlace(expr *ir.Node) bool {
 	return false
 }
 
-// genCopyFields copies src into dest for composite types (e.g., tuples)
+// genCopyFields copies src into dest one atomic field at a time
 func (b *builder) genCopyFields(dest, src addr, t *types.Type) {
-	if !t.IsTuple() {
-		b.genStoreTo(dest, b.genLoadFrom(src, t))
-		return
-	}
-
-	for i, elem := range t.Params() {
-		offset := t.Offset(i)
-		b.genCopyFields(dest.OffsetBy(offset), src.OffsetBy(offset), elem)
+	for offset, leaf := range t.Leaves() {
+		b.genStoreTo(dest.OffsetBy(offset), b.genLoadFrom(src.OffsetBy(offset), leaf))
 	}
 }
 
@@ -430,36 +407,29 @@ func (b *builder) genStoreTo(dest addr, val *Value) *Value {
 
 // genArg evaluates arg into a flat list of atomic values
 func (b *builder) genArg(arg *ir.Node) ([]*Value, error) {
-	leaves, err := arg.Type.Leaves()
-	if err != nil {
-		return nil, diagnostic.NewError(arg.Pos, "argument type %v has no register layout: %v", arg.Type, err)
-	}
-
-	// load tuples from their place in memory
-	if arg.Type.IsTuple() {
-		place, err := b.genPlace(arg)
-		if err != nil {
-			return nil, err
-		}
-
-		vals := make([]*Value, len(leaves))
-		for i, leaf := range leaves {
-			vals[i] = b.genLoadFrom(place.OffsetBy(leaf.Offset), leaf.Type)
-		}
-		return vals, nil
-	}
-
-	v, err := b.genExpr(arg)
+	place, err := b.genPlace(arg)
 	if err != nil {
 		return nil, err
 	}
+	return b.explode(place, arg.Type), nil
+}
 
-	// if no leaves then there's nothing we care about just return
-	if len(leaves) == 0 {
-		return nil, nil
+// explode reads the atomic leaf values of t into a list of values
+func (b *builder) explode(a addr, t *types.Type) []*Value {
+	var vals []*Value
+	for offset, leaf := range t.Leaves() {
+		vals = append(vals, b.genLoadFrom(a.OffsetBy(offset), leaf))
 	}
+	return vals
+}
 
-	return []*Value{v}, nil
+// implode writes the head of vals back into addr of type t and returns an unconsumed tail
+func (b *builder) implode(a addr, t *types.Type, vals []*Value) []*Value {
+	for offset := range t.Leaves() {
+		b.genStoreTo(a.OffsetBy(offset), vals[0])
+		vals = vals[1:]
+	}
+	return vals
 }
 
 func (b *builder) genCall(expr *ir.Node) (*Value, error) {
