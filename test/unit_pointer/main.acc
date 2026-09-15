@@ -1,0 +1,8 @@
+fun main () -> int {
+    let a = 20;
+    let x = ();
+    let p = &x;
+    let y = *p;
+    let q = &a;
+    return *q + 22;
+}

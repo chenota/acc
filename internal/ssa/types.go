@@ -103,7 +103,9 @@ func (v *Value) ArgIndex(arg *Value) int {
 
 // NeedsRegister reports whether a value produces a result that occupies a physical register.
 func (v *Value) NeedsRegister() bool {
-	return !(v.Op == OpStore || v.Op == OpStaticStore)
+	return !(v.Op == OpStore ||
+		v.Op == OpStaticStore ||
+		v.Type.IsSingleton())
 }
 
 // Slot is the frame slot this value reads or writes, or nil if it does not touch one.

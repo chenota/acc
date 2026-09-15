@@ -63,6 +63,18 @@ func TestLeaves_UnitField(t *testing.T) {
 	assert.Equal(t, []int{0}, leafOffsets(Tuple([]*Type{Int(), Unit()})))
 }
 
+func TestIsSingleton_Scalar(t *testing.T) {
+	assert.False(t, Int().IsSingleton())
+}
+
+func TestIsSingleton_Unit(t *testing.T) {
+	assert.True(t, Unit().IsSingleton())
+}
+
+func TestIsSingleton_TupleOfSingletons(t *testing.T) {
+	assert.True(t, Tuple([]*Type{Unit(), Unit()}).IsSingleton())
+}
+
 func TestLeaves_Unit(t *testing.T) {
 	assert.Empty(t, leafOffsets(Unit()))
 }

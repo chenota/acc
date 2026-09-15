@@ -1,0 +1,10 @@
+fun bump (p *int) {
+    *p = 41;
+    return;
+}
+
+fun main () -> int {
+    let a = 1;
+    let t = (1, bump(&a), 0);
+    return t.0 + a;
+}

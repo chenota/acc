@@ -45,14 +45,23 @@ func lowerParams(f *Func) {
 
 func lowerReturns(f *Func) {
 	for _, b := range f.Blocks {
-		if b.Kind == BlockRet && b.Control != nil {
-			b.Control.RecordHint(register.ReturnTarget) // fold the copy away when the source can live in rax
-
-			out := f.appendValue(OpCopy, b.Control.Type, b)
-			out.Args = []*Value{b.Control}
-			out.Loc = NewReg(register.ReturnTarget)
-			b.Control = out
+		if b.Kind != BlockRet || b.Control == nil {
+			continue
 		}
+
+		// don't need to do anything for singletons
+		if b.Control.Type.IsSingleton() {
+			b.Control = nil
+			continue
+		}
+
+		// push the control value towards rax
+		b.Control.RecordHint(register.ReturnTarget)
+
+		out := f.appendValue(OpCopy, b.Control.Type, b)
+		out.Args = []*Value{b.Control}
+		out.Loc = NewReg(register.ReturnTarget)
+		b.Control = out
 	}
 }
 
@@ -108,6 +117,11 @@ func lowerCalls(f *Func) {
 		// the context register only has a meaning at the call itself, so pin it last.
 		if v.Op == OpClosureCall {
 			v.Args[ClosureCallObject] = copyIn(f, v, v.Args[ClosureCallObject], register.ClosureContext)
+		}
+
+		// singleton result doesn't need a location or copy
+		if v.Type.IsSingleton() {
+			continue
 		}
 
 		v.Loc = NewReg(register.RegA)

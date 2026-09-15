@@ -1,0 +1,9 @@
+fun f (t ((), ())) -> int {
+    return 42;
+}
+
+fun main () -> int {
+    let a = ((), ());
+    let b = a;
+    return f(b);
+}

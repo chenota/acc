@@ -327,10 +327,7 @@ func (b *builder) genDeref(expr *ir.Node) (*Value, error) {
 		return nil, err
 	}
 
-	v := b.targetFunc.appendValue(OpLoad, expr.Type, b.currentBlock)
-	v.Args = []*Value{ptr}
-
-	return v, nil
+	return b.genLoadFrom(addr{Ptr: ptr}, expr.Type), nil
 }
 
 type addr struct {
@@ -376,6 +373,11 @@ func (b *builder) genLValue(expr *ir.Node) (addr, error) {
 
 // genLoadFrom reads the value of type t living at dest.
 func (b *builder) genLoadFrom(dest addr, t *types.Type) *Value {
+	// a singleton's value is already known from its type, so there is nothing to read
+	if t.IsSingleton() {
+		return b.targetFunc.appendValue(OpUnit, t, b.currentBlock)
+	}
+
 	if dest.Slot != nil {
 		v := b.targetFunc.appendValue(OpStaticLoad, t, b.currentBlock)
 		v.Value = dest.Slot
@@ -389,20 +391,24 @@ func (b *builder) genLoadFrom(dest addr, t *types.Type) *Value {
 	return v
 }
 
-// genStoreTo writes val to dest.
-func (b *builder) genStoreTo(dest addr, val *Value) *Value {
+// genStoreTo writes val to dest. A singleton carries no information, so it is
+// evaluated for its effects and then dropped rather than written anywhere.
+func (b *builder) genStoreTo(dest addr, val *Value) {
+	if val.Type.IsSingleton() {
+		return
+	}
+
 	if dest.Slot != nil {
 		v := b.targetFunc.appendValue(OpStaticStore, val.Type, b.currentBlock)
 		v.Args = []*Value{val}
 		v.Value = dest.Slot
 		v.Offset = dest.Offset
-		return v
+		return
 	}
 
 	v := b.targetFunc.appendValue(OpStore, val.Type, b.currentBlock)
 	v.Args = []*Value{val, dest.Ptr}
 	v.Offset = dest.Offset
-	return v
 }
 
 // genArg evaluates arg into a flat list of atomic values

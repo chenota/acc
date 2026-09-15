@@ -177,6 +177,28 @@ func (t *Type) IsUnit() bool {
 	return t.kind == KUnit
 }
 
+// IsSingleton reports whether t is a singleton type
+func (t *Type) IsSingleton() bool {
+	if t == nil {
+		return false
+	}
+
+	switch t.kind {
+	case KUnit:
+		return true
+	case KTuple:
+		// a tuple with all singletons is a singleton itself
+		for _, elem := range t.params {
+			if !elem.IsSingleton() {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
 func Int() *Type {
 	return &Type{kind: KInt}
 }
@@ -264,10 +286,12 @@ func (t *Type) leaves(base int, yield func(int, *Type) bool) bool {
 		return false
 	}
 
-	switch t.kind {
-	case KUnit:
-		// empty type doesn't need a register
+	// singletons can be skipped here since they take up no space
+	if t.IsSingleton() {
 		return true
+	}
+
+	switch t.kind {
 	case KTuple:
 		for i, elem := range t.params {
 			if !elem.leaves(base+t.Offset(i), yield) {

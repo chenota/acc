@@ -1,0 +1,10 @@
+fun f () -> *() {
+    let x = ();
+    return &x;
+}
+
+fun main () -> int {
+    let p = f();
+    let y = *p;
+    return 42;
+}

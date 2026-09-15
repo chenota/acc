@@ -451,6 +451,35 @@ func TestGenSsa_UnitFunction_CallStatement(t *testing.T) {
 	assert.True(t, types.Equal(types.Unit(), call.Type))
 }
 
+func TestGenSsa_UnitTupleField_IsNotStored(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun main () -> int {
+			let t = (1, (), 41);
+			return t.0 + t.2;
+		}
+	`)
+
+	f := requireFunc(t, funcs, "main")
+
+	assert.Len(t, findValues(f.Entry.Values, OpStaticStore), 2)
+	assert.Len(t, findValues(f.Entry.Values, OpStaticLoad), 2)
+}
+
+func TestGenSsa_UnitTupleField_IsNotLoaded(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun f (t (int, ())) -> int {
+			let u = t.1;
+			return t.0;
+		}
+		fun main () -> int { return f((7, ())); }
+	`)
+
+	f := requireFunc(t, funcs, "f")
+
+	assert.Len(t, findValues(f.Entry.Values, OpUnit), 1)
+	assert.Len(t, findValues(f.Entry.Values, OpStaticLoad), 1)
+}
+
 func TestHeapify_RewritesAnEscapingLocal(t *testing.T) {
 	funcs := requireBuildSSA(t, `
 		fun f () -> *int { let x = 1; return &x; }
