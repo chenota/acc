@@ -11,9 +11,6 @@ func associativeFold(f *Func) {
 		}
 
 		foldedValue := foldConsts(consts, root.Op)
-		for _, c := range consts {
-			f.removeValue(c)
-		}
 
 		cores := cores(chain)
 		if len(vars) == 0 {
@@ -21,22 +18,24 @@ func associativeFold(f *Func) {
 		} else {
 			rewireMixedChain(f, root, foldedValue, cores, vars)
 		}
+
+		for _, c := range consts {
+			f.removeIfDead(c)
+		}
 	}
 }
 
 // foldConstantChain handles chains where every leaf is a constant.
-// It substitutes root with a single folded constant and removes the remaining cores.
 func foldConstantChain(f *Func, root *Value, foldedValue any, cores []*Value) {
 	newConst := f.newValue(OpLiteral, root.Type, root.Block)
 	newConst.Value = foldedValue
 	f.replaceValue(root, newConst)
 	for _, c := range cores[1:] {
-		f.removeValue(c)
+		f.removeIfDead(c)
 	}
 }
 
 // rewireMixedChain handles chains with at least one variable leaf.
-// It inserts a folded constant and rewires the kept cores around the variable leaves.
 func rewireMixedChain(f *Func, root *Value, foldedValue any, cores []*Value, vars []*Value) {
 	varCount := len(vars)
 
@@ -56,7 +55,7 @@ func rewireMixedChain(f *Func, root *Value, foldedValue any, cores []*Value, var
 	}
 
 	for _, c := range cores[varCount:] {
-		f.removeValue(c)
+		f.removeIfDead(c)
 	}
 }
 

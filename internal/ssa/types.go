@@ -354,6 +354,32 @@ func (f *Func) replaceValue(old, new *Value) {
 	f.redirectUses(old, new)
 }
 
+// hasUses reports whether anything still references v
+func (f *Func) hasUses(v *Value) bool {
+	for _, block := range f.Blocks {
+		for _, value := range block.Values {
+			if value != v && slices.Contains(value.Args, v) {
+				return true
+			}
+		}
+
+		if block.Control == v {
+			return true
+		}
+	}
+
+	return false
+}
+
+// removeIfDead drops v from the instruction stream if nothing references it.
+func (f *Func) removeIfDead(v *Value) {
+	if f.hasUses(v) {
+		return
+	}
+
+	f.removeValue(v)
+}
+
 func (f *Func) removeValue(v *Value) {
 	// filter v out of each block's values list and control value
 	for _, block := range f.Blocks {

@@ -26,8 +26,8 @@ func quickFold(f *Func) {
 		// replace the top-level value with the new constant
 		f.replaceValue(v, constOp)
 		// remove left and right constant operands
-		f.removeValue(left)
-		f.removeValue(right)
+		f.removeIfDead(left)
+		f.removeIfDead(right)
 	}
 }
 
