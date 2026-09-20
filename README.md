@@ -226,7 +226,7 @@ Unary      = ( "-" | "&" | "*" ) Unary
            | Postfix ;
 Postfix    = Atom { Call | Field } ;
 Call       = "(" [ Exprlist ] ")" ;
-Field      = "." ( Integer | Ident ) ;
+Field      = "." Integer ;
 Exprlist   = Expression { "," Expression } [ "," ] ;
 Atom       = Integer
            | Ident
@@ -256,7 +256,7 @@ Unary      = ( "-" | "&" | "*" ) Unary
            | Postfix ;
 Postfix    = Atom { Call | Field } ;
 Call       = "(" [ Exprlist ] ")" ;
-Field      = "." ( Integer | Ident ) ;
+Field      = "." Integer ;
 Exprlist   = Expression { "," Expression } [ "," ] ;
 Atom       = Integer
            | Ident
@@ -278,7 +278,7 @@ Unary      = ( "-" | "&" | "*" ) Unary
            | Postfix ;
 Postfix    = Atom { Call | Field } ;
 Call       = "(" [ Exprlist ] ")" ;
-Field      = "." ( Integer | Ident ) ;
+Field      = "." Integer ;
 Exprlist   = Expression { "," Expression } [ "," ] ;
 Atom       = Integer
            | Ident
