@@ -28,6 +28,7 @@ const (
 	OpSignExtend // sign-extends the accumulator into the high register (cdq/cqo)
 	OpParam      // incoming function argument - more of a placeholder for a location than an acutal value in its own right
 	OpResult     // outgoing function result - the mirror of OpParam, naming the location Args[0] is handed back in
+	OpCallResult // incoming call result
 	OpLocalAddr  // address bound to a static stack slot
 	OpFieldAddr  // address at Offset from the pointer in Args[0]
 	OpClosurePtr
@@ -107,6 +108,7 @@ func (v *Value) NeedsRegister() bool {
 	return !(v.Op == OpStore ||
 		v.Op == OpStaticStore ||
 		v.Op == OpResult ||
+		v.IsCall() ||
 		v.Type.IsSingleton())
 }
 

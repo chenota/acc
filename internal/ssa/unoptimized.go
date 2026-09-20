@@ -138,18 +138,12 @@ func (b *builder) genReturn(n *ir.Node) error {
 		return nil
 	}
 
-	retVal, err := b.genExpr(n.List[0])
+	vals, err := b.genArg(n.List[0])
 	if err != nil {
 		return err
 	}
 
-	// a singleton carries no information, so it is evaluated for its effects and then dropped
-	if retVal.Type.IsSingleton() {
-		b.currentBlock.Control = nil
-		return nil
-	}
-
-	return b.genResults(n, []*Value{retVal})
+	return b.genResults(n, vals)
 }
 
 // genResults hands vals back to the caller, one result value per value returned.
@@ -158,13 +152,13 @@ func (b *builder) genResults(n *ir.Node, vals []*Value) error {
 		return diagnostic.NewError(n.Pos, "cannot return %d values: only %d fit in the result registers", len(vals), len(results.regs))
 	}
 
-	results := make([]*Value, len(vals))
+	var results []*Value
 	for i, val := range vals {
 		// results store their index in the value slot, the same way parameters do
 		res := b.targetFunc.appendValue(OpResult, val.Type, b.currentBlock)
 		res.Value = i
 		res.Args = []*Value{val}
-		results[i] = res
+		results = append(results, res)
 	}
 
 	// a second return in the same block hands back its own values, not the earlier ones
@@ -220,7 +214,7 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 	case ir.OpNegate:
 		return b.genNegate(expr)
 	case ir.OpCall:
-		return b.genCall(expr)
+		return b.genCallValue(expr)
 	case ir.OpRef:
 		return b.genRef(expr)
 	case ir.OpDeref:
@@ -271,6 +265,12 @@ func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
 				return err
 			}
 		}
+	case ir.OpCall:
+		vals, err := b.genCallResults(expr)
+		if err != nil {
+			return err
+		}
+		b.implode(dest, expr.Type, vals)
 	default:
 		// existing tuples must be copied
 		if expr.Type.IsTuple() && isPlace(expr) {
@@ -489,6 +489,43 @@ func (b *builder) genCall(expr *ir.Node) (*Value, error) {
 	v.Args = argVals
 
 	return v, nil
+}
+
+// genCallResults emits a call and reads back the returned values
+func (b *builder) genCallResults(expr *ir.Node) ([]*Value, error) {
+	call, err := b.genCall(expr)
+	if err != nil {
+		return nil, err
+	}
+
+	var vals []*Value
+	for i, leaf := range iterutil.Enumerate(iterutil.Second(expr.Type.Leaves())) {
+		// results store their index in the value slot, the same way parameters do
+		res := b.targetFunc.appendValue(OpCallResult, leaf, b.currentBlock)
+		res.Value = i
+		res.Args = []*Value{call}
+		vals = append(vals, res)
+	}
+
+	return vals, nil
+}
+
+// genCallValue evaluates a call standing where a single value is expected.
+func (b *builder) genCallValue(expr *ir.Node) (*Value, error) {
+	vals, err := b.genCallResults(expr)
+	if err != nil {
+		return nil, err
+	}
+
+	switch len(vals) {
+	case 0:
+		// a singleton's value is known from its type, so the call hands back nothing to read
+		return b.targetFunc.appendValue(OpUnit, expr.Type, b.currentBlock), nil
+	case 1:
+		return vals[0], nil
+	}
+
+	return nil, diagnostic.NewError(expr.Pos, "call returning %d values used where one is expected", len(vals))
 }
 
 // resolveCallee identifies the function a call targets.

@@ -136,6 +136,11 @@ func computeLiveIntervals(f *Func) []*liveInterval {
 			touch(v, 0)
 		}
 
+		// a call result is live from the call that left it in its register
+		if v.Op == OpCallResult {
+			touch(v, intervals[v.Args[0].Id].Start)
+		}
+
 		// ensure the right operand of a bop is live alongside the result so they don't get mapped to the same place
 		if v.IsBinaryOp() {
 			touch(v.Args[1], tick+1)

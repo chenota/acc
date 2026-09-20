@@ -14,9 +14,14 @@ func heapify(f *Func, escaped []*Slot) {
 		size := f.insertValueAt(i, OpLiteral, types.Int(), block)
 		size.Value = int32(slot.Type.Size())
 
-		heapPtr := f.insertValueAt(i+1, OpStaticCall, types.Pointer(slot.Type), block)
-		heapPtr.Value = Alloc
-		heapPtr.Args = []*Value{size}
+		alloc := f.insertValueAt(i+1, OpStaticCall, types.Pointer(slot.Type), block)
+		alloc.Value = Alloc
+		alloc.Args = []*Value{size}
+
+		// the call is the instruction, the pointer is the value it hands back
+		heapPtr := f.insertValueAt(i+2, OpCallResult, types.Pointer(slot.Type), block)
+		heapPtr.Value = 0
+		heapPtr.Args = []*Value{alloc}
 
 		for v := range f.SlotValues(slot) {
 			switch v.Op {

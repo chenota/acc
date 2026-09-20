@@ -144,9 +144,19 @@ func TestLowerCalls_ResultAndClobbers(t *testing.T) {
 
 	call := requireCall(t, funcs, "main")
 
-	// the result comes back in rax
-	assert.Equal(t, LocRegister, call.Loc.Kind)
-	assert.Equal(t, register.RegA, call.Loc.Reg)
+	// the call is an instruction alone and produces no value of its own
+	assert.Equal(t, LocNone, call.Loc.Kind)
+	assert.False(t, call.NeedsRegister())
+
+	// the result is read back out of rax
+	f := requireFunc(t, funcs, "main")
+	callResults := findValues(f.Entry.Values, OpCallResult)
+	require.Len(t, callResults, 1)
+	assert.Equal(t, 0, callResults[0].Value)
+	assert.Equal(t, LocRegister, callResults[0].Loc.Kind)
+	assert.Equal(t, register.Results[0], callResults[0].Loc.Reg)
+	require.Len(t, callResults[0].Args, 1)
+	assert.Same(t, call, callResults[0].Args[0], "a call result names the call it came from")
 
 	// and the call conservatively clobbers every caller-saved register
 	assert.Equal(t, register.CallerSaved, call.Clobbers())
@@ -488,11 +498,15 @@ func TestHeapify_RewritesAnEscapingLocal(t *testing.T) {
 
 	alloc := requireAllocate(t, f)
 
-	// the returned address is the allocation, copied out of the ABI's return register
+	// the returned address is what the allocation handed back, copied out of the ABI's return register
 	returned := requireReturned(t, f.Entry)
 	require.Equal(t, OpCopy, returned.Op)
 	require.Len(t, returned.Args, 1)
-	assert.Equal(t, alloc, returned.Args[0])
+
+	result := returned.Args[0]
+	require.Equal(t, OpCallResult, result.Op)
+	require.Len(t, result.Args, 1)
+	assert.Same(t, alloc, result.Args[0])
 	assert.True(t, types.Equal(types.Pointer(types.Int()), alloc.Type),
 		"expected *int, got %v", alloc.Type)
 
@@ -527,6 +541,50 @@ func TestLowerResults_PinnedToResultRegister(t *testing.T) {
 	require.Len(t, move.Args, 1)
 	assert.Equal(t, OpLiteral, move.Args[0].Op)
 	assert.Equal(t, int32(7), move.Args[0].Value)
+}
+
+func TestGenSsa_TupleReturn_SplitsIntoResultRegisters(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun make () -> (int, int) { return (20, 13); }
+		fun main () -> int { let r = make(); return r.0 + r.1; }
+	`)
+
+	f := requireFunc(t, funcs, "make")
+
+	// the callee hands back one value per leaf, in ABI order
+	require.Len(t, f.Entry.Control, 2)
+
+	first := requireResult(t, f.Entry, 0)
+	assert.True(t, types.Equal(types.Int(), first.Type))
+
+	second := requireResult(t, f.Entry, 1)
+	assert.True(t, types.Equal(types.Int(), second.Type))
+}
+
+func TestLowerCallResults_TupleResultSplitsIntoLeaves(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun make () -> (int, int) { return (20, 13); }
+		fun main () -> int { let r = make(); return r.0 + r.1; }
+	`)
+
+	main := requireFunc(t, funcs, "main")
+	call := requireCall(t, funcs, "main")
+
+	// the caller reads the result back out of the same registers the callee handed it over in
+	callResults := findValues(main.Entry.Values, OpCallResult)
+	require.Len(t, callResults, 2)
+
+	assert.Equal(t, 0, callResults[0].Value)
+	assert.Equal(t, LocRegister, callResults[0].Loc.Kind)
+	assert.Equal(t, register.Results[0], callResults[0].Loc.Reg)
+	require.Len(t, callResults[0].Args, 1)
+	assert.Same(t, call, callResults[0].Args[0])
+
+	assert.Equal(t, 1, callResults[1].Value)
+	assert.Equal(t, LocRegister, callResults[1].Loc.Kind)
+	assert.Equal(t, register.Results[1], callResults[1].Loc.Reg)
+	require.Len(t, callResults[1].Args, 1)
+	assert.Same(t, call, callResults[1].Args[0])
 }
 
 // requireReturned unwraps b's single result and hands back the value feeding it.

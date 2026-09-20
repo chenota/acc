@@ -11,7 +11,8 @@ func lowerConstraints(f *Func) {
 	lowerClosurePtr(f)
 	lowerDivides(f)
 	lowerCalls(f)
-	// important that lowerResults runs after lowerCalls so the hint lands on the copy a call's result is read out of
+	lowerCallResults(f)
+	// important that lowerResults runs after lowerCallResults so the hint lands on the copy a call's result is read out of
 	lowerResults(f)
 }
 
@@ -99,14 +100,20 @@ func lowerCalls(f *Func) {
 		if v.Op == OpClosureCall {
 			v.Args[ClosureCallObject] = copyTo(f, v, v.Args[ClosureCallObject], NewReg(register.ClosureContext))
 		}
+	}
+}
 
-		// singleton result doesn't need a location or copy
-		if v.Type.IsSingleton() {
+// lowerCallResults reads each value a call hands back out of the register the ABI left it in.
+func lowerCallResults(f *Func) {
+	for v := range f.UnorderedValues() {
+		if v.Op != OpCallResult {
 			continue
 		}
 
-		v.Loc = NewReg(register.RegA)
+		// call results store their index in the value slot
+		v.Loc = results.loc(v.Value.(int))
 
+		// move the value somewhere unconstrained before the next call needs the register back
 		copyOut(f, v)
 	}
 }
