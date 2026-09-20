@@ -1,114 +1,210 @@
 package ssa
 
 import (
-	"math"
+	"iter"
+	"slices"
 
 	"github.com/chenota/acc/internal/iterutil"
 	"github.com/chenota/acc/internal/register"
 )
 
-// spill lowers register pressure using MIN algorithm
+// spill lowers register pressure using MIN algorithm.
 func spill(f *Func) {
 	timeline := iterutil.Enumerate(f.OrderedValues())
 
-	// every position where a value is read as an operand
-	uses := make(map[*Value][]int)
-	for p, v := range timeline {
-		for _, a := range v.Args {
-			uses[a] = append(uses[a], p)
-		}
-	}
-
-	s := &spiller{
-		inReg: make(map[*Value]struct{}),
-		slot:  make(map[*Value]*Slot),
-		uses:  uses,
-	}
+	s := newSpiller(f, timeline)
 
 	for p, v := range timeline {
-		// operands needed by this instruction must never be chosen as spill victims
-		s.pinned = make(map[*Value]struct{})
-		for _, a := range v.Args {
-			s.pinned[a] = struct{}{}
-		}
-
-		// reload every spilled operand
+		// reload every spilled operand of this value
 		for i, a := range v.Args {
+			// if a doesn't need a register or already has one we can skip
 			if !a.NeedsRegister() || s.resident(a) {
 				continue
 			}
-			s.makeRoom(f, v, p)
+
+			m := s.scratch(p)
+			s.makeRoom(f, v, p, m)
+
 			reload := f.insertValueBefore(v, OpStaticLoad, a.Type, v.Block)
-			reload.Value = s.slot[a]
+			reload.Value = s.state(a).slot
 			v.Args[i] = reload
-			s.inReg[reload] = struct{}{}
-			s.pinned[reload] = struct{}{}
+			s.take(reload, m)
 		}
 
 		// operands with no further use are ejected
 		for _, a := range v.Args {
-			if s.nextUse(a, p) == math.MaxInt {
-				delete(s.inReg, a)
+			if s.nextUse(a, p) == -1 {
+				s.release(a)
 			}
 		}
 
-		// this value becomes resident
-		if v.NeedsRegister() {
-			s.makeRoom(f, v, p)
-			s.inReg[v] = struct{}{}
+		if !v.NeedsRegister() {
+			continue
 		}
+
+		// ignore values forced into a register by the abi
+		if v.Loc.Kind != LocNone {
+			s.state(v).inReg = true
+			continue
+		}
+
+		avail := s.state(v).avail
+		s.makeRoom(f, v, p, avail)
+		s.take(v, avail)
 	}
 }
 
 type spiller struct {
-	inReg  map[*Value]struct{}
-	slot   map[*Value]*Slot
-	pinned map[*Value]struct{}
-	uses   map[*Value][]int
+	values   map[*Value]*valueState
+	holders  map[register.Register]*Value // the value sitting on each register of the free pool
+	used     register.Mask                // the registers holders covers
+	blockers []*regInterval
+}
+
+type valueState struct {
+	uses  []int         // every tick the value is read at
+	avail register.Mask // the registers regalloc could house it in
+	slot  *Slot
+	inReg bool
+}
+
+func newSpiller(f *Func, timeline iter.Seq2[int, *Value]) *spiller {
+	s := &spiller{
+		values:  make(map[*Value]*valueState),
+		holders: make(map[register.Register]*Value),
+	}
+
+	// every position where a value is read as an operand
+	for p, v := range timeline {
+		for _, a := range v.Args {
+			st := s.state(a)
+			st.uses = append(st.uses, p)
+		}
+	}
+
+	intervals := computeLiveIntervals(f)
+	s.blockers = computeRegIntervals(intervals)
+
+	for _, iv := range intervals {
+		if iv.Value.Loc.Kind != LocNone || !iv.Value.NeedsRegister() {
+			continue
+		}
+
+		free := register.Allocatable
+		for _, b := range s.blockers {
+			if overlap(b.Start, b.End, iv.Start, iv.End) {
+				free = free.Remove(b.Reg)
+			}
+		}
+		s.state(iv.Value).avail = free
+	}
+
+	return s
+}
+
+// state returns v's record, creating it for the values spill introduces itself.
+func (s *spiller) state(v *Value) *valueState {
+	st, ok := s.values[v]
+	if !ok {
+		st = &valueState{}
+		s.values[v] = st
+	}
+	return st
 }
 
 func (s *spiller) resident(v *Value) bool {
-	_, ok := s.inReg[v]
-	return ok
+	return s.state(v).inReg
 }
 
-// makeRoom evicts a resident value if the register file is full
-func (s *spiller) makeRoom(f *Func, before *Value, p int) {
-	// if there are available regs then don't do anything
-	if len(s.inReg) < register.Allocatable.Count() {
-		return
+// scratch is the set of registers nothing has been pinned to across tick p.
+func (s *spiller) scratch(p int) register.Mask {
+	free := register.Allocatable
+	for _, b := range s.blockers {
+		if overlap(b.Start, b.End, p, p+1) {
+			free = free.Remove(b.Reg)
+		}
 	}
+	return free
+}
 
-	// pick furthest-use value
+// makeRoom evicts resident values until m has a register to spare.
+func (s *spiller) makeRoom(f *Func, cur *Value, p int, m register.Mask) {
+	for (m &^ s.used).Count() == 0 {
+		victim := s.pickVictim(p, m, cur.Args)
+		if victim == nil {
+			return // nothing left to give up
+		}
+		s.evict(f, cur, victim)
+	}
+}
+
+func (s *spiller) pickVictim(p int, m register.Mask, operands []*Value) *Value {
 	var victim *Value
 	far := -1
-	for cand := range s.inReg {
-		if _, keep := s.pinned[cand]; keep {
-			continue // needed by the current instruction
+	for r := range (m & s.used).All() {
+		cand := s.holders[r]
+		if slices.Contains(operands, cand) {
+			continue
 		}
 		if d := s.nextUse(cand, p); d > far {
 			far, victim = d, cand
 		}
 	}
-	if victim == nil {
+	return victim
+}
+
+// take tentatively assigns v a register out of m
+func (s *spiller) take(v *Value, m register.Mask) {
+	s.state(v).inReg = true
+
+	// prefer caller-saved
+	free := m &^ s.used
+	pick := free & register.CallerSaved
+	if pick.Count() == 0 {
+		pick = free
+	}
+
+	r, ok := pick.One()
+	if !ok {
 		return
 	}
 
-	if _, done := s.slot[victim]; !done {
-		slot := f.newSlot(nil, victim.Type)
-		s.slot[victim] = slot
-		store := f.insertValueBefore(before, OpStaticStore, victim.Type, before.Block)
-		store.Args = []*Value{victim}
-		store.Value = slot
+	s.holders[r] = v
+	s.used = s.used.Include(r)
+}
+
+// release marks v unreadable and hands back whatever register it was holding.
+func (s *spiller) release(v *Value) {
+	s.state(v).inReg = false
+
+	for r := range s.used.All() {
+		if s.holders[r] == v {
+			delete(s.holders, r)
+			s.used = s.used.Remove(r)
+			return
+		}
 	}
-	delete(s.inReg, victim)
+}
+
+// evict stores victim to its stack slot so its register can be reused.
+func (s *spiller) evict(f *Func, cur *Value, victim *Value) {
+	st := s.state(victim)
+
+	if st.slot == nil {
+		st.slot = f.newSlot(nil, victim.Type)
+		store := f.insertValueBefore(cur, OpStaticStore, victim.Type, cur.Block)
+		store.Args = []*Value{victim}
+		store.Value = st.slot
+	}
+
+	s.release(victim)
 }
 
 func (s *spiller) nextUse(v *Value, after int) int {
-	for _, u := range s.uses[v] {
+	for _, u := range s.state(v).uses {
 		if u > after {
 			return u
 		}
 	}
-	return math.MaxInt
+	return -1
 }

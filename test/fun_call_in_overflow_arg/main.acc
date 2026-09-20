@@ -1,0 +1,15 @@
+fun seven () -> int {
+    return 7;
+}
+
+fun eight () -> int {
+    return 8;
+}
+
+fun total (a int, b int, c int, d int, e int, f int, g int, h int) -> int {
+    return a + b + c + d + e + f + g + h;
+}
+
+fun main () -> int {
+    return total(1, 2, 3, 4, 5, 6, seven(), eight());
+}

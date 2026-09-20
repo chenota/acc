@@ -1,0 +1,5 @@
+{
+  "name": "Tuple Returning Call In An Overflow Argument",
+  "tags": ["vs8"],
+  "status": 42
+}

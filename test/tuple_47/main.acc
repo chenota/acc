@@ -1,0 +1,11 @@
+fun pair (x int) -> (int, int) {
+    return (x, x * 2);
+}
+
+fun sum4 (a (int, int), b (int, int), c (int, int), d (int, int)) -> int {
+    return a.0 + a.1 + b.0 + b.1 + c.0 + c.1 + d.0 + d.1;
+}
+
+fun main () -> int {
+    return sum4(pair(1), pair(2), pair(3), pair(8));
+}
