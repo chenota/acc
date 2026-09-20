@@ -423,20 +423,15 @@ func (f *Func) localsSize() int {
 }
 
 func (f *Func) maxOutgoingSize() int {
-	var max int
+	var most int
 	for v := range f.UnorderedValues() {
 		if !v.IsCall() {
 			continue
 		}
-		if args := v.CallArgs(); len(args) > len(register.Args) {
-			// each outgoing stack slot uses 8 bytes
-			outgoingSize := stackSlotSize * (len(args) - len(register.Args))
-			if outgoingSize > max {
-				max = outgoingSize
-			}
-		}
+		// each argument that misses the registers uses an 8 byte slot
+		most = max(most, stackSlotSize*outgoingArgs.overflow(len(v.CallArgs())))
 	}
-	return max
+	return most
 }
 
 // UsedRegisters returns the set of physical registers assigned to values in f.

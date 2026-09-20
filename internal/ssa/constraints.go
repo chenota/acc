@@ -32,14 +32,7 @@ func lowerParams(f *Func) {
 		}
 
 		// parameters store their index in the value slot
-		i := v.Value.(int)
-		// first 6 args arrive in registers
-		if i < len(register.Args) {
-			v.Loc = NewReg(register.Args[i])
-			continue
-		}
-		// the rest arrive at the very bottom of the caller's frame
-		v.Loc = NewFrame(incomingArgOffset(i - len(register.Args)))
+		v.Loc = incomingArgs.loc(v.Value.(int))
 	}
 }
 
@@ -51,11 +44,10 @@ func lowerResults(f *Func) {
 		}
 
 		// results store their index in the value slot
-		reg := register.Results[v.Value.(int)]
-		v.Loc = NewReg(reg)
+		v.Loc = results.loc(v.Value.(int))
 
 		// move the returned value into the register it names
-		v.Args[0] = copyIn(f, v, v.Args[0], reg)
+		v.Args[0] = copyTo(f, v, v.Args[0], v.Loc)
 	}
 }
 
@@ -76,7 +68,7 @@ func lowerDivides(f *Func) {
 		dividend := v.Args[0]
 		divisor := v.Args[1]
 
-		lo := copyIn(f, v, dividend, register.RegA)
+		lo := copyTo(f, v, dividend, NewReg(register.RegA))
 
 		hi := f.insertValueBefore(v, OpSignExtend, dividend.Type, v.Block)
 		hi.Args = []*Value{lo}
@@ -98,19 +90,14 @@ func lowerCalls(f *Func) {
 		callArgs := v.CallArgs()
 		base := len(v.Args) - len(callArgs)
 
+		// arguments past the registers are written to the outgoing area at the bottom of this function's frame
 		for i, arg := range callArgs {
-			// first 6 args go in registers
-			if i < len(register.Args) {
-				v.Args[base+i] = copyIn(f, v, arg, register.Args[i])
-				continue
-			}
-			// the rest are written to the outgoing area at the bottom of this function's frame
-			v.Args[base+i] = copyToOutgoingStack(f, v, arg, i-len(register.Args))
+			v.Args[base+i] = copyTo(f, v, arg, outgoingArgs.loc(i))
 		}
 
 		// the context register only has a meaning at the call itself, so pin it last.
 		if v.Op == OpClosureCall {
-			v.Args[ClosureCallObject] = copyIn(f, v, v.Args[ClosureCallObject], register.ClosureContext)
+			v.Args[ClosureCallObject] = copyTo(f, v, v.Args[ClosureCallObject], NewReg(register.ClosureContext))
 		}
 
 		// singleton result doesn't need a location or copy
@@ -124,26 +111,52 @@ func lowerCalls(f *Func) {
 	}
 }
 
+type abiSeq struct {
+	regs []register.Register
+	mem  func(n int) Location // home of the nth leaf past the registers, or nil when there is no such convention
+}
+
+var (
+	// the caller writes past rsp, and the callee reads them back past its saved rbp.
+	incomingArgs = abiSeq{regs: register.Args, mem: func(n int) Location { return NewFrame(incomingArgOffset(n)) }}
+	outgoingArgs = abiSeq{regs: register.Args, mem: func(n int) Location { return NewOutgoing(n * stackSlotSize) }}
+
+	// results have nowhere to go once the result registers run out
+	results = abiSeq{regs: register.Results}
+)
+
+// loc is the home of the nth leaf in the sequence. Only call this for a leaf that fits.
+func (s abiSeq) loc(n int) Location {
+	if n < len(s.regs) {
+		return NewReg(s.regs[n])
+	}
+	return s.mem(n - len(s.regs))
+}
+
+// fits reports whether the sequence has a home for the nth leaf.
+func (s abiSeq) fits(n int) bool {
+	return n < len(s.regs) || s.mem != nil
+}
+
+// overflow is how many of n leaves land past the registers.
+func (s abiSeq) overflow(n int) int {
+	return max(0, n-len(s.regs))
+}
+
 // incomingArgOffset returns the rbp-relative offset of the nth incoming stack argument.
 func incomingArgOffset(n int) int {
 	// 16 to account for saved rbp + return address
 	return 16 + n*stackSlotSize
 }
 
-// copyToOutgoingStack inserts a copy of arg into the nth slot of f's outgoing argument area.
-func copyToOutgoingStack(f *Func, v *Value, arg *Value, n int) *Value {
+// copyTo inserts a copy of arg pinned to loc just before v.
+func copyTo(f *Func, v *Value, arg *Value, loc Location) *Value {
 	in := f.insertValueBefore(v, OpCopy, arg.Type, v.Block)
 	in.Args = []*Value{arg}
-	in.Loc = NewOutgoing(n * stackSlotSize)
-	return in
-}
-
-// copyIn inserts a copy of arg pinned to reg just before v.
-func copyIn(f *Func, v *Value, arg *Value, reg register.Register) *Value {
-	in := f.insertValueBefore(v, OpCopy, arg.Type, v.Block)
-	in.Args = []*Value{arg}
-	in.Loc = NewReg(reg)
-	arg.RecordHint(reg) // try to put arg where v is to make this copy redundant
+	in.Loc = loc
+	if loc.Kind == LocRegister {
+		arg.RecordHint(loc.Reg) // try to put arg where v is to make this copy redundant
+	}
 	return in
 }
 

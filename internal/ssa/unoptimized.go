@@ -7,7 +7,6 @@ import (
 	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/ir"
 	"github.com/chenota/acc/internal/iterutil"
-	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/types"
 )
 
@@ -155,8 +154,8 @@ func (b *builder) genReturn(n *ir.Node) error {
 
 // genResults hands vals back to the caller, one result value per value returned.
 func (b *builder) genResults(n *ir.Node, vals []*Value) error {
-	if len(vals) > len(register.Results) {
-		return diagnostic.NewError(n.Pos, "cannot return %d values: only %d fit in the result registers", len(vals), len(register.Results))
+	if len(vals) > 0 && !results.fits(len(vals)-1) {
+		return diagnostic.NewError(n.Pos, "cannot return %d values: only %d fit in the result registers", len(vals), len(results.regs))
 	}
 
 	results := make([]*Value, len(vals))
