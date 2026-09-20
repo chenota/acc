@@ -1,5 +1,5 @@
 {
   "name": "Returning A Tuple With A Unit Field",
-  "tags": ["vs10"],
+  "tags": ["vs8"],
   "status": 42
 }

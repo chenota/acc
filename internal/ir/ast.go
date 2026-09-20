@@ -38,6 +38,7 @@ const (
 	OpDot
 	OpUnit
 	OpTuple
+	OpNil
 )
 
 type Signature struct {

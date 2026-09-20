@@ -10,7 +10,10 @@ func associativeFold(f *Func) {
 			continue
 		}
 
-		foldedValue := foldConsts(consts, root.Op)
+		foldedValue, ok := foldConsts(consts, root.Op)
+		if !ok {
+			continue
+		}
 
 		cores := cores(chain)
 		if len(vars) == 0 {
@@ -137,16 +140,23 @@ func leaves(chain []*Value) ([]*Value, []*Value) {
 	return consts, vars
 }
 
-func foldConsts(vals []*Value, op Op) any {
+// foldConsts combines every constant leaf into one value, reporting false if the chain's type has no
+// rule to fold by. Without that report a type evaluateBop declines would fold to a valueless constant.
+func foldConsts(vals []*Value, op Op) (any, bool) {
 	var acc any
 
 	for _, v := range vals {
 		if acc == nil {
 			acc = v.Value
-		} else {
-			acc, _ = evaluateBop(op, v.Type, acc, v.Value)
+			continue
 		}
+
+		folded, ok := evaluateBop(op, v.Type, acc, v.Value)
+		if !ok {
+			return nil, false
+		}
+		acc = folded
 	}
 
-	return acc
+	return acc, true
 }

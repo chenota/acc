@@ -1,0 +1,6 @@
+fun main () -> int {
+    let a *int = nil;
+    let b int = 10;
+    a = &b;
+    return *a;
+}

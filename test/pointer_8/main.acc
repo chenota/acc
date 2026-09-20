@@ -1,0 +1,14 @@
+fun none () -> *int {
+    return nil;
+}
+
+fun pick (p *int, q *int) -> *int {
+    return q;
+}
+
+fun main () -> int {
+    let a int = 17;
+    let n *int = none();
+    let p *int = pick(n, &a);
+    return *p;
+}

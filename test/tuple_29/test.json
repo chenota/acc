@@ -1,5 +1,5 @@
 {
   "name": "Tuple Parameter Past The Register Cutoff",
-  "tags": ["vs10"],
+  "tags": ["vs8"],
   "status": 42
 }

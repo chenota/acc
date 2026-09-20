@@ -664,6 +664,18 @@ func TestLowerResults_OverflowResultSitsAboveOverflowArguments(t *testing.T) {
 	assert.GreaterOrEqual(t, main.maxOutgoingSize(), 3*stackSlotSize)
 }
 
+func TestUnoptimized_Nil(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun f () -> *int { return nil; } fun main () -> int { let x *int = f(); return 0; }`)
+
+	callee := requireFunc(t, funcs, "f")
+	literals := findValues(callee.Entry.Values, OpLiteral)
+	require.Len(t, literals, 1)
+
+	// nil is an ordinary zero literal, widened to fill a whole pointer
+	assert.Equal(t, int32(0), literals[0].Value)
+	assert.True(t, types.Equal(types.Int64(), literals[0].Type))
+}
+
 // requireReturned unwraps b's single result and hands back the value feeding it.
 func requireReturned(t *testing.T, b *Block) *Value {
 	t.Helper()

@@ -223,9 +223,22 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 			return nil, err
 		}
 		return b.genLoadFrom(place, expr.Type), nil
+	case ir.OpNil:
+		return b.genNil(expr)
 	default:
 		return nil, diagnostic.NewError(expr.Pos, "unknown expression operation: %d", expr.Op)
 	}
+}
+
+// genNil lowers nil to a zero occupying a whole pointer, so it needs no operator of its own.
+func (b *builder) genNil(expr *ir.Node) (*Value, error) {
+	if !expr.Type.IsPointer() {
+		return nil, diagnostic.NewError(expr.Pos, "unknown nil type: %v", expr.Type)
+	}
+
+	v := b.targetFunc.appendValue(OpLiteral, types.Int64(), b.currentBlock)
+	v.Value = int32(0)
+	return v, nil
 }
 
 // genPlace returns an addressable bucket for expr

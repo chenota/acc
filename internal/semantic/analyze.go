@@ -44,8 +44,7 @@ func (a *analyzer) analyzeStmt(scope *ir.Table, n *ir.Node) error {
 	case ir.OpAssignment:
 		return a.analyzeAssignment(scope, n)
 	case ir.OpPlusEq, ir.OpMinusEq, ir.OpDivEq, ir.OpTimesEq:
-		// assignment operators have same structure and use same typing rules as regular assignment
-		return a.analyzeAssignment(scope, n)
+		return a.analyzeAssignOp(scope, n)
 	case ir.OpCall:
 		return a.inferCall(scope, n)
 	default:
@@ -78,6 +77,21 @@ func (a *analyzer) analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 	// make sure the expression and target type match
 	if !types.Equal(target.Type, e.Type) {
 		return diagnostic.NewError(n.Pos, "variable assignment with mismatched types: want %v, got %v", target.Type, e.Type)
+	}
+
+	return nil
+}
+
+// analyzeAssignOp types a compound assignment.
+func (a *analyzer) analyzeAssignOp(scope *ir.Table, n *ir.Node) error {
+	if err := a.analyzeAssignment(scope, n); err != nil {
+		return err
+	}
+
+	// the target carries the type both operands settled on
+	target := n.List[0]
+	if !target.Type.IsConcreteNumeric() {
+		return diagnostic.NewError(n.Pos, "binary operation unavailable for type: %v", target.Type)
 	}
 
 	return nil
@@ -132,6 +146,9 @@ func (a *analyzer) inferExpr(scope *ir.Table, n *ir.Node) error {
 	case ir.OpInt:
 		n.Type = types.UntypedInt()
 		return nil
+	case ir.OpNil:
+		n.Type = types.UntypedNil()
+		return nil
 	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
 		return a.inferBop(scope, n)
 	case ir.OpIdent:
@@ -162,6 +179,8 @@ func (a *analyzer) checkExpr(scope *ir.Table, n *ir.Node, want *types.Type) erro
 	switch n.Op {
 	case ir.OpInt:
 		return a.checkInt(n, want)
+	case ir.OpNil:
+		return a.checkNil(n, want)
 	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
 		return a.checkBop(scope, n, want)
 	case ir.OpNegate:
@@ -174,8 +193,21 @@ func (a *analyzer) checkExpr(scope *ir.Table, n *ir.Node, want *types.Type) erro
 	}
 }
 
+func (a *analyzer) checkNil(n *ir.Node, want *types.Type) error {
+	if !want.IsPointer() {
+		return diagnostic.NewError(n.Pos, "nil used outside of pointer context")
+	}
+	n.Type = want
+	return nil
+}
+
 // materialize settles any untyped part of n's type on its default
 func (a *analyzer) materialize(scope *ir.Table, n *ir.Node) error {
+	// nil has no default
+	if n.Type.IsUntypedNil() {
+		return diagnostic.NewError(n.Pos, "nil used outside of pointer context")
+	}
+
 	defaultType := n.Type.ToDefault()
 	if types.Equal(defaultType, n.Type) {
 		return nil
@@ -448,8 +480,6 @@ func (a *analyzer) inferBop(scope *ir.Table, n *ir.Node) error {
 	return a.settleBop(scope, n, left, right)
 }
 
-// checkBop hands the expectation to both operands: these operators are homogeneous, so whatever
-// the context wants of the result it wants of each side too.
 func (a *analyzer) checkBop(scope *ir.Table, n *ir.Node, want *types.Type) error {
 	left, right, err := bopOperands(n)
 	if err != nil {
@@ -466,9 +496,7 @@ func (a *analyzer) checkBop(scope *ir.Table, n *ir.Node, want *types.Type) error
 	return a.settleBop(scope, n, left, right)
 }
 
-// settleBop resolves an operand still left untyped against a concrete sibling, then validates the
-// pair and types the operator. Shared by both modes: an expectation that failed to reach an operand
-// (or that never existed) leaves the same situation behind either way.
+// settleBop resolves an operand still left untyped against a concrete sibling
 func (a *analyzer) settleBop(scope *ir.Table, n *ir.Node, left *ir.Node, right *ir.Node) error {
 	switch {
 	case left.Type.IsUntypedNumeric() && right.Type.IsConcreteNumeric():

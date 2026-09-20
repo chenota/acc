@@ -123,6 +123,16 @@ func TestCodegen_EscapingLocal_CallsRuntimeAllocator(t *testing.T) {
 	assertContainsCallTo(t, insts, symbol("acc_alloc"))
 }
 
+func TestCodegen_Nil_ZeroesFullWidth(t *testing.T) {
+	insts := requireGeneratesProgram(t, `fun main () -> int { let p *int = nil; let a = 10; p = &a; return *p; }`)
+
+	// a pointer is 8 bytes wide whatever it points at, so nil is zeroed with the quadword move
+	mov := requireOnlyImmediateSrc(t, insts, "movq")
+
+	assert.Equal(t, int32(0), mov.Src1.Value)
+	assert.Equal(t, KRegister, mov.Dest.Kind)
+}
+
 func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
 	t.Helper()
 
@@ -159,6 +169,19 @@ func requireOnlyOp(t *testing.T, insts []Inst, op string) Inst {
 		}
 	}
 	require.Len(t, found, 1, "expected exactly one %q instruction", op)
+	return found[0]
+}
+
+// requireOnlyImmediateSrc returns the sole instruction using the given mnemonic on an immediate.
+func requireOnlyImmediateSrc(t *testing.T, insts []Inst, op string) Inst {
+	t.Helper()
+	var found []Inst
+	for _, inst := range insts {
+		if inst.Op == op && inst.Src1.Kind == KImmediate {
+			found = append(found, inst)
+		}
+	}
+	require.Len(t, found, 1, "expected exactly one %q from an immediate", op)
 	return found[0]
 }
 

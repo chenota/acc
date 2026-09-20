@@ -1,0 +1,8 @@
+fun boxed (x int) -> (*int, *int) {
+    return (&x, nil);
+}
+
+fun main () -> int {
+    let t (*int, *int) = boxed(21);
+    return *t.0 + 21;
+}

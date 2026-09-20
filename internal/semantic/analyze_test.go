@@ -276,6 +276,28 @@ func TestAnalyze_AssignmentOp(t *testing.T) {
 	assert.Equal(t, decl.Sym, assign.List[0].Sym)
 }
 
+func TestAnalyze_AssignmentOp_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"pointer target", `fun main () -> int { let b int = 1; let p *int = &b; p += p; return 0; }`},
+		{"pointer target with nil", `fun main () -> int { let p *int = nil; p += nil; return 0; }`},
+		{"pointer target through a deref", `fun main () -> int { let b int = 1; let p *int = &b; let q **int = &p; *q += *q; return 0; }`},
+		{"tuple target", `fun main () -> int { let t (int, int) = (1, 2); t += t; return 0; }`},
+		{"subtraction on a pointer", `fun main () -> int { let b int = 1; let p *int = &b; p -= p; return 0; }`},
+		{"multiplication on a pointer", `fun main () -> int { let b int = 1; let p *int = &b; p *= p; return 0; }`},
+		{"division on a pointer", `fun main () -> int { let b int = 1; let p *int = &b; p /= p; return 0; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			assert.Error(t, err)
+		})
+	}
+}
+
 func TestAnalyze_Call(t *testing.T) {
 	funcs := mustAnalyze(t, `fun f (x int) -> int { return x; } fun main () -> int { return f(1); }`)
 
@@ -616,6 +638,98 @@ func TestAnalyze_Tuple_Dot_Err(t *testing.T) {
 		{"field beyond int64", `fun main () -> int { let x (int,) = (1,); return x.99999999999999999999; }`},
 		{"named field", `fun main () -> int { let y int = 0; let x (int, int) = (1, 2); return x.y; }`},
 		{"dot on non-tuple", `fun main () -> int { let x int = 1; return x.0; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestAnalyze_Nil(t *testing.T) {
+	funcs := mustAnalyze(t, `fun f () -> *int { return nil; }`)
+
+	require.Len(t, funcs, 1)
+	f := funcs[0]
+
+	require.Len(t, f.List, 1)
+	ret := f.List[0]
+
+	require.Len(t, ret.List, 1)
+	assert.Equal(t, ir.OpNil, ret.List[0].Op)
+	assert.True(t, types.Equal(ret.List[0].Type, types.Pointer(types.Int())))
+}
+
+func TestAnalyze_Nil_Assignment(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let b int = 1; let a *int = &b; a = nil; return 0; }`)
+
+	require.Len(t, funcs, 1)
+	main := funcs[0]
+
+	require.Len(t, main.List, 4)
+	assign := main.List[2]
+	require.Equal(t, ir.OpAssignment, assign.Op)
+
+	// the target's type is what reaches the nil on the right
+	require.Len(t, assign.List, 2)
+	assert.Equal(t, ir.OpNil, assign.List[1].Op)
+	assert.True(t, types.Equal(types.Pointer(types.Int()), assign.List[1].Type))
+}
+
+func TestAnalyze_Nil_CallArgument(t *testing.T) {
+	funcs := mustAnalyze(t, `fun f (p *int) -> int { return 0; } fun main () -> int { return f(nil); }`)
+
+	require.Len(t, funcs, 2)
+	main := funcs[1]
+
+	require.Len(t, main.List, 1)
+	call := main.List[0].List[0]
+	require.Equal(t, ir.OpCall, call.Op)
+
+	// the parameter is what this position expects of the argument
+	require.Len(t, call.List, 2)
+	assert.Equal(t, ir.OpNil, call.List[1].Op)
+	assert.True(t, types.Equal(types.Pointer(types.Int()), call.List[1].Type))
+}
+
+func TestAnalyze_Nil_TupleElement(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let t (*int, int) = (nil, 7); return t.1; }`)
+
+	require.Len(t, funcs, 1)
+	main := funcs[0]
+
+	require.Len(t, main.List, 2)
+	decl := main.List[0]
+
+	// the annotation's first component is pushed down into the nil sitting at that position
+	require.Len(t, decl.List, 3)
+	tuple := decl.List[2]
+	require.Equal(t, ir.OpTuple, tuple.Op)
+
+	require.Len(t, tuple.List, 2)
+	assert.Equal(t, ir.OpNil, tuple.List[0].Op)
+	assert.True(t, types.Equal(types.Pointer(types.Int()), tuple.List[0].Type))
+	assert.True(t, types.Equal(types.Tuple([]*types.Type{types.Pointer(types.Int()), types.Int()}), tuple.Type))
+}
+
+func TestAnalyze_Nil_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"no annotation to settle on", `fun main () -> int { let a = nil; return 0; }`},
+		{"no annotation on enclosing tuple", `fun main () -> int { let t = (nil, 1); return t.1; }`},
+		{"int annotation", `fun main () -> int { let a int = nil; return a; }`},
+		{"int component of tuple annotation", `fun main () -> int { let t (int, int) = (nil, 1); return t.1; }`},
+		{"function annotation", `fun main () -> int { let f fun () -> int = nil; return 0; }`},
+		{"returned from int function", `fun main () -> int { return nil; }`},
+		{"int parameter", `fun f (x int) -> int { return x; } fun main () -> int { return f(nil); }`},
+		{"arithmetic operand", `fun main () -> int { let a = nil + 1; return 0; }`},
+		{"dereferenced", `fun main () -> int { return *nil; }`},
+		{"called", `fun main () -> int { return nil(); }`},
+		{"address taken", `fun main () -> int { let a **int = &nil; return 0; }`},
 	}
 
 	for _, tt := range tests {

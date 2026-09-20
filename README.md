@@ -242,7 +242,29 @@ Type     = "*" Type
 Typelist = Type { "," Type } [ "," ] ;
 ```
 
-### Vertical Slice 9: Closures [Work in Progress]
+### Vertical Slice 9: Nil [Complete]
+
+I neglected to add the nil keyword in the earlier pointer effort, so I'm adding it in now since it's pretty low-hanging fruit and is necessary for recursive type work later.
+
+#### Expression Grammar (EBNF)
+
+```
+Expression = Add ;
+Add        = Mul { ( "+" | "-" ) Mul } ;
+Mul        = Unary { ( "*" | "/" ) Unary } ;
+Unary      = ( "-" | "&" | "*" ) Unary
+           | Postfix ;
+Postfix    = Atom { Call | Field } ;
+Call       = "(" [ Exprlist ] ")" ;
+Field      = "." ( Integer | Ident ) ;
+Exprlist   = Expression { "," Expression } [ "," ] ;
+Atom       = Integer
+           | Ident
+           | "nil"
+           | "(" [ Exprlist ] ")" ;
+```
+
+### Vertical Slice 10: Closures [Work in Progress]
 
 Closures let `acc` use functions as values.
 
@@ -260,6 +282,7 @@ Field      = "." ( Integer | Ident ) ;
 Exprlist   = Expression { "," Expression } [ "," ] ;
 Atom       = Integer
            | Ident
+           | "nil"
            | Lambda
            | "(" [ Exprlist ] ")" ;
 Lambda     = "fun" "(" Paramlist ")" [ "->" Type ] Block ;
@@ -277,6 +300,6 @@ Type     = "fun" "(" [ Typelist ] ")" [ "->" Type ]
 Typelist = Type { "," Type } [ "," ] ;
 ```
 
-### Vertical Slice 10: String Literals and File Output [Not Started]
+### Vertical Slice 11: String Literals and File Output [Not Started]
 
 With functions and variables out of the way, we can finally add a format print which greatly expands the usefulness of the `acc` language.

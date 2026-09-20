@@ -157,6 +157,11 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 			return nil, diagnostic.NewError(left.Pos, "unable to parse function")
 		}
 		return f, nil
+	case lexer.KNilKw:
+		return &ir.Node{
+			Op:  ir.OpNil,
+			Pos: left.Pos,
+		}, nil
 	default:
 		return nil, diagnostic.NewError(left.Pos, "expected prefix or literal expression")
 	}

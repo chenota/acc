@@ -1208,6 +1208,22 @@ func TestParser_NestedTupleType(t *testing.T) {
 	assert.True(t, types.Equal(types.Tuple([]*types.Type{inner, types.Int()}), varType.Type))
 }
 
+func TestParser_Nil(t *testing.T) {
+	tokens := requireTokenize(t, `fun f () -> *int { return nil; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	assert.Equal(t, ir.OpNil, ret.List[0].Op)
+}
+
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {
 	tokens, err := lexer.Tokenize(strings.NewReader(input))
 	require.NoError(t, err)

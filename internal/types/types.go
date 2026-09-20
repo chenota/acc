@@ -16,6 +16,8 @@ const (
 	KFunction
 	KPointer
 	KTuple
+	KUntypedNil
+	KInt64
 )
 
 type Type struct {
@@ -83,8 +85,12 @@ func (t *Type) String() string {
 		return "()"
 	case KUntypedInt:
 		return "untyped int"
+	case KUntypedNil:
+		return "untyped nil"
 	case KInt:
 		return "int"
+	case KInt64:
+		return "int64"
 	case KFunction:
 		params := make([]string, len(t.params))
 		for i := range t.params {
@@ -117,6 +123,15 @@ func (t *Type) IsUntypedNumeric() bool {
 	}
 
 	return t.kind == KUntypedInt
+}
+
+// IsUntypedNil reports whether t is the type of an unresolved nil literal.
+func (t *Type) IsUntypedNil() bool {
+	if t == nil {
+		return false
+	}
+
+	return t.kind == KUntypedNil
 }
 
 func (t *Type) IsFunction() bool {
@@ -203,8 +218,16 @@ func Int() *Type {
 	return &Type{kind: KInt}
 }
 
+func Int64() *Type {
+	return &Type{kind: KInt64}
+}
+
 func UntypedInt() *Type {
 	return &Type{kind: KUntypedInt}
+}
+
+func UntypedNil() *Type {
+	return &Type{kind: KUntypedNil}
 }
 
 func Function(params []*Type, result *Type) *Type {
@@ -240,6 +263,8 @@ func (t *Type) Size() int {
 		return 0
 	case KInt:
 		return 4
+	case KInt64:
+		return 8
 	case KTuple:
 		var size int
 		for _, elem := range t.params {
@@ -258,6 +283,8 @@ func (t *Type) Align() int {
 		return 1
 	case KInt:
 		return 4
+	case KInt64:
+		return 8
 	case KTuple:
 		align := 1
 		for _, elem := range t.params {
@@ -316,6 +343,7 @@ func (t *Type) ToDefault() *Type {
 		}
 		return Tuple(elems)
 	default:
+		// untyped nil lands here with nothing to settle on; the analyzer rejects it rather than defaulting it
 		return t
 	}
 }
