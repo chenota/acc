@@ -212,7 +212,7 @@ Type = "*" Type
      | "int" ;
 ```
 
-### Vertical Slice 8: Tuples [Work in Progress]
+### Vertical Slice 8: Tuples [Complete]
 
 I was halfway through implementing closures when I realized I need some kind of fielded type for storing captured values. Yikes! Decided to go with tuples since they're all I need and the easiest to get off the ground.
 
