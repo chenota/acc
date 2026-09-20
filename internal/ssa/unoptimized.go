@@ -237,6 +237,7 @@ func (b *builder) genNil(expr *ir.Node) (*Value, error) {
 	}
 
 	v := b.targetFunc.appendValue(OpLiteral, types.Int64(), b.currentBlock)
+	// TODO: This needs to be an int64(0) when there's better plumbing for this sort of thing
 	v.Value = int32(0)
 	return v, nil
 }
