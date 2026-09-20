@@ -401,10 +401,14 @@ func (f *Func) removeValue(v *Value) {
 
 // StackAdjustment is the number of bytes the function prologue must subtract from rsp.
 func (f *Func) StackAdjustment() int {
-	// number of bytes pushed due to callee-saved registers - this is computed for alignment purposes
-	pushBytes := (f.UsedRegisters() & register.CalleeSaved).Count() * 8
-	region := pushBytes + f.localsSize() + f.maxOutgoingSize()
+	pushBytes := f.savedRegBytes()
+	region := max(pushBytes, f.localsSize()) + f.maxOutgoingSize()
 	return ((region + 15) &^ 15) - pushBytes
+}
+
+// savedRegBytes is the number of bytes the prologue pushes for callee-saved registers.
+func (f *Func) savedRegBytes() int {
+	return (f.UsedRegisters() & register.CalleeSaved).Count() * 8
 }
 
 // localsSize is the size in bytes of the frame's slot area

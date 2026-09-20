@@ -11,7 +11,8 @@ func layoutFrame(f *Func) {
 		return b.Type.Size() - a.Type.Size()
 	})
 
-	var offset int
+	// start locals below callee-saved reigsters
+	offset := f.savedRegBytes()
 	for _, s := range f.Slots {
 		align := s.Type.Align()
 		offset += s.Type.Size()
