@@ -1,0 +1,11 @@
+fun make () -> (int, int) {
+    return (18, 24);
+}
+
+fun sum (t (int, int)) -> int {
+    return t.0 + t.1;
+}
+
+fun main () -> int {
+    return sum(make());
+}
