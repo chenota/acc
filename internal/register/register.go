@@ -98,7 +98,7 @@ var (
 	CalleeSaved    = NewMask(RegB, Reg12, Reg13, Reg14, Reg15)
 	Reserved       = NewMask(RegSP, RegBP)
 	Allocatable    = Reserved.Complement()
-	ReturnTarget   = RegA
 	Args           = []Register{RegDI, RegSI, RegD, RegC, Reg8, Reg9} // order matters here so putting in a list
+	Results        = []Register{RegA, RegD}                           // order matters here so putting in a list
 	ClosureContext = Reg10
 )

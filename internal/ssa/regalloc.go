@@ -142,13 +142,15 @@ func computeLiveIntervals(f *Func) []*liveInterval {
 		}
 	}
 
-	// extend a block's control value to live though the block's entire lifecycle
+	// extend a block's control values to live though the block's entire lifecycle
 	for _, b := range f.Blocks {
-		if b.Control == nil || len(b.Values) == 0 {
+		if len(b.Values) == 0 {
 			continue
 		}
 		last := b.Values[len(b.Values)-1]
-		touch(b.Control, intervals[last.Id].End+1)
+		for _, c := range b.Control {
+			touch(c, intervals[last.Id].End+1)
+		}
 	}
 
 	// order by start tick ascending

@@ -501,17 +501,63 @@ func TestHeapify_RewritesAnEscapingLocal(t *testing.T) {
 	assert.Nil(t, slotNamed(f, "x"))
 }
 
-// requireReturned unwraps b's return copy and hands back the value feeding it.
+func TestLowerResults_PinnedToResultRegister(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { return 7; }`)
+
+	f := requireFunc(t, funcs, "main")
+
+	// the block hands back exactly one value
+	require.Len(t, f.Entry.Control, 1)
+	result := f.Entry.Control[0]
+	assert.Equal(t, OpResult, result.Op)
+
+	// the result names the register the ABI returns in without occupying one itself
+	assert.Equal(t, LocRegister, result.Loc.Kind)
+	assert.Equal(t, register.Results[0], result.Loc.Reg)
+	assert.False(t, result.NeedsRegister())
+	assert.True(t, types.Equal(types.Int(), result.Type))
+
+	// a copy pinned to the same register puts the returned value there
+	require.Len(t, result.Args, 1)
+	move := result.Args[0]
+	assert.Equal(t, OpCopy, move.Op)
+	assert.Equal(t, LocRegister, move.Loc.Kind)
+	assert.Equal(t, register.Results[0], move.Loc.Reg)
+
+	require.Len(t, move.Args, 1)
+	assert.Equal(t, OpLiteral, move.Args[0].Op)
+	assert.Equal(t, int32(7), move.Args[0].Value)
+}
+
+// requireReturned unwraps b's single result and hands back the value feeding it.
 func requireReturned(t *testing.T, b *Block) *Value {
 	t.Helper()
 
-	require.NotNil(t, b.Control)
-	require.Equal(t, OpCopy, b.Control.Op, "a returning block must end in the return copy")
-	require.Equal(t, LocRegister, b.Control.Loc.Kind)
-	require.Equal(t, register.ReturnTarget, b.Control.Loc.Reg)
-	require.Len(t, b.Control.Args, 1)
+	require.Len(t, b.Control, 1)
+	return requireResult(t, b, 0)
+}
 
-	return b.Control.Args[0]
+// requireResult unwraps the ith value b hands back and returns the value feeding it.
+func requireResult(t *testing.T, b *Block, i int) *Value {
+	t.Helper()
+
+	require.Greater(t, len(b.Control), i)
+	result := b.Control[i]
+
+	require.Equal(t, OpResult, result.Op, "a returning block must control its results")
+	require.Equal(t, i, result.Value, "a result carries the index of the register it lands in")
+	require.Equal(t, LocRegister, result.Loc.Kind)
+	require.Equal(t, register.Results[i], result.Loc.Reg)
+	require.Len(t, result.Args, 1)
+
+	// the result is a placeholder, so the copy pinned to its register is what places the value
+	move := result.Args[0]
+	require.Equal(t, OpCopy, move.Op, "a result must be placed by a copy into its register")
+	require.Equal(t, LocRegister, move.Loc.Kind)
+	require.Equal(t, register.Results[i], move.Loc.Reg)
+	require.Len(t, move.Args, 1)
+
+	return move.Args[0]
 }
 
 func requireBuildSSA(t *testing.T, src string) []*Func {

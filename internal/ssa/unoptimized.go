@@ -7,6 +7,7 @@ import (
 	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/ir"
 	"github.com/chenota/acc/internal/iterutil"
+	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/types"
 )
 
@@ -142,7 +143,33 @@ func (b *builder) genReturn(n *ir.Node) error {
 	if err != nil {
 		return err
 	}
-	b.currentBlock.Control = retVal
+
+	// a singleton carries no information, so it is evaluated for its effects and then dropped
+	if retVal.Type.IsSingleton() {
+		b.currentBlock.Control = nil
+		return nil
+	}
+
+	return b.genResults(n, []*Value{retVal})
+}
+
+// genResults hands vals back to the caller, one result value per value returned.
+func (b *builder) genResults(n *ir.Node, vals []*Value) error {
+	if len(vals) > len(register.Results) {
+		return diagnostic.NewError(n.Pos, "cannot return %d values: only %d fit in the result registers", len(vals), len(register.Results))
+	}
+
+	results := make([]*Value, len(vals))
+	for i, val := range vals {
+		// results store their index in the value slot, the same way parameters do
+		res := b.targetFunc.appendValue(OpResult, val.Type, b.currentBlock)
+		res.Value = i
+		res.Args = []*Value{val}
+		results[i] = res
+	}
+
+	// a second return in the same block hands back its own values, not the earlier ones
+	b.currentBlock.Control = results
 
 	return nil
 }

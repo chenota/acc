@@ -27,6 +27,7 @@ const (
 	OpStaticCall // direct call to the function in Value
 	OpSignExtend // sign-extends the accumulator into the high register (cdq/cqo)
 	OpParam      // incoming function argument - more of a placeholder for a location than an acutal value in its own right
+	OpResult     // outgoing function result - the mirror of OpParam, naming the location Args[0] is handed back in
 	OpLocalAddr  // address bound to a static stack slot
 	OpFieldAddr  // address at Offset from the pointer in Args[0]
 	OpClosurePtr
@@ -105,6 +106,7 @@ func (v *Value) ArgIndex(arg *Value) int {
 func (v *Value) NeedsRegister() bool {
 	return !(v.Op == OpStore ||
 		v.Op == OpStaticStore ||
+		v.Op == OpResult ||
 		v.Type.IsSingleton())
 }
 
@@ -174,7 +176,7 @@ type Block struct {
 	Successors   []*Block
 	Predecessors []*Block
 
-	Control *Value
+	Control []*Value
 }
 
 func (b *Block) indexOf(v *Value) int {
@@ -336,8 +338,10 @@ func (f *Func) redirectUses(old, new *Value) {
 			}
 		}
 
-		if block.Control == old {
-			block.Control = new
+		for i := range block.Control {
+			if block.Control[i] == old {
+				block.Control[i] = new
+			}
 		}
 	}
 }
@@ -363,7 +367,7 @@ func (f *Func) hasUses(v *Value) bool {
 			}
 		}
 
-		if block.Control == v {
+		if slices.Contains(block.Control, v) {
 			return true
 		}
 	}
@@ -393,9 +397,7 @@ func (f *Func) removeValue(v *Value) {
 		}
 		block.Values = block.Values[:n]
 
-		if block.Control == v {
-			block.Control = nil
-		}
+		block.Control = slices.DeleteFunc(block.Control, func(c *Value) bool { return c == v })
 	}
 }
 

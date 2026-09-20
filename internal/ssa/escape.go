@@ -15,13 +15,8 @@ func escapeAnalysis(f *Func) []*Slot {
 	}
 
 	// enqueue both sink types (return values and stored-through-pointer values) to be looked at
-	for block := range f.OrderedBlocks() {
-		if block.Kind == BlockRet && block.Control != nil {
-			relax(valueNode(block.Control), 0)
-		}
-	}
 	for v := range f.UnorderedValues() {
-		if v.Op == OpStore {
+		if v.Op == OpResult || v.Op == OpStore {
 			relax(valueNode(v.Args[0]), 0)
 		}
 	}

@@ -11,8 +11,8 @@ func lowerConstraints(f *Func) {
 	lowerClosurePtr(f)
 	lowerDivides(f)
 	lowerCalls(f)
-	// important that lowerReturns runs after lowerCalls so it targets the correct value
-	lowerReturns(f)
+	// important that lowerResults runs after lowerCalls so the hint lands on the copy a call's result is read out of
+	lowerResults(f)
 }
 
 // lowerClosurePtr pins the incoming closure object to the register the caller left it in.
@@ -43,25 +43,19 @@ func lowerParams(f *Func) {
 	}
 }
 
-func lowerReturns(f *Func) {
-	for _, b := range f.Blocks {
-		if b.Kind != BlockRet || b.Control == nil {
+// lowerResults pins each return value to a result register
+func lowerResults(f *Func) {
+	for v := range f.UnorderedValues() {
+		if v.Op != OpResult {
 			continue
 		}
 
-		// don't need to do anything for singletons
-		if b.Control.Type.IsSingleton() {
-			b.Control = nil
-			continue
-		}
+		// results store their index in the value slot
+		reg := register.Results[v.Value.(int)]
+		v.Loc = NewReg(reg)
 
-		// push the control value towards rax
-		b.Control.RecordHint(register.ReturnTarget)
-
-		out := f.appendValue(OpCopy, b.Control.Type, b)
-		out.Args = []*Value{b.Control}
-		out.Loc = NewReg(register.ReturnTarget)
-		b.Control = out
+		// move the returned value into the register it names
+		v.Args[0] = copyIn(f, v, v.Args[0], reg)
 	}
 }
 
