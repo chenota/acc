@@ -430,10 +430,31 @@ func (f *Func) maxOutgoingSize() int {
 		if !v.IsCall() {
 			continue
 		}
-		// each argument that misses the registers uses an 8 byte slot
-		most = max(most, stackSlotSize*outgoingArgs.overflow(len(v.CallArgs())))
+		nArgs := len(v.CallArgs())
+		slots := outgoingArgs.overflow(nArgs) + incomingResults(nArgs).overflow(leafCount(v.Type))
+		most = max(most, stackSlotSize*slots)
 	}
 	return most
+}
+
+// paramLeaves is how many leaves the signature's parameters flatten into
+func (f *Func) paramLeaves() int {
+	var n int
+	for v := range f.UnorderedValues() {
+		if v.Op == OpParam {
+			n += 1
+		}
+	}
+	return n
+}
+
+// leafCount is the number of ABI leaves t flattens into.
+func leafCount(t *types.Type) int {
+	var n int
+	for range t.Leaves() {
+		n += 1
+	}
+	return n
 }
 
 // UsedRegisters returns the set of physical registers assigned to values in f.

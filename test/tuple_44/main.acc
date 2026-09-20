@@ -1,0 +1,9 @@
+fun make () -> (int, int, *int) {
+    let x = 12;
+    return (10, 20, &x);
+}
+
+fun main () -> int {
+    let r = make();
+    return r.0 + r.1 + *r.2;
+}

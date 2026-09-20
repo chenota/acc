@@ -1,0 +1,11 @@
+fun g () -> (int, int, int) {
+    return (1, 2, 3);
+}
+
+fun f (t (int, int, int), a int, b int, c int, d int, e int) -> int {
+    return t.0 + t.1 + t.2 + a + b + c + d + e;
+}
+
+fun main () -> int {
+    return f(g(), 4, 5, 6, 7, 8);
+}

@@ -1,0 +1,13 @@
+fun three () -> (int, int, int) {
+    return (1, 2, 3);
+}
+
+fun five () -> (int, int, int, int, int) {
+    return (4, 5, 6, 7, 8);
+}
+
+fun main () -> int {
+    let a = three();
+    let b = five();
+    return a.0 + a.1 + a.2 + b.0 + b.1 + b.2 + b.3 + b.4;
+}

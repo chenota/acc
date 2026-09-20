@@ -587,6 +587,83 @@ func TestLowerCallResults_TupleResultSplitsIntoLeaves(t *testing.T) {
 	assert.Same(t, call, callResults[1].Args[0])
 }
 
+func TestLowerResults_OverflowResultGoesToMemory(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun make () -> (int, int, int) { return (10, 20, 12); }
+		fun main () -> int { let r = make(); return r.0 + r.1 + r.2; }
+	`)
+
+	f := requireFunc(t, funcs, "make")
+	require.Len(t, f.Entry.Control, 3)
+
+	// the first two leaves ride back in the result registers
+	requireResult(t, f.Entry, 0)
+	requireResult(t, f.Entry, 1)
+
+	// make takes no arguments, so the third leaf goes in the first slot of the caller's region
+	third := f.Entry.Control[2]
+	assert.Equal(t, OpResult, third.Op)
+	assert.Equal(t, LocMemory, third.Loc.Kind)
+	assert.Equal(t, register.RegBP, third.Loc.Reg)
+	assert.Equal(t, incomingArgOffset(0), third.Loc.Offset)
+}
+
+func TestLowerCallResults_OverflowResultReadFromMemory(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun make () -> (int, int, int) { return (10, 20, 12); }
+		fun main () -> int { let r = make(); return r.0 + r.1 + r.2; }
+	`)
+
+	main := requireFunc(t, funcs, "main")
+	callResults := findValues(main.Entry.Values, OpCallResult)
+	require.Len(t, callResults, 3)
+
+	assert.Equal(t, LocRegister, callResults[0].Loc.Kind)
+	assert.Equal(t, register.Results[0], callResults[0].Loc.Reg)
+
+	assert.Equal(t, LocRegister, callResults[1].Loc.Kind)
+	assert.Equal(t, register.Results[1], callResults[1].Loc.Reg)
+
+	// the third comes back out of the bottom of the caller's own frame
+	assert.Equal(t, LocMemory, callResults[2].Loc.Kind)
+	assert.Equal(t, register.RegSP, callResults[2].Loc.Reg)
+	assert.Equal(t, 0, callResults[2].Loc.Offset)
+
+	// which the caller has to reserve room for
+	assert.GreaterOrEqual(t, main.maxOutgoingSize(), stackSlotSize)
+}
+
+func TestLowerResults_OverflowResultSitsAboveOverflowArguments(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun f (a int, b int, c int, d int, e int, g int, h int, i int) -> (int, int, int) {
+			return (a + b, c + d, e + g + h + i);
+		}
+		fun main () -> int { let r = f(1, 2, 3, 4, 5, 6, 7, 8); return r.0 + r.1 + r.2; }
+	`)
+
+	// two arguments miss the argument registers, so the overflow result takes the slot above them
+	callee := requireFunc(t, funcs, "f")
+	require.Len(t, callee.Entry.Control, 3)
+
+	written := callee.Entry.Control[2]
+	assert.Equal(t, LocMemory, written.Loc.Kind)
+	assert.Equal(t, register.RegBP, written.Loc.Reg)
+	assert.Equal(t, incomingArgOffset(2), written.Loc.Offset)
+
+	// the caller names that same slot from its own side of the call
+	main := requireFunc(t, funcs, "main")
+	callResults := findValues(main.Entry.Values, OpCallResult)
+	require.Len(t, callResults, 3)
+
+	read := callResults[2]
+	assert.Equal(t, LocMemory, read.Loc.Kind)
+	assert.Equal(t, register.RegSP, read.Loc.Reg)
+	assert.Equal(t, 2*stackSlotSize, read.Loc.Offset)
+
+	// and reserves the two argument slots plus the result slot above them
+	assert.GreaterOrEqual(t, main.maxOutgoingSize(), 3*stackSlotSize)
+}
+
 // requireReturned unwraps b's single result and hands back the value feeding it.
 func requireReturned(t *testing.T, b *Block) *Value {
 	t.Helper()

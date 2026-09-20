@@ -148,10 +148,6 @@ func (b *builder) genReturn(n *ir.Node) error {
 
 // genResults hands vals back to the caller, one result value per value returned.
 func (b *builder) genResults(n *ir.Node, vals []*Value) error {
-	if len(vals) > 0 && !results.fits(len(vals)-1) {
-		return diagnostic.NewError(n.Pos, "cannot return %d values: only %d fit in the result registers", len(vals), len(results.regs))
-	}
-
 	var results []*Value
 	for i, val := range vals {
 		// results store their index in the value slot, the same way parameters do
@@ -500,12 +496,7 @@ func (b *builder) genCallResults(expr *ir.Node) ([]*Value, error) {
 
 	var vals []*Value
 	for i, leaf := range iterutil.Enumerate(iterutil.Second(expr.Type.Leaves())) {
-		// the callee cannot have placed a value the sequence has no home for
-		if !results.fits(i) {
-			return nil, diagnostic.NewError(expr.Pos, "cannot read back a call returning more than %d values", len(results.regs))
-		}
-
-		// results store their index in the value slot, the same way parameters do
+		// results store their index in the value slot
 		res := b.targetFunc.appendValue(OpCallResult, leaf, b.currentBlock)
 		res.Value = i
 		res.Args = []*Value{call}

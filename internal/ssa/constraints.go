@@ -39,15 +39,18 @@ func lowerParams(f *Func) {
 
 // lowerResults pins each return value to a result register
 func lowerResults(f *Func) {
+	// where the overflow results end up depends on how many argument leaves the signature has
+	seq := outgoingResults(f.paramLeaves())
+
 	for v := range f.UnorderedValues() {
 		if v.Op != OpResult {
 			continue
 		}
 
 		// results store their index in the value slot
-		v.Loc = results.loc(v.Value.(int))
+		v.Loc = seq.loc(v.Value.(int))
 
-		// move the returned value into the register it names
+		// move the returned value into the place it names
 		v.Args[0] = copyTo(f, v, v.Args[0], v.Loc)
 	}
 }
@@ -111,7 +114,7 @@ func lowerCallResults(f *Func) {
 		}
 
 		// call results store their index in the value slot
-		v.Loc = results.loc(v.Value.(int))
+		v.Loc = incomingResults(len(v.Args[0].CallArgs())).loc(v.Value.(int))
 
 		// move the value somewhere unconstrained before the next call needs the register back
 		copyOut(f, v)
@@ -120,29 +123,46 @@ func lowerCallResults(f *Func) {
 
 type abiSeq struct {
 	regs []register.Register
-	mem  func(n int) Location // home of the nth leaf past the registers, or nil when there is no such convention
+	mem  func(n int) Location // home of the nth leaf past the registers
 }
 
 var (
 	// the caller writes past rsp, and the callee reads them back past its saved rbp.
-	incomingArgs = abiSeq{regs: register.Args, mem: func(n int) Location { return NewFrame(incomingArgOffset(n)) }}
-	outgoingArgs = abiSeq{regs: register.Args, mem: func(n int) Location { return NewOutgoing(n * stackSlotSize) }}
-
-	// results have nowhere to go once the result registers run out
-	results = abiSeq{regs: register.Results}
+	incomingArgs = abiSeq{regs: register.Args, mem: calleeView}
+	outgoingArgs = abiSeq{regs: register.Args, mem: callerView}
 )
 
-// loc is the home of the nth leaf in the sequence. Only call this for a leaf that fits.
+// outgoingResults is the callee's view of where it leaves the results of a call taking nArgs argument leaves.
+func outgoingResults(nArgs int) abiSeq {
+	return abiSeq{regs: register.Results, mem: shift(calleeView, outgoingArgs.overflow(nArgs))}
+}
+
+// incomingResults is the caller's view of those same slots.
+func incomingResults(nArgs int) abiSeq {
+	return abiSeq{regs: register.Results, mem: shift(callerView, outgoingArgs.overflow(nArgs))}
+}
+
+// calleeView addresses the nth slot of the region from inside the callee, past its saved rbp.
+func calleeView(n int) Location {
+	return NewFrame(incomingArgOffset(n))
+}
+
+// callerView addresses the nth slot of the same region from the caller, at the bottom of its frame.
+func callerView(n int) Location {
+	return NewOutgoing(n * stackSlotSize)
+}
+
+// shift moves a view along by base slots.
+func shift(view func(int) Location, base int) func(int) Location {
+	return func(n int) Location { return view(base + n) }
+}
+
+// loc is the home of the nth leaf in the sequence.
 func (s abiSeq) loc(n int) Location {
 	if n < len(s.regs) {
 		return NewReg(s.regs[n])
 	}
 	return s.mem(n - len(s.regs))
-}
-
-// fits reports whether the sequence has a home for the nth leaf.
-func (s abiSeq) fits(n int) bool {
-	return n < len(s.regs) || s.mem != nil
 }
 
 // overflow is how many of n leaves land past the registers.

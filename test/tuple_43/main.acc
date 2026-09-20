@@ -1,0 +1,12 @@
+fun inner () -> (int, int, int) {
+    return (10, 20, 12);
+}
+
+fun outer () -> (int, int, int) {
+    return inner();
+}
+
+fun main () -> int {
+    let r = outer();
+    return r.0 + r.1 + r.2;
+}
