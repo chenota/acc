@@ -500,6 +500,11 @@ func (b *builder) genCallResults(expr *ir.Node) ([]*Value, error) {
 
 	var vals []*Value
 	for i, leaf := range iterutil.Enumerate(iterutil.Second(expr.Type.Leaves())) {
+		// the callee cannot have placed a value the sequence has no home for
+		if !results.fits(i) {
+			return nil, diagnostic.NewError(expr.Pos, "cannot read back a call returning more than %d values", len(results.regs))
+		}
+
 		// results store their index in the value slot, the same way parameters do
 		res := b.targetFunc.appendValue(OpCallResult, leaf, b.currentBlock)
 		res.Value = i
