@@ -33,7 +33,7 @@ func spill(f *Func) {
 
 		// operands with no further use are ejected
 		for _, a := range v.Args {
-			if s.nextUse(a, p) == -1 {
+			if _, ok := s.nextUse(a, p); !ok {
 				s.release(a)
 			}
 		}
@@ -140,13 +140,19 @@ func (s *spiller) makeRoom(f *Func, cur *Value, p int, m register.Mask) {
 
 func (s *spiller) pickVictim(p int, m register.Mask, operands []*Value) *Value {
 	var victim *Value
-	far := -1
+	var far int
 	for r := range (m & s.used).All() {
 		cand := s.holders[r]
 		if slices.Contains(operands, cand) {
 			continue
 		}
-		if d := s.nextUse(cand, p); d > far {
+
+		d, ok := s.nextUse(cand, p)
+		if !ok {
+			return cand // never read again, so nothing is cheaper to give up
+		}
+
+		if victim == nil || d > far {
 			far, victim = d, cand
 		}
 	}
@@ -200,11 +206,12 @@ func (s *spiller) evict(f *Func, cur *Value, victim *Value) {
 	s.release(victim)
 }
 
-func (s *spiller) nextUse(v *Value, after int) int {
+// nextUse is the next tick v is read at, and whether it is read again at all.
+func (s *spiller) nextUse(v *Value, after int) (int, bool) {
 	for _, u := range s.state(v).uses {
 		if u > after {
-			return u
+			return u, true
 		}
 	}
-	return -1
+	return 0, false
 }
