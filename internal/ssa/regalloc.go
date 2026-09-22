@@ -131,8 +131,8 @@ func computeLiveIntervals(f *Func) []*liveInterval {
 			touch(arg, tick)
 		}
 
-		// parameters are live at the very beginning of the function
-		if v.Op == OpParam {
+		// parameters and the closure environment occupy their registers from the function's first instruction
+		if v.Op == OpParam || v.Op == OpClosurePtr {
 			touch(v, 0)
 		}
 

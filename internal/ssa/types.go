@@ -34,6 +34,7 @@ const (
 	OpClosurePtr
 	OpClosureCall
 	OpUnit
+	OpLabelAddr // address bound to a label
 )
 
 // Operand layout of OpClosureCall.

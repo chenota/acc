@@ -18,12 +18,18 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 		return diagnostic.NewError(n.Pos, "could not find function in module")
 	}
 
-	b := &builder{targetFunc: f, module: m, vars: make(map[*ir.Sym]*Slot)}
+	b := &builder{
+		targetFunc: f,
+		module:     m,
+		vars:       make(map[*ir.Sym]*Slot),
+		captures:   make(map[*ir.Sym]*Slot),
+	}
 
 	entry := f.newBlock()
 	f.Entry = entry
 	b.currentBlock = entry
 
+	b.bindCaptures(n)
 	b.bindParams(n.Signature.Params)
 
 	for _, stmt := range n.List {
@@ -38,6 +44,27 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 	}
 
 	return nil
+}
+
+// bindCaptures reads captured environment variables from the context register
+// TODO: Switch over to lazy unpacking when there's more need for it
+func (b *builder) bindCaptures(n *ir.Node) {
+	captures := n.Captures()
+	if len(captures) == 0 {
+		return
+	}
+
+	envType := closureEnvType(n)
+	env := b.targetFunc.appendValue(OpClosurePtr, types.Pointer(envType), b.currentBlock)
+
+	for i, sym := range captures {
+		// grab box pointer from environment
+		box := b.genLoadFrom(addr{Ptr: env}.OffsetBy(envType.Offset(1+i)), types.Pointer(sym.Type))
+		// create a slot for the captured variable and move
+		slot := b.targetFunc.newSlot(sym, types.Pointer(sym.Type))
+		b.genStoreTo(addr{Slot: slot}, box)
+		b.captures[sym] = slot
+	}
 }
 
 // bindParams materializes incoming arguments at the top of the entry block.
@@ -79,6 +106,7 @@ type builder struct {
 	module       *Module
 	currentBlock *Block
 	vars         map[*ir.Sym]*Slot
+	captures     map[*ir.Sym]*Slot
 }
 
 func (b *builder) genStatement(stmt *ir.Node) error {
@@ -225,9 +253,69 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 		return b.genLoadFrom(place, expr.Type), nil
 	case ir.OpNil:
 		return b.genNil(expr)
+	case ir.OpFunction:
+		return b.genFunc(expr)
 	default:
 		return nil, diagnostic.NewError(expr.Pos, "unknown expression operation: %d", expr.Op)
 	}
+}
+
+// closureEnvType is the layout of n's closure environment.
+func closureEnvType(n *ir.Node) *types.Type {
+	elems := []*types.Type{types.Int64()}
+	for _, sym := range n.Captures() {
+		// captures are held by reference so make it a pointer
+		elems = append(elems, types.Pointer(sym.Type))
+	}
+	return types.Tuple(elems)
+}
+
+// genFunc builds a lambda's environment and returns the address to that environment
+func (b *builder) genFunc(expr *ir.Node) (*Value, error) {
+	code := b.module.lookup(expr.Signature.Label)
+	if code == nil {
+		return nil, diagnostic.NewError(expr.Pos, "reference to unknown function: %s", expr.Signature.Label)
+	}
+
+	envType := closureEnvType(expr)
+	env := addr{Slot: b.targetFunc.newSlot(nil, envType)}
+
+	// code pointer goes in first field
+	labelVal := b.targetFunc.appendValue(OpLabelAddr, types.Int64(), b.currentBlock)
+	labelVal.Value = code
+	b.genStoreTo(env.OffsetBy(envType.Offset(0)), labelVal)
+
+	// every capture goes after
+	for i, sym := range expr.Captures() {
+		box, err := b.genBoxAddr(expr, sym)
+		if err != nil {
+			return nil, err
+		}
+		b.genStoreTo(env.OffsetBy(envType.Offset(1+i)), box)
+	}
+
+	// the closure value is the environment's address
+	v := b.targetFunc.appendValue(OpLocalAddr, expr.Type, b.currentBlock)
+	v.Value = env.Slot
+
+	return v, nil
+}
+
+// genBoxAddr is the address of sym's storage
+func (b *builder) genBoxAddr(expr *ir.Node, sym *ir.Sym) (*Value, error) {
+	if slot, ok := b.vars[sym]; ok {
+		// shallow capture (variable lives in frame this closure is defined in), so grab from the stack
+		v := b.targetFunc.appendValue(OpLocalAddr, types.Pointer(sym.Type), b.currentBlock)
+		v.Value = slot
+		return v, nil
+	}
+
+	if slot, ok := b.captures[sym]; ok {
+		// nested caapture (variable lives outside the frame this closure is defined in), so grab from captures list
+		return b.genLoadFrom(addr{Slot: slot}, types.Pointer(sym.Type)), nil
+	}
+
+	return nil, diagnostic.NewError(expr.Pos, "no storage for captured variable: %s", sym.Name)
 }
 
 // genNil lowers nil to a zero occupying a whole pointer, so it needs no operator of its own.
@@ -382,6 +470,10 @@ func (b *builder) genLValue(expr *ir.Node) (addr, error) {
 	case ir.OpIdent:
 		if slot, ok := b.vars[expr.Sym]; ok {
 			return addr{Slot: slot}, nil
+		}
+		if slot, ok := b.captures[expr.Sym]; ok {
+			// a captured variable lives in a box the environment points at
+			return addr{Ptr: b.genLoadFrom(addr{Slot: slot}, types.Pointer(expr.Type))}, nil
 		}
 		return addr{}, diagnostic.NewError(expr.Pos, "variable missing slot: %s", expr.Sym.Name)
 	case ir.OpDeref:
@@ -574,11 +666,11 @@ func (b *builder) genIdent(expr *ir.Node) (*Value, error) {
 		// a function name is only meaningful as a call target until functions become values
 		return nil, diagnostic.NewError(expr.Pos, "cannot use function as a value: %s", expr.Ident())
 	case ir.SymParam, ir.SymLocal:
-		slot := b.vars[expr.Sym]
-		if slot == nil {
-			return nil, diagnostic.NewError(expr.Pos, "no stack location for variable: %s", expr.Ident())
+		place, err := b.genLValue(expr)
+		if err != nil {
+			return nil, err
 		}
-		return b.genLoadFrom(addr{Slot: slot}, expr.Type), nil
+		return b.genLoadFrom(place, expr.Type), nil
 	}
 	return nil, diagnostic.NewError(expr.Pos, "unknown symbol kind: %v", expr.Sym.Kind)
 }

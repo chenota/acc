@@ -772,9 +772,151 @@ func findAllocations(f *Func) []*Value {
 // slotNamed returns the slot named sym, or nil when f no longer has one.
 func slotNamed(f *Func, sym string) *Slot {
 	for _, s := range f.Slots {
-		if s.Sym.Name == sym {
+		if s.Sym != nil && s.Sym.Name == sym {
 			return s
 		}
 	}
 	return nil
+}
+
+func TestGenSsa_Closure_EnvironmentLayout(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; let f = fun (y int) -> int { return x + y; }; return x; }`)
+
+	f := requireFunc(t, funcs, "main")
+	env := requireEnvSlot(t, f)
+
+	// the environment is a code pointer followed by one pointer per captured variable
+	assert.True(t, types.Equal(types.Tuple([]*types.Type{types.Int64(), types.Pointer(types.Int())}), env.Type),
+		"expected (int64, *int), got %v", env.Type)
+
+	// the first field names the lifted lambda
+	code := requireStoredAt(t, f, env, 0)
+	require.Equal(t, OpLabelAddr, code.Op)
+	assert.Equal(t, "main.func0", code.Callee().Name())
+
+	// the second holds x's address rather than its value, so both sides see the same storage
+	capture := requireStoredAt(t, f, env, 8)
+	require.Equal(t, OpLocalAddr, capture.Op)
+	assert.Same(t, slotNamed(f, "x"), capture.Slot())
+	assert.True(t, types.Equal(types.Pointer(types.Int()), capture.Type))
+}
+
+func TestGenSsa_Closure_PrologueReadsContextRegister(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; let f = fun (y int) -> int { return x + y; }; return x; }`)
+
+	lambda := requireFunc(t, funcs, "main.func0")
+	env := requireClosurePtr(t, lambda)
+
+	// the caller leaves the environment in the context register, so that is where it is read from
+	assert.Equal(t, LocRegister, env.Loc.Kind)
+	assert.Equal(t, register.ClosureContext, env.Loc.Reg)
+	assert.Empty(t, env.Args, "the context register is a location, not a computed value")
+	assert.Same(t, lambda.Entry.Values[0], env, "the environment must be read before any call can clobber it")
+}
+
+func TestGenSsa_Closure_ReadsCaptureThroughItsBox(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; let f = fun (y int) -> int { return x + y; }; return x; }`)
+
+	lambda := requireFunc(t, funcs, "main.func0")
+	env := requireClosurePtr(t, lambda)
+
+	// one hop to the box pointer sitting in the environment
+	box := requireLoadFrom(t, lambda, env)
+	assert.Equal(t, 8, box.Offset)
+	assert.True(t, types.Equal(types.Pointer(types.Int()), box.Type))
+
+	// and a second to x itself, which is what keeps a write on either side visible to both
+	value := requireLoadFrom(t, lambda, box)
+	assert.Zero(t, value.Offset)
+	assert.True(t, types.Equal(types.Int(), value.Type))
+
+	adds := findValues(lambda.Entry.Values, OpAdd)
+	require.Len(t, adds, 1)
+	assert.Contains(t, adds[0].Args, value, "the captured value is what feeds the addition")
+}
+
+func TestGenSsa_Closure_EscapingEnvironmentIsHeapified(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun adderFactory (x int) -> fun (int) -> int { return fun (y int) -> int { return x + y; }; }
+		fun main () -> int { let f = adderFactory(1); return 2; }`)
+
+	f := requireFunc(t, funcs, "adderFactory")
+
+	// the closure outlives the frame, so both it and the variable it captures move to the heap
+	assert.Len(t, findAllocations(f), 2)
+	assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
+	assert.Empty(t, findValues(f.Entry.Values, OpLocalAddr))
+}
+
+func TestGenSsa_Closure_NestedCaptureForwardsTheSamePointer(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int {
+		let x = 10;
+		let f = fun () -> int {
+			let g = fun () -> int { return x; };
+			return 2;
+		};
+		return 3;
+	}`)
+
+	// the middle lambda never had x on its frame, so it passes along the pointer it was handed
+	middle := requireFunc(t, funcs, "main.func0")
+	box := requireLoadFrom(t, middle, requireClosurePtr(t, middle))
+
+	inner := requireStoredAt(t, middle, requireEnvSlot(t, middle), 8)
+	assert.Same(t, box, inner, "both environments must name the one box")
+}
+
+// requireEnvSlot returns the single closure environment f builds.
+func requireEnvSlot(t *testing.T, f *Func) *Slot {
+	t.Helper()
+
+	var found []*Slot
+	for _, s := range f.Slots {
+		if s.Sym == nil && s.Type.IsTuple() {
+			found = append(found, s)
+		}
+	}
+
+	require.Len(t, found, 1)
+	return found[0]
+}
+
+// requireClosurePtr returns the value naming the environment f was called with.
+func requireClosurePtr(t *testing.T, f *Func) *Value {
+	t.Helper()
+
+	ptrs := findValues(f.Entry.Values, OpClosurePtr)
+	require.Len(t, ptrs, 1)
+	return ptrs[0]
+}
+
+// requireStoredAt returns the value written to slot at the given byte offset.
+func requireStoredAt(t *testing.T, f *Func, slot *Slot, offset int) *Value {
+	t.Helper()
+
+	var found []*Value
+	for v := range f.UnorderedValues() {
+		if v.Op == OpStaticStore && v.Slot() == slot && v.Offset == offset {
+			found = append(found, v)
+		}
+	}
+
+	require.Len(t, found, 1, "expected one store at offset %d", offset)
+	require.Len(t, found[0].Args, 1)
+	return found[0].Args[0]
+}
+
+// requireLoadFrom returns the single value read through ptr.
+func requireLoadFrom(t *testing.T, f *Func, ptr *Value) *Value {
+	t.Helper()
+
+	var found []*Value
+	for v := range f.UnorderedValues() {
+		if v.Op == OpLoad && len(v.Args) > 0 && v.Args[0] == ptr {
+			found = append(found, v)
+		}
+	}
+
+	require.Len(t, found, 1)
+	return found[0]
 }
