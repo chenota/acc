@@ -571,14 +571,65 @@ func (b *builder) genCall(expr *ir.Node) (*Value, error) {
 		return nil, diagnostic.NewError(expr.Pos, "call without a callee")
 	}
 
-	callee, err := b.resolveCallee(expr.List[0])
+	// naming a global means this function is statically known
+	callee := expr.List[0]
+	if callee.Op == ir.OpIdent && callee.Sym.Kind == ir.SymFunc {
+		return b.genStaticCall(expr, callee)
+	}
+
+	// all else attempt to do a closure call
+	return b.genClosureCall(expr, callee)
+}
+
+// genStaticCall calls a statically known function
+func (b *builder) genStaticCall(expr *ir.Node, callee *ir.Node) (*Value, error) {
+	target := b.module.lookup(callee.Sym.Name)
+	if target == nil {
+		return nil, diagnostic.NewError(callee.Pos, "reference to unknown function: %s", callee.Sym.Name)
+	}
+
+	argVals, err := b.genCallArgs(expr)
 	if err != nil {
 		return nil, err
 	}
 
-	args := expr.List[1:]
+	v := b.targetFunc.appendValue(OpStaticCall, expr.Type, b.currentBlock)
+	v.Value = target
+	v.Args = argVals
+
+	return v, nil
+}
+
+// genClosureCall calls through an environment
+func (b *builder) genClosureCall(expr *ir.Node, callee *ir.Node) (*Value, error) {
+	// the callee is evaluated before its arguments
+	env, err := b.genExpr(callee)
+	if err != nil {
+		return nil, err
+	}
+
+	argVals, err := b.genCallArgs(expr)
+	if err != nil {
+		return nil, err
+	}
+
+	// read the code pointer as late as possible so it is not live across the arguments
+	code := b.genLoadFrom(addr{Ptr: env}, types.Int64())
+
+	v := b.targetFunc.appendValue(OpClosureCall, expr.Type, b.currentBlock)
+	v.Args = make([]*Value, 2+len(argVals))
+	// TODO: Code pointer already lives in the environment this is convenient but maybe not necessary
+	v.Args[0] = code          // address to jump to
+	v.Args[1] = env           // environment
+	copy(v.Args[2:], argVals) // ordinary call args
+
+	return v, nil
+}
+
+// genCallArgs flattens every argument of a call into ABI order.
+func (b *builder) genCallArgs(expr *ir.Node) ([]*Value, error) {
 	var argVals []*Value
-	for _, arg := range args {
+	for _, arg := range expr.List[1:] {
 		vals, err := b.genArg(arg)
 		if err != nil {
 			return nil, err
@@ -586,11 +637,7 @@ func (b *builder) genCall(expr *ir.Node) (*Value, error) {
 		argVals = append(argVals, vals...)
 	}
 
-	v := b.targetFunc.appendValue(OpStaticCall, expr.Type, b.currentBlock)
-	v.Value = callee
-	v.Args = argVals
-
-	return v, nil
+	return argVals, nil
 }
 
 // genCallResults emits a call and reads back the returned values
@@ -628,20 +675,6 @@ func (b *builder) genCallValue(expr *ir.Node) (*Value, error) {
 	}
 
 	return nil, diagnostic.NewError(expr.Pos, "call returning %d values used where one is expected", len(vals))
-}
-
-// resolveCallee identifies the function a call targets.
-func (b *builder) resolveCallee(callee *ir.Node) (*Func, error) {
-	if callee.Op != ir.OpIdent || callee.Sym.Kind != ir.SymFunc {
-		return nil, diagnostic.NewError(callee.Pos, "only calls to top-level functions are supported")
-	}
-
-	target := b.module.lookup(callee.Sym.Name)
-	if target == nil {
-		return nil, diagnostic.NewError(callee.Pos, "reference to unknown function: %s", callee.Sym.Name)
-	}
-
-	return target, nil
 }
 
 func (b *builder) genNegate(expr *ir.Node) (*Value, error) {

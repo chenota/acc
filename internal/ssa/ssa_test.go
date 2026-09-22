@@ -920,3 +920,73 @@ func requireLoadFrom(t *testing.T, f *Func, ptr *Value) *Value {
 	require.Len(t, found, 1)
 	return found[0]
 }
+
+func TestGenSsa_ClosureCall_OperandOrder(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int {
+		let x = 10;
+		let f = fun (y int, z int) -> int { return x + y + z; };
+		return f(2, 3);
+	}`)
+
+	call := requireClosureCall(t, funcs, "main")
+
+	// the code pointer and the environment come ahead of the two ABI arguments
+	require.Len(t, call.Args, 4)
+	assert.Len(t, call.CallArgs(), 2, "the leading operands are not arguments")
+
+	// the address to jump to is read out of the environment's first field
+	code := call.Args[0]
+	require.Equal(t, OpLoad, code.Op)
+	assert.Zero(t, code.Offset)
+	assert.True(t, types.Equal(types.Int64(), code.Type))
+
+	// and it is read from the very environment the call hands over
+	require.Len(t, code.Args, 1)
+	require.Len(t, call.Args[1].Args, 1)
+	assert.Same(t, code.Args[0], call.Args[1].Args[0])
+}
+
+func TestLowerCalls_ClosureObjectPinnedToContextRegister(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int {
+		let x = 10;
+		let f = fun (y int, z int) -> int { return x + y + z; };
+		return f(2, 3);
+	}`)
+
+	call := requireClosureCall(t, funcs, "main")
+
+	// the callee reads its captures out of the context register, so the caller leaves it there
+	object := call.Args[1]
+	assert.Equal(t, OpCopy, object.Op, "the environment must be placed by a copy into its register")
+	assert.Equal(t, LocRegister, object.Loc.Kind)
+	assert.Equal(t, register.ClosureContext, object.Loc.Reg)
+}
+
+func TestLowerCalls_ClosureArgRegisters(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int {
+		let x = 10;
+		let f = fun (y int, z int) -> int { return x + y + z; };
+		return f(2, 3);
+	}`)
+
+	call := requireClosureCall(t, funcs, "main")
+
+	// the two leading operands travel out of band, so the arguments start at the first arg register
+	args := call.CallArgs()
+	require.Len(t, args, 2)
+
+	assert.Equal(t, LocRegister, args[0].Loc.Kind)
+	assert.Equal(t, register.Args[0], args[0].Loc.Reg)
+
+	assert.Equal(t, LocRegister, args[1].Loc.Kind)
+	assert.Equal(t, register.Args[1], args[1].Loc.Reg)
+}
+
+// requireClosureCall returns the single indirect call in the named function.
+func requireClosureCall(t *testing.T, funcs []*Func, funcName string) *Value {
+	t.Helper()
+
+	calls := findValues(requireFunc(t, funcs, funcName).Entry.Values, OpClosureCall)
+	require.Len(t, calls, 1)
+	return calls[0]
+}

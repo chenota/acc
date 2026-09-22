@@ -37,13 +37,6 @@ const (
 	OpLabelAddr // address bound to a label
 )
 
-// Operand layout of OpClosureCall.
-const (
-	ClosureCallCode   = 0 // address to jump to
-	ClosureCallObject = 1 // closure object, passed in register.ClosureContext
-	ClosureCallArgs   = 2 // ordinary arguments start here
-)
-
 type Value struct {
 	Id    int
 	Op    Op
@@ -79,7 +72,8 @@ func (v *Value) IsCall() bool {
 // CallArgs returns the operands of a call that are ABI arguments
 func (v *Value) CallArgs() []*Value {
 	if v.Op == OpClosureCall {
-		return v.Args[ClosureCallArgs:]
+		// the code pointer and the closure object come ahead of the ABI arguments
+		return v.Args[2:]
 	}
 	return v.Args
 }
