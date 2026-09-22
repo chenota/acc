@@ -2,7 +2,7 @@ package ir
 
 import (
 	"iter"
-	"maps"
+	"slices"
 
 	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/types"
@@ -48,13 +48,11 @@ type Signature struct {
 
 	Label        string
 	ClosureCount int
-	captures     map[*Sym]struct{}
+	captures     []*Sym
 }
 
 func NewSignature() *Signature {
-	return &Signature{
-		captures: make(map[*Sym]struct{}),
-	}
+	return &Signature{}
 }
 
 type Node struct {
@@ -143,21 +141,21 @@ func (n *Node) Encl() *Node {
 }
 
 func (n *Node) Capture(sy *Sym) {
-	// done capturing
-	if n == nil || sy.Def == n || sy.Kind == SymFunc {
+	// done capturing or already captured
+	if n == nil || sy.Def == n || sy.Kind == SymFunc || slices.Contains(n.Signature.captures, sy) {
 		return
 	}
 	// capture in self
-	n.Signature.captures[sy] = struct{}{}
+	n.Signature.captures = append(n.Signature.captures, sy)
 	// capture in direct enclosing function
 	n.Encl().Capture(sy)
 }
 
-func (n *Node) Captures() iter.Seq[*Sym] {
+func (n *Node) Captures() []*Sym {
 	if n == nil || n.Signature == nil {
-		return func(func(*Sym) bool) {}
+		return nil
 	}
-	return maps.Keys(n.Signature.captures)
+	return n.Signature.captures
 }
 
 func (n *Node) NextClosureCount() int {

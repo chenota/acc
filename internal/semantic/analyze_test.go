@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"slices"
 	"strings"
 	"testing"
 
@@ -787,10 +786,9 @@ func mustParse(t *testing.T, inputStr string) []*ir.Node {
 // captureNames drains a function's capture set into sorted names, since map order is unspecified.
 func captureNames(fun *ir.Node) []string {
 	var names []string
-	for sym := range fun.Captures() {
+	for _, sym := range fun.Captures() {
 		names = append(names, sym.Name)
 	}
-	slices.Sort(names)
 
 	return names
 }
