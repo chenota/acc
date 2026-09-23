@@ -1,0 +1,25 @@
+fun makeCounter () -> (fun (), fun () -> int) {
+    let x int = 0;
+
+    let inc = fun () {
+        x += 1;
+    };
+    let get = fun () -> int {
+        return x;
+    };
+
+    return (inc, get);
+}
+
+fun main () -> int {
+    let myCounter = makeCounter();
+    let myCounter2 = makeCounter();
+
+    myCounter.0();
+    myCounter.0();
+    myCounter.0();
+
+    myCounter2.0();
+
+    return myCounter.1() + myCounter2.1();
+}
