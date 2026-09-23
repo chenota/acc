@@ -1,0 +1,5 @@
+{
+  "name": "Closure Writes Through A Captured Pointer",
+  "tags": ["vs10"],
+  "status": 12
+}

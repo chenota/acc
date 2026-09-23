@@ -1,0 +1,9 @@
+fun main () -> int {
+    let x = 0;
+    let a = fun () { x = x + 3; };
+    let b = fun () { x = x * 2; };
+    a();
+    b();
+    a();
+    return x;
+}

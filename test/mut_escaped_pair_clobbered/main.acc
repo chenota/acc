@@ -1,0 +1,24 @@
+fun clobber () -> int {
+    let a = 111;
+    let b = 222;
+    let c = 333;
+    let d = 444;
+    let e = 555;
+    let p = &a;
+    let q = &b;
+    return *p + *q + c + d + e;
+}
+
+fun pair () -> (fun () -> int, fun (int)) {
+    let n = 5;
+    return (fun () -> int { return n; }, fun (v int) { n = v; });
+}
+
+fun main () -> int {
+    let p = pair();
+    clobber();
+    let before = p.0();
+    p.1(30);
+    clobber();
+    return before + p.0();
+}

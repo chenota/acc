@@ -1,0 +1,11 @@
+fun main () -> int {
+    let x = 1;
+    let outer = fun () -> int {
+        let a = fun () { x = x + 5; };
+        let b = fun () { x = x * 4; };
+        a();
+        b();
+        return x;
+    };
+    return outer();
+}

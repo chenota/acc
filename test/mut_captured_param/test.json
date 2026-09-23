@@ -1,0 +1,5 @@
+{
+  "name": "Closure Mutates A Captured Parameter",
+  "tags": ["vs10"],
+  "status": 22
+}

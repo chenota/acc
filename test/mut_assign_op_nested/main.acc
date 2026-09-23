@@ -1,0 +1,10 @@
+fun main () -> int {
+    let x = 4;
+    let outer = fun () -> int {
+        let inner = fun () { x *= 5; };
+        inner();
+        inner();
+        return x;
+    };
+    return outer();
+}

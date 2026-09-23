@@ -1,0 +1,7 @@
+fun main () -> int {
+    let x = 3;
+    let p = &x;
+    let f = fun () { *p = 12; };
+    f();
+    return x;
+}

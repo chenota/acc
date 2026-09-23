@@ -1,0 +1,7 @@
+fun main () -> int {
+    let x = 5;
+    let setter = fun () { x = 20; };
+    let getter = fun () -> int { return x; };
+    setter();
+    return getter();
+}

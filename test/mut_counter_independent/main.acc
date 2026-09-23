@@ -1,0 +1,14 @@
+fun counter () -> fun () -> int {
+    let n = 0;
+    return fun () -> int { n = n + 1; return n; };
+}
+
+fun main () -> int {
+    let a = counter();
+    let b = counter();
+    a();
+    a();
+    let x = a();
+    let y = b();
+    return x * 10 + y;
+}

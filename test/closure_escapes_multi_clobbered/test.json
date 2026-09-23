@@ -1,0 +1,5 @@
+{
+  "name": "Several Escaped Captures Survive A Reused Frame",
+  "tags": ["vs10"],
+  "status": 34
+}

@@ -1,0 +1,23 @@
+fun clobber () -> int {
+    let a = 111;
+    let b = 222;
+    let c = 333;
+    let d = 444;
+    let e = 555;
+    let p = &a;
+    let q = &b;
+    return *p + *q + c + d + e;
+}
+
+fun makeAdder () -> fun (int) -> int {
+    let total = 0;
+    return fun (v int) -> int { total = total + v; return total; };
+}
+
+fun main () -> int {
+    let acc = makeAdder();
+    clobber();
+    acc(5);
+    clobber();
+    return acc(10);
+}

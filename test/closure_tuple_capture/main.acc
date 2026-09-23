@@ -1,0 +1,5 @@
+fun main () -> int {
+    let t = (3, 4);
+    let f = fun () -> int { return t.0 * 10 + t.1; };
+    return f();
+}

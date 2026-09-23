@@ -1,0 +1,11 @@
+fun makeAdder () -> fun (int) -> int {
+    let total = 0;
+    return fun (v int) -> int { total = total + v; return total; };
+}
+
+fun main () -> int {
+    let acc = makeAdder();
+    acc(5);
+    acc(10);
+    return acc(1);
+}

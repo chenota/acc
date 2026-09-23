@@ -1,0 +1,7 @@
+fun main () -> int {
+    let a = 1;
+    let b = 2;
+    let c = 3;
+    let f = fun () -> int { return a * 100 + b * 10 + c; };
+    return f();
+}

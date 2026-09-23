@@ -1,0 +1,20 @@
+fun clobber () -> int {
+    let a = 111;
+    let b = 222;
+    let c = 333;
+    let d = 444;
+    let e = 555;
+    let p = &a;
+    let q = &b;
+    return *p + *q + c + d + e;
+}
+
+fun adderFactory (x int) -> fun (int) -> int {
+    return fun (y int) -> int { return x + y; };
+}
+
+fun main () -> int {
+    let inc = adderFactory(4);
+    clobber();
+    return inc(5);
+}

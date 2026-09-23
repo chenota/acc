@@ -1,0 +1,5 @@
+{
+  "name": "Closure Reads After Outer Writes",
+  "tags": ["vs10"],
+  "status": 23
+}

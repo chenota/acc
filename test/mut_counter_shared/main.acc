@@ -1,0 +1,7 @@
+fun main () -> int {
+    let n = 0;
+    let bump = fun () -> int { n = n + 2; return n; };
+    bump();
+    bump();
+    return bump();
+}

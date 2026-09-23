@@ -1,0 +1,6 @@
+fun main () -> int {
+    let n = 3;
+    let f = fun (m int) -> int { m = m * 2; return m + n; };
+    let a = f(5);
+    return a + n;
+}

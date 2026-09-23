@@ -1,0 +1,5 @@
+{
+  "name": "Closure Reads A Tuple Field Written Outside",
+  "tags": ["vs10"],
+  "status": 19
+}

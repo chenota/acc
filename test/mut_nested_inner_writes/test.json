@@ -1,0 +1,5 @@
+{
+  "name": "Nested Closure Writes A Grandparent Variable",
+  "tags": ["vs10"],
+  "status": 32
+}

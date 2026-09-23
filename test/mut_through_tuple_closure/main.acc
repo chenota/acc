@@ -1,0 +1,7 @@
+fun main () -> int {
+    let x = 2;
+    let t = (fun () { x = x * 6; }, 0);
+    t.0();
+    t.0();
+    return x;
+}

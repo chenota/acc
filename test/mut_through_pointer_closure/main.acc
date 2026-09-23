@@ -1,0 +1,8 @@
+fun main () -> int {
+    let x = 1;
+    let f = fun () { x = x + 40; };
+    let p = &f;
+    (*p)();
+    (*p)();
+    return x;
+}

@@ -1,0 +1,11 @@
+fun pair () -> (fun () -> int, fun (int)) {
+    let n = 5;
+    return (fun () -> int { return n; }, fun (v int) { n = v; });
+}
+
+fun main () -> int {
+    let p = pair();
+    let before = p.0();
+    p.1(30);
+    return before + p.0();
+}

@@ -1,0 +1,12 @@
+fun main () -> int {
+    let x = 10;
+    let a = fun () { x += 6; };
+    let b = fun () { x -= 2; };
+    let c = fun () { x *= 3; };
+    let d = fun () { x /= 2; };
+    a();
+    b();
+    c();
+    d();
+    return x;
+}

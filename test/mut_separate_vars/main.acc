@@ -1,0 +1,10 @@
+fun main () -> int {
+    let p = 1;
+    let q = 2;
+    let f = fun () { p = p + 10; };
+    let g = fun () { q = q + 100; };
+    f();
+    g();
+    f();
+    return p + q;
+}

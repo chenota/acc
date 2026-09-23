@@ -1,0 +1,8 @@
+fun bump (n int) -> int {
+    let f = fun () { n = n + 9; };
+    f();
+    f();
+    return n;
+}
+
+fun main () -> int { return bump(4); }

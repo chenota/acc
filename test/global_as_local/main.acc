@@ -1,0 +1,6 @@
+fun add (x int, y int) -> int { return x + y; }
+
+fun main () -> int {
+    let g = add;
+    return g(4, 5);
+}

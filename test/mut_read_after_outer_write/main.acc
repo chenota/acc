@@ -1,0 +1,10 @@
+fun main () -> int {
+    let x = 2;
+    let get = fun () -> int { return x; };
+    let a = get();
+    x = 7;
+    let b = get();
+    x = x + b;
+    let c = get();
+    return a + b + c;
+}

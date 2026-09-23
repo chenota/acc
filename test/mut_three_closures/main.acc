@@ -1,0 +1,10 @@
+fun main () -> int {
+    let n = 10;
+    let inc = fun () { n = n + 5; };
+    let dec = fun () { n = n - 2; };
+    let get = fun () -> int { return n; };
+    inc();
+    dec();
+    inc();
+    return get();
+}

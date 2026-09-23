@@ -1,0 +1,6 @@
+fun main () -> int {
+    let x = 2;
+    let f = fun (y int) -> int { return x + y; };
+    let p = &f;
+    return (*p)(3);
+}

@@ -1,0 +1,5 @@
+{
+  "name": "A Closure's Own Parameter Stays Local",
+  "tags": ["vs10"],
+  "status": 16
+}

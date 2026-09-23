@@ -1,0 +1,5 @@
+fun main () -> int {
+    let x = 6;
+    let t = (fun (y int) -> int { return x * y; }, 7);
+    return t.0(t.1);
+}

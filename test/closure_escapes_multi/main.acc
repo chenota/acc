@@ -1,0 +1,8 @@
+fun make (a int, b int) -> fun () -> int {
+    return fun () -> int { return a * 10 + b; };
+}
+
+fun main () -> int {
+    let f = make(3, 4);
+    return f();
+}

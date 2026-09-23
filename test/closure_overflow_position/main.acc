@@ -1,0 +1,9 @@
+fun pick (a int, b int, c int, d int, e int, g int, f fun (int) -> int) -> int {
+    return f(a + b + c + d + e + g);
+}
+
+fun main () -> int {
+    let k = 1;
+    let dbl = fun (v int) -> int { return v * k * 2; };
+    return pick(1, 1, 1, 1, 1, 1, dbl);
+}
