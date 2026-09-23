@@ -990,3 +990,40 @@ func requireClosureCall(t *testing.T, funcs []*Func, funcName string) *Value {
 	require.Len(t, calls, 1)
 	return calls[0]
 }
+
+func TestGenSsa_GlobalAsValue_WrapsInAnEnvironment(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun apply (f fun (int) -> int, x int) -> int { return f(x); }
+		fun double (x int) -> int { return x * 2; }
+		fun main () -> int { return apply(double, 21); }`)
+
+	f := requireFunc(t, funcs, "main")
+	env := requireEnvSlot(t, f)
+
+	// a global closes over nothing, so its environment is a code pointer and nothing else
+	assert.True(t, types.Equal(types.Tuple([]*types.Type{types.Int64()}), env.Type),
+		"expected (int64,), got %v", env.Type)
+
+	code := requireStoredAt(t, f, env, 0)
+	require.Equal(t, OpLabelAddr, code.Op)
+	assert.Equal(t, "double", code.Callee().Name())
+
+	// the wrapper travels as an ordinary argument, so the callee cannot tell it from a lambda
+	call := requireCall(t, funcs, "main")
+	require.Len(t, call.Args, 2)
+	assert.Equal(t, register.Args[0], call.Args[0].Loc.Reg)
+}
+
+func TestGenSsa_DirectCall_BuildsNoEnvironment(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun add (x int, y int) -> int { return x + y; }
+		fun main () -> int { return add(1, 2); }`)
+
+	f := requireFunc(t, funcs, "main")
+
+	// naming a global as a call target is still a direct call, with nothing allocated for it
+	assert.Equal(t, "add", requireCall(t, funcs, "main").Callee().Name())
+	assert.Empty(t, findValues(f.Entry.Values, OpClosureCall))
+	assert.Empty(t, findValues(f.Entry.Values, OpLabelAddr))
+	assert.Empty(t, f.Slots)
+}

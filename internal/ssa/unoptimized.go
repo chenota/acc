@@ -54,7 +54,7 @@ func (b *builder) bindCaptures(n *ir.Node) {
 		return
 	}
 
-	envType := closureEnvType(n)
+	envType := closureEnvType(captures)
 	env := b.targetFunc.appendValue(OpClosurePtr, types.Pointer(envType), b.currentBlock)
 
 	for i, sym := range captures {
@@ -260,10 +260,10 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 	}
 }
 
-// closureEnvType is the layout of n's closure environment.
-func closureEnvType(n *ir.Node) *types.Type {
+// closureEnvType is the layout of an environment closing over captures.
+func closureEnvType(captures []*ir.Sym) *types.Type {
 	elems := []*types.Type{types.Int64()}
-	for _, sym := range n.Captures() {
+	for _, sym := range captures {
 		// captures are held by reference so make it a pointer
 		elems = append(elems, types.Pointer(sym.Type))
 	}
@@ -277,7 +277,23 @@ func (b *builder) genFunc(expr *ir.Node) (*Value, error) {
 		return nil, diagnostic.NewError(expr.Pos, "reference to unknown function: %s", expr.Signature.Label)
 	}
 
-	envType := closureEnvType(expr)
+	return b.genEnv(expr, code, expr.Captures())
+}
+
+// genGlobal makes a closure value out of a global.
+// TODO: This should be pulled from .data rather than constructed on demand eventually
+func (b *builder) genGlobal(expr *ir.Node) (*Value, error) {
+	code := b.module.lookup(expr.Sym.Name)
+	if code == nil {
+		return nil, diagnostic.NewError(expr.Pos, "reference to unknown function: %s", expr.Sym.Name)
+	}
+
+	return b.genEnv(expr, code, nil)
+}
+
+// genEnv builds a closure environment
+func (b *builder) genEnv(expr *ir.Node, code *Func, captures []*ir.Sym) (*Value, error) {
+	envType := closureEnvType(captures)
 	env := addr{Slot: b.targetFunc.newSlot(nil, envType)}
 
 	// code pointer goes in first field
@@ -286,7 +302,7 @@ func (b *builder) genFunc(expr *ir.Node) (*Value, error) {
 	b.genStoreTo(env.OffsetBy(envType.Offset(0)), labelVal)
 
 	// every capture goes after
-	for i, sym := range expr.Captures() {
+	for i, sym := range captures {
 		box, err := b.genBoxAddr(expr, sym)
 		if err != nil {
 			return nil, err
@@ -393,7 +409,10 @@ func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
 // isPlace reports whether expr denotes an existing addressable location.
 func isPlace(expr *ir.Node) bool {
 	switch expr.Op {
-	case ir.OpIdent, ir.OpDeref, ir.OpDot:
+	case ir.OpIdent:
+		// a global function has no storage of its own, so its name is a value rather than a place
+		return expr.Sym.Kind != ir.SymFunc
+	case ir.OpDeref, ir.OpDot:
 		return true
 	}
 	return false
@@ -696,8 +715,7 @@ func (b *builder) genNegate(expr *ir.Node) (*Value, error) {
 func (b *builder) genIdent(expr *ir.Node) (*Value, error) {
 	switch expr.Sym.Kind {
 	case ir.SymFunc:
-		// a function name is only meaningful as a call target until functions become values
-		return nil, diagnostic.NewError(expr.Pos, "cannot use function as a value: %s", expr.Ident())
+		return b.genGlobal(expr)
 	case ir.SymParam, ir.SymLocal:
 		place, err := b.genLValue(expr)
 		if err != nil {
