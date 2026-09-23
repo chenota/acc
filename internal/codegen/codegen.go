@@ -148,6 +148,10 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateSignExtend(v))
 	case ssa.OpStaticCall:
 		insts = append(insts, generateCall(v))
+	case ssa.OpClosureCall:
+		insts = append(insts, generateClosureCall(v))
+	case ssa.OpLabelAddr:
+		insts = append(insts, generateLabelAddr(v))
 	}
 
 	return insts
@@ -189,6 +193,23 @@ func generateCall(v *ssa.Value) Inst {
 	return Inst{
 		Op:   "call",
 		Dest: text(funcLabel(v.Callee())),
+	}
+}
+
+// generateClosureCall jumps to a closure environment's code address (first argument)
+func generateClosureCall(v *ssa.Value) Inst {
+	return Inst{
+		Op:   "call",
+		Dest: indirectTarget(v.Args[0]),
+	}
+}
+
+// generateLabelAddr materializes a function's address as a value.
+func generateLabelAddr(v *ssa.Value) Inst {
+	return Inst{
+		Op:   "leaq", // always use the quadword version of this
+		Src1: ripRelative(funcLabel(v.Callee())),
+		Dest: toArg(v),
 	}
 }
 
@@ -405,6 +426,16 @@ func mulOp(size int) string {
 
 func text(v string) Arg {
 	return Arg{Kind: KText, Value: v}
+}
+
+// ripRelative addresses a label from the instruction pointer
+func ripRelative(label string) Arg {
+	return Arg{Kind: KRipRelative, Value: label}
+}
+
+// indirectTarget is the call target held in v's register.
+func indirectTarget(v *ssa.Value) Arg {
+	return Arg{Kind: KIndirect, Reg: v.Loc.Reg}
 }
 
 func symbol(name string) string {

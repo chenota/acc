@@ -538,8 +538,7 @@ func (b *builder) genLoadFrom(dest addr, t *types.Type) *Value {
 	return v
 }
 
-// genStoreTo writes val to dest. A singleton carries no information, so it is
-// evaluated for its effects and then dropped rather than written anywhere.
+// genStoreTo writes val to dest.
 func (b *builder) genStoreTo(dest addr, val *Value) {
 	if val.Type.IsSingleton() {
 		return

@@ -74,6 +74,19 @@ func argText(arg codegen.Arg) (string, error) {
 			return "", fmt.Errorf("text value has wrong type %T, want string", arg.Value)
 		}
 		return v, nil
+	case codegen.KRipRelative:
+		v, ok := arg.Value.(string)
+		if !ok {
+			return "", fmt.Errorf("label has wrong type %T, want string", arg.Value)
+		}
+		return fmt.Sprintf("%s(%%rip)", v), nil
+	case codegen.KIndirect:
+		// always a full-width address
+		regName, err := registerString(arg.Reg, 8)
+		if err != nil {
+			return "", err
+		}
+		return "*" + regName, nil
 	}
 	return "", nil
 }
