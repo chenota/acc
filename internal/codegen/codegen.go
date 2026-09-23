@@ -196,11 +196,11 @@ func generateCall(v *ssa.Value) Inst {
 	}
 }
 
-// generateClosureCall jumps to a closure environment's code address (first argument)
+// generateClosureCall jumps to the code address held in the environment's first field.
 func generateClosureCall(v *ssa.Value) Inst {
 	return Inst{
 		Op:   "call",
-		Dest: indirectTarget(v.Args[0]),
+		Dest: indirectTarget(v.Args[0], 0),
 	}
 }
 
@@ -433,9 +433,9 @@ func ripRelative(label string) Arg {
 	return Arg{Kind: KRipRelative, Value: label}
 }
 
-// indirectTarget is the call target held in v's register.
-func indirectTarget(v *ssa.Value) Arg {
-	return Arg{Kind: KIndirect, Reg: v.Loc.Reg}
+// indirectTarget is the call target sitting at offset from the address in v's register.
+func indirectTarget(v *ssa.Value, offset int) Arg {
+	return Arg{Kind: KIndirect, Reg: v.Loc.Reg, Value: offset}
 }
 
 func symbol(name string) string {

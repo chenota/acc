@@ -928,22 +928,16 @@ func TestGenSsa_ClosureCall_OperandOrder(t *testing.T) {
 		return f(2, 3);
 	}`)
 
+	f := requireFunc(t, funcs, "main")
 	call := requireClosureCall(t, funcs, "main")
 
-	// the code pointer and the environment come ahead of the two ABI arguments
-	require.Len(t, call.Args, 4)
-	assert.Len(t, call.CallArgs(), 2, "the leading operands are not arguments")
+	// the environment is the only operand ahead of the two ABI arguments
+	require.Len(t, call.Args, 3)
+	assert.Len(t, call.CallArgs(), 2, "the leading operand is not an argument")
 
-	// the address to jump to is read out of the environment's first field
-	code := call.Args[0]
-	require.Equal(t, OpLoad, code.Op)
-	assert.Zero(t, code.Offset)
-	assert.True(t, types.Equal(types.Int64(), code.Type))
-
-	// and it is read from the very environment the call hands over
-	require.Len(t, code.Args, 1)
-	require.Len(t, call.Args[1].Args, 1)
-	assert.Same(t, code.Args[0], call.Args[1].Args[0])
+	// the call reads its own target out of the environment, so nothing loads it beforehand
+	assert.Empty(t, findValues(f.Entry.Values, OpLoad),
+		"the code pointer must be read by the call itself")
 }
 
 func TestLowerCalls_ClosureObjectPinnedToContextRegister(t *testing.T) {
@@ -955,8 +949,9 @@ func TestLowerCalls_ClosureObjectPinnedToContextRegister(t *testing.T) {
 
 	call := requireClosureCall(t, funcs, "main")
 
-	// the callee reads its captures out of the context register, so the caller leaves it there
-	object := call.Args[1]
+	// the callee reads its captures out of the context register, and the call reads the
+	// address it jumps to from the same place, so the environment has to land there
+	object := call.Args[0]
 	assert.Equal(t, OpCopy, object.Op, "the environment must be placed by a copy into its register")
 	assert.Equal(t, LocRegister, object.Loc.Kind)
 	assert.Equal(t, register.ClosureContext, object.Loc.Reg)

@@ -631,15 +631,10 @@ func (b *builder) genClosureCall(expr *ir.Node, callee *ir.Node) (*Value, error)
 		return nil, err
 	}
 
-	// read the code pointer as late as possible so it is not live across the arguments
-	code := b.genLoadFrom(addr{Ptr: env}, types.Int64())
-
 	v := b.targetFunc.appendValue(OpClosureCall, expr.Type, b.currentBlock)
-	v.Args = make([]*Value, 2+len(argVals))
-	// TODO: Code pointer already lives in the environment this is convenient but maybe not necessary
-	v.Args[0] = code          // address to jump to
-	v.Args[1] = env           // environment
-	copy(v.Args[2:], argVals) // ordinary call args
+	v.Args = make([]*Value, 1+len(argVals))
+	v.Args[0] = env           // environment (first arg code pointer, remaining captured variables)
+	copy(v.Args[1:], argVals) // ordinary call args
 
 	return v, nil
 }

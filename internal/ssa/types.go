@@ -72,8 +72,8 @@ func (v *Value) IsCall() bool {
 // CallArgs returns the operands of a call that are ABI arguments
 func (v *Value) CallArgs() []*Value {
 	if v.Op == OpClosureCall {
-		// the code pointer and the closure object come ahead of the ABI arguments
-		return v.Args[2:]
+		// the closure object comes ahead of the ABI arguments
+		return v.Args[1:]
 	}
 	return v.Args
 }

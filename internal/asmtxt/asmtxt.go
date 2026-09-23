@@ -81,12 +81,16 @@ func argText(arg codegen.Arg) (string, error) {
 		}
 		return fmt.Sprintf("%s(%%rip)", v), nil
 	case codegen.KIndirect:
-		// always a full-width address
-		regName, err := registerString(arg.Reg, 8)
+		offset, ok := arg.Value.(int)
+		if !ok {
+			return "", fmt.Errorf("indirect offset has wrong type %T, want int", arg.Value)
+		}
+		// an address is always full width
+		baseName, err := registerString(arg.Reg, 8)
 		if err != nil {
 			return "", err
 		}
-		return "*" + regName, nil
+		return fmt.Sprintf("*%d(%s)", offset, baseName), nil
 	}
 	return "", nil
 }

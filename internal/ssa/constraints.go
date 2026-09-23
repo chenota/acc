@@ -101,7 +101,7 @@ func lowerCalls(f *Func) {
 
 		// the context register only has a meaning at the call itself, so pin it last.
 		if v.Op == OpClosureCall {
-			v.Args[1] = copyTo(f, v, v.Args[1], NewReg(register.ClosureContext))
+			v.Args[0] = copyTo(f, v, v.Args[0], NewReg(register.ClosureContext))
 		}
 	}
 }
