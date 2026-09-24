@@ -69,6 +69,10 @@ func (a *analyzer) analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 		return err
 	}
 
+	if isGlobalFunc(target) {
+		return diagnostic.NewError(target.Pos, "invalid assignment target: cannot assign to global function %s", target.Ident())
+	}
+
 	// the target's type is what the context expects of the right-hand side
 	if err := a.checkExpr(scope, e, target.Type); err != nil {
 		return err
@@ -338,6 +342,10 @@ func (a *analyzer) inferRef(scope *ir.Table, n *ir.Node) error {
 		return err
 	}
 
+	if isGlobalFunc(sub) {
+		return diagnostic.NewError(sub.Pos, "cannot take reference of global function %s", sub.Ident())
+	}
+
 	// n's type is a pointer of sub's type
 	n.Type = types.Pointer(sub.Type)
 
@@ -540,6 +548,10 @@ func terminates(n *ir.Node) bool {
 	}
 
 	return n.Op == ir.OpReturn
+}
+
+func isGlobalFunc(n *ir.Node) bool {
+	return n.Op == ir.OpIdent && n.Sym.Kind == ir.SymFunc
 }
 
 func (a *analyzer) registerGlobalFunction(scope *ir.Table, f *ir.Node) error {

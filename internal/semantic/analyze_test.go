@@ -236,6 +236,7 @@ func TestAnalyze_Assignment_InvalidLvalue(t *testing.T) {
 		{"integer literal", `fun main () -> int { 1 = 2; return 0; }`},
 		{"arithmetic expression", `fun main () -> int { let x int = 1; x + 1 = 2; return 0; }`},
 		{"negation", `fun main () -> int { let x int = 1; -x = 2; return 0; }`},
+		{"global function", `fun f () { } fun main () -> int { f = fun () { }; return 0; }`},
 	}
 
 	for _, tt := range tests {
@@ -244,6 +245,10 @@ func TestAnalyze_Assignment_InvalidLvalue(t *testing.T) {
 			assert.Error(t, err)
 		})
 	}
+}
+
+func TestAnalyze_Assignment_LocalBoundToGlobal(t *testing.T) {
+	mustAnalyze(t, `fun f () { } fun main () -> int { let g = f; g = fun () { }; return 0; }`)
 }
 
 func TestAnalyze_Negation(t *testing.T) {
@@ -423,6 +428,12 @@ func TestAnalyze_Deref_NonPointer(t *testing.T) {
 
 func TestAnalyze_Reference_NonLValue(t *testing.T) {
 	_, err := analyzeSrc(t, `fun main () -> int { let x int = 1; let p = &(x + 1); return 0; }`)
+
+	assert.Error(t, err)
+}
+
+func TestAnalyze_Reference_GlobalFunction(t *testing.T) {
+	_, err := analyzeSrc(t, `fun f () { } fun main () -> int { let p = &f; return 0; }`)
 
 	assert.Error(t, err)
 }
