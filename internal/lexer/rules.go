@@ -30,6 +30,7 @@ const (
 	KRef
 	KDot
 	KNilKw
+	KRecKw
 )
 
 type tokenRule struct {
@@ -43,6 +44,7 @@ var rules = []tokenRule{
 	{KReturnKw, mustAnchor(`return`)},
 	{KLetKw, mustAnchor(`let`)},
 	{KNilKw, mustAnchor(`nil`)},
+	{KRecKw, mustAnchor(`rec`)},
 	{KArrow, mustAnchor(`->`)},
 	{KPlusEq, mustAnchor(`\+=`)},
 	{KMinusEq, mustAnchor(`-=`)},

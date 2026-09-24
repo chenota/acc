@@ -1224,6 +1224,21 @@ func TestParser_Nil(t *testing.T) {
 	assert.Equal(t, ir.OpNil, ret.List[0].Op)
 }
 
+func TestParser_LetRec(t *testing.T) {
+	tokens := requireTokenize(t, `fun f () { let rec g = fun () -> int { return 0; }; g(); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 2)
+	rec := fun.List[0]
+
+	assert.True(t, rec.Attribute(ir.ARecursive))
+}
+
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {
 	tokens, err := lexer.Tokenize(strings.NewReader(input))
 	require.NoError(t, err)

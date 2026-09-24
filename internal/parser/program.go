@@ -203,6 +203,11 @@ func (p *parser) parseDeclaration() (*ir.Node, bool) {
 		return nil, false
 	}
 
+	// optionally check for the rec keyword
+	if _, ok := p.t.Expect(lexer.KRecKw); ok {
+		n.SetAttribute(ir.ARecursive)
+	}
+
 	// first element of the list is the declared name
 	name, ok := p.parseIdent()
 	if !ok {

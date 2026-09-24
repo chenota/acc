@@ -55,6 +55,12 @@ func NewSignature() *Signature {
 	return &Signature{}
 }
 
+type Attribute int
+
+const (
+	ARecursive Attribute = iota
+)
+
 type Node struct {
 	Parent *Node
 
@@ -68,7 +74,20 @@ type Node struct {
 
 	Sym *Sym
 
-	Val any
+	Attrs map[Attribute]struct{}
+	Val   any
+}
+
+func (n *Node) SetAttribute(a Attribute) {
+	if n.Attrs == nil {
+		n.Attrs = make(map[Attribute]struct{})
+	}
+	n.Attrs[a] = struct{}{}
+}
+
+func (n *Node) Attribute(a Attribute) bool {
+	_, ok := n.Attrs[a]
+	return ok
 }
 
 // Ident returns the identifier name carried by an OpIdent node.
