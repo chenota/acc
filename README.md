@@ -268,6 +268,22 @@ Atom       = Integer
 
 Closures let `acc` use functions as values.
 
+#### Program Grammar (PEG)
+
+```
+Program       <- Function+
+Function      <- "fun" Ident "(" Paramlist ")" ( "->" Type )? Block
+Paramlist     <- ( Param ( "," Param )* )?
+Param         <- Ident Type
+Block         <- "{" Statement* "}"
+Statement     <- Declaration / Assignment / AssignmentOp / Return / CallStatement
+Declaration   <- "let" "rec"? Ident Type? "=" Expression ";"
+Assignment    <- Expression "=" Expression ";"
+AssignmentOp  <- Expression ( "+=" / "-=" / "*=" / "/=" ) Expression ";"
+Return        <- "return" Expression? ";"
+CallStatement <- Expression ";"
+```
+
 #### Expression Grammar (EBNF)
 
 ```
