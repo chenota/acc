@@ -20,6 +20,8 @@ type Sym struct {
 	Type *types.Type
 	Kind SymKind
 	Def  *Node
+
+	Const bool
 }
 
 func NewTable() *Table {

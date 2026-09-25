@@ -69,8 +69,8 @@ func (a *analyzer) analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 		return err
 	}
 
-	if isGlobalFunc(target) {
-		return diagnostic.NewError(target.Pos, "invalid assignment target: cannot assign to global function %s", target.Ident())
+	if isConst(target) {
+		return diagnostic.NewError(target.Pos, "invalid assignment target: cannot assign to constant %s", target.Ident())
 	}
 
 	// the target's type is what the context expects of the right-hand side
@@ -105,7 +105,10 @@ func (a *analyzer) analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 	if len(n.List) != 3 {
 		return diagnostic.NewError(n.Pos, "variable declaration missing components")
 	}
-	nameNode := n.List[0]
+	if n.Attribute(ir.ARecursive) {
+		return a.analyzeRecDeclaration(scope, n)
+	}
+
 	typeNode := n.List[1]
 	e := n.List[2]
 
@@ -133,15 +136,53 @@ func (a *analyzer) analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 		return diagnostic.NewError(n.Pos, "variable declaration with mismatched types: want %v, got %v", want, e.Type)
 	}
 
+	_, err := a.registerDeclaration(scope, n, e.Type)
+	return err
+}
+
+// analyzeRecDeclaration types a let rec, whose name is in scope within its own right-hand side.
+func (a *analyzer) analyzeRecDeclaration(scope *ir.Table, n *ir.Node) error {
+	typeNode := n.List[1]
+	e := n.List[2]
+
+	// only function literals are allowed
+	if e.Op != ir.OpFunction {
+		return diagnostic.NewError(e.Pos, "right-hand side of let rec must be a function literal")
+	}
+
+	// register this lambda itself with the analyzer
+	if err := a.declareLambda(e); err != nil {
+		return err
+	}
+
+	if typeNode != nil && !types.Equal(typeNode.Type, e.Type) {
+		return diagnostic.NewError(n.Pos, "variable declaration with mismatched types: want %v, got %v", typeNode.Type, e.Type)
+	}
+
+	// register the identifier in the scope
+	sym, err := a.registerDeclaration(scope, n, e.Type)
+	if err != nil {
+		return err
+	}
+	// a self-reference is fixed at declaration, so the binding can never change
+	sym.Const = true
+
+	return a.analyzeFunctionBody(scope, e)
+}
+
+// registerDeclaration puts a declaration's name into scope with the given type.
+func (a *analyzer) registerDeclaration(scope *ir.Table, n *ir.Node, t *types.Type) (*ir.Sym, error) {
+	nameNode := n.List[0]
+
 	// register self in scope; will get nil if variable already exists in scope
-	sym := scope.Register(nameNode.Ident(), e.Type, ir.SymLocal)
+	sym := scope.Register(nameNode.Ident(), t, ir.SymLocal)
 	if sym == nil {
-		return diagnostic.NewError(nameNode.Pos, "variable re-declared: %v", nameNode.Ident())
+		return nil, diagnostic.NewError(nameNode.Pos, "variable re-declared: %v", nameNode.Ident())
 	}
 	sym.Def = n.Encl() // function context this variable was defined in
 	n.Sym = sym
 
-	return nil
+	return sym, nil
 }
 
 // inferExpr synthesizes n's type from the expression alone, with no expectation from context.
@@ -304,6 +345,15 @@ func (a *analyzer) checkTuple(scope *ir.Table, n *ir.Node, want *types.Type) err
 }
 
 func (a *analyzer) inferLambda(scope *ir.Table, n *ir.Node) error {
+	if err := a.declareLambda(n); err != nil {
+		return err
+	}
+
+	return a.analyzeFunctionBody(scope, n)
+}
+
+// declareLambda settles a lambda's label and type from its signature
+func (a *analyzer) declareLambda(n *ir.Node) error {
 	if n.Signature.Name.Ident() != "" {
 		return diagnostic.NewError(n.Pos, "lambda functions must not be named")
 	}
@@ -323,7 +373,7 @@ func (a *analyzer) inferLambda(scope *ir.Table, n *ir.Node) error {
 
 	a.lambdas = append(a.lambdas, n)
 
-	return a.analyzeFunctionBody(scope, n)
+	return nil
 }
 
 func (a *analyzer) inferRef(scope *ir.Table, n *ir.Node) error {
@@ -342,8 +392,8 @@ func (a *analyzer) inferRef(scope *ir.Table, n *ir.Node) error {
 		return err
 	}
 
-	if isGlobalFunc(sub) {
-		return diagnostic.NewError(sub.Pos, "cannot take reference of global function %s", sub.Ident())
+	if isConst(sub) {
+		return diagnostic.NewError(sub.Pos, "cannot take reference of constant %s", sub.Ident())
 	}
 
 	// n's type is a pointer of sub's type
@@ -550,8 +600,8 @@ func terminates(n *ir.Node) bool {
 	return n.Op == ir.OpReturn
 }
 
-func isGlobalFunc(n *ir.Node) bool {
-	return n.Op == ir.OpIdent && n.Sym.Kind == ir.SymFunc
+func isConst(n *ir.Node) bool {
+	return n.Op == ir.OpIdent && n.Sym.Const
 }
 
 func (a *analyzer) registerGlobalFunction(scope *ir.Table, f *ir.Node) error {
@@ -580,6 +630,7 @@ func (a *analyzer) registerGlobalFunction(scope *ir.Table, f *ir.Node) error {
 	if sym == nil {
 		return diagnostic.NewError(name.Pos, "symbol '%s' already declared", name.Ident())
 	}
+	sym.Const = true // a global function's name always refers to that function
 	f.Sym = sym
 
 	return nil

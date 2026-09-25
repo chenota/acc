@@ -750,6 +750,98 @@ func TestAnalyze_Nil_Err(t *testing.T) {
 	}
 }
 
+func TestAnalyze_LetRec(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let rec g = fun (n int) -> int { return g(n); }; return g(1); }`)
+
+	require.Len(t, funcs, 2)
+	main := funcs[0]
+	lambda := funcByLabel(t, funcs, "main.func0")
+
+	// the binding takes the lambda's type and is fixed as a constant
+	require.Len(t, main.List, 2)
+	decl := main.List[0]
+	require.NotNil(t, decl.Sym)
+	assert.True(t, decl.Sym.Const)
+	assert.True(t, types.Equal(types.Function([]*types.Type{types.Int()}, types.Int()), decl.Sym.Type))
+
+	// g lives in main, so the lambda naming itself closes over g
+	assert.Equal(t, []string{"g"}, captureNames(lambda))
+	assert.Empty(t, captureNames(main))
+}
+
+func TestAnalyze_LetRec_Annotated(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let rec g fun (int) -> int = fun (n int) -> int { return g(n); }; return g(1); }`)
+
+	require.Len(t, funcs, 2)
+	decl := funcs[0].List[0]
+	require.NotNil(t, decl.Sym)
+	assert.True(t, types.Equal(types.Function([]*types.Type{types.Int()}, types.Int()), decl.Sym.Type))
+}
+
+func TestAnalyze_LetRec_Transitive(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let rec g = fun () -> int { let h = fun () -> int { return g(); }; return h(); }; return g(); }`)
+
+	require.Len(t, funcs, 3)
+	main := funcs[0]
+	outer := funcByLabel(t, funcs, "main.func0")
+	inner := funcByLabel(t, funcs, "main.func0.func0")
+
+	// the recursive lambda builds the inner one's environment, so it needs g too
+	assert.Equal(t, []string{"g"}, captureNames(inner))
+	assert.Equal(t, []string{"g"}, captureNames(outer))
+	assert.Empty(t, captureNames(main))
+}
+
+func TestAnalyze_LetRec_NotRecursiveWithoutRec(t *testing.T) {
+	_, err := analyzeSrc(t, `fun main () -> int { let g = fun () -> int { return g(); }; return g(); }`)
+
+	assert.Error(t, err)
+}
+
+func TestAnalyze_LetRec_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"non-function literal", `fun main () -> int { let rec x = 1; return x; }`},
+		{"self-referencing value", `fun main () -> int { let rec x int = x + 1; return x; }`},
+		{"function through a variable", `fun f () -> int { return 0; } fun main () -> int { let rec g = f; return g(); }`},
+		{"mismatched annotation", `fun main () -> int { let rec g fun () -> int = fun (n int) -> int { return g(n); }; return 0; }`},
+		{"re-declared", `fun main () -> int { let g = 1; let rec g = fun () -> int { return g(); }; return 0; }`},
+		{"body type error", `fun main () -> int { let rec g = fun () -> int { return g(1); }; return 0; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestAnalyze_LetRec_Immutable_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"assignment after declaration", `fun main () -> int { let rec g = fun () -> int { return g(); }; g = fun () -> int { return 0; }; return 0; }`},
+		{"assignment inside own body", `fun main () -> int { let rec g = fun () -> int { g = fun () -> int { return 0; }; return g(); }; return 0; }`},
+		{"reference", `fun main () -> int { let rec g = fun () -> int { return g(); }; let p = &g; return 0; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestAnalyze_LetRec_CopyIsMutable(t *testing.T) {
+	// only the rec binding itself is fixed; a copy of it is an ordinary local
+	mustAnalyze(t, `fun main () -> int { let rec g = fun () -> int { return g(); }; let h = g; h = fun () -> int { return 0; }; return h(); }`)
+}
+
 // mustAnalyze parses and analyzes src, returning every function in the program, lifted lambdas included.
 func mustAnalyze(t *testing.T, src string) []*ir.Node {
 	t.Helper()
