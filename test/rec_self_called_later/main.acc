@@ -1,0 +1,12 @@
+fun main () -> int {
+    let n = 0;
+    let out fun () -> int = fun () -> int { return 0; };
+    let rec g = fun () -> int {
+        n += 10;
+        out = g;
+        return n;
+    };
+    let a = g();
+    let b = out();
+    return a + b;
+}

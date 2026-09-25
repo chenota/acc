@@ -1,0 +1,13 @@
+fun mk () -> fun () -> int {
+    let f = fun () -> int { return 1; };
+    let r = &f;
+    f = fun () -> int {
+        let q = r;
+        return 7;
+    };
+    return f;
+}
+
+fun main () -> int {
+    return mk()();
+}

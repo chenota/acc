@@ -1,0 +1,10 @@
+fun main () -> int {
+    let rec g = fun () -> int {
+        let h = fun () -> int {
+            let self = g;
+            return 9;
+        };
+        return h() + 1;
+    };
+    return g();
+}

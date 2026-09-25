@@ -1,0 +1,20 @@
+fun mk (out *fun () -> int) -> fun () -> int {
+    let n = 0;
+    let rec g = fun () -> int {
+        n += 5;
+        *out = g;
+        return n;
+    };
+    return g;
+}
+
+fun main () -> int {
+    let o1 fun () -> int = fun () -> int { return 0; };
+    let o2 fun () -> int = fun () -> int { return 0; };
+    let g1 = mk(&o1);
+    let g2 = mk(&o2);
+    g1();
+    g2();
+    g2();
+    return o1() * 10 + o2();
+}

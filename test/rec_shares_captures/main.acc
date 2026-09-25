@@ -1,0 +1,9 @@
+fun main () -> int {
+    let x = 1;
+    let rec g = fun () -> int {
+        let self = g;
+        return x;
+    };
+    x = 42;
+    return g();
+}

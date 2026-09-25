@@ -1,0 +1,17 @@
+fun mk (out *fun () -> int) -> fun () -> int {
+    let n = 0;
+    let rec g = fun () -> int {
+        n += 5;
+        *out = g;
+        return n;
+    };
+    return g;
+}
+
+fun main () -> int {
+    let out fun () -> int = fun () -> int { return 0; };
+    let g = mk(&out);
+    let a = g();
+    let b = out();
+    return a * 10 + b;
+}
