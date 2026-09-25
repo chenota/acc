@@ -515,6 +515,35 @@ func TestHeapify_RewritesAnEscapingLocal(t *testing.T) {
 	assert.Nil(t, slotNamed(f, "x"))
 }
 
+func TestHeapify_AddressCycle(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun mk () -> fun () -> int {
+			let f = fun () -> int { return 1; };
+			let r = &f;
+			f = fun () -> int { let q = r; return 7; };
+			return f;
+		}
+		fun main () -> int { let g = mk(); return 2; }`)
+
+	f := requireFunc(t, funcs, "mk")
+
+	// f holds a closure that captures r, which points back at f; every slot on that loop outlives the frame
+	assert.Len(t, findAllocations(f), 4)
+	assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
+}
+
+func TestHeapify_CopyIntoEscapingSlotStaysOnFrame(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun f () -> *int { let z = 1; let pz = &z; let l = *pz; return &l; }
+		fun main () -> int { let p = f(); return *p; }`)
+	f := requireFunc(t, funcs, "f")
+
+	// l escapes, but it only holds a copy of z's value, so z keeps its frame slot
+	requireAllocate(t, f)
+	assert.Nil(t, slotNamed(f, "l"))
+	assert.NotNil(t, slotNamed(f, "z"))
+}
+
 func TestLowerResults_PinnedToResultRegister(t *testing.T) {
 	funcs := requireBuildSSA(t, `fun main () -> int { return 7; }`)
 
@@ -674,6 +703,32 @@ func TestUnoptimized_Nil(t *testing.T) {
 	// nil is an ordinary zero literal, widened to fill a whole pointer
 	assert.Equal(t, int32(0), literals[0].Value)
 	assert.True(t, types.Equal(types.Int64(), literals[0].Type))
+}
+
+func TestGenSsa_LetRec_EnvironmentPointsAtOwnSlot(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let rec g = fun () -> int { let h = g; return 5; }; return g(); }`)
+
+	f := requireFunc(t, funcs, "main")
+	env := requireEnvSlot(t, f)
+
+	// the closure is built before g holds it, so its capture is g's slot, filled in once the closure lands there
+	capture := requireStoredAt(t, f, env, 8)
+	require.Equal(t, OpLocalAddr, capture.Op)
+	require.NotNil(t, slotNamed(f, "g"))
+	assert.Same(t, slotNamed(f, "g"), capture.Slot())
+}
+
+func TestGenSsa_LetRec_EscapingClosureIsHeapified(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun mk () -> fun () -> int { let rec g = fun () -> int { let h = g; return 5; }; return g; }
+		fun main () -> int { let f = mk(); return 2; }`)
+
+	f := requireFunc(t, funcs, "mk")
+
+	// the environment and g's slot point at each other, and both outlive the frame
+	assert.Len(t, findAllocations(f), 2)
+	assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
+	assert.Empty(t, findValues(f.Entry.Values, OpLocalAddr))
 }
 
 // requireReturned unwraps b's single result and hands back the value feeding it.

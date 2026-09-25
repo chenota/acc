@@ -200,16 +200,12 @@ func (b *builder) genDecl(n *ir.Node) error {
 		return diagnostic.NewError(n.Pos, "variable already allocated: %s", n.List[0].Ident())
 	}
 
-	// reserve a slot for the new variable
+	// reserve a slot for the new variable, visible before the initializer so a let rec closure can capture it
 	slot := b.targetFunc.newSlot(n.Sym, n.Sym.Type)
+	b.vars[n.Sym] = slot
 
 	// generate n into the slot
-	if err := b.genExprInto(addr{Slot: slot}, n.List[2]); err != nil {
-		return err
-	}
-
-	b.vars[n.Sym] = slot
-	return nil
+	return b.genExprInto(addr{Slot: slot}, n.List[2])
 }
 
 func (b *builder) genAssign(n *ir.Node) error {

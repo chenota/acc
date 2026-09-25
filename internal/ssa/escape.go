@@ -27,6 +27,9 @@ func escapeAnalysis(f *Func) []*Slot {
 		d := derefs[n]
 
 		if n.slot != nil {
+			// an escaping slot moves to the heap and becomes a sink itself, so what it holds starts over at zero.
+			d = max(d, 0)
+
 			// anything written to this slot at any point inherits its deficit
 			for val := range f.SlotValues(n.slot) {
 				if val.Op == OpStaticStore {
