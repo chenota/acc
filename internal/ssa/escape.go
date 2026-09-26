@@ -14,10 +14,17 @@ func escapeAnalysis(f *Func) []*Slot {
 		queue = append(queue, n)
 	}
 
-	// enqueue both sink types (return values and stored-through-pointer values) to be looked at
+	// enqueue every sink type to be looked at
 	for v := range f.UnorderedValues() {
-		if v.Op == OpResult || v.Op == OpStore {
+		switch {
+		case v.Op == OpResult || v.Op == OpStore: // return values and stored-through-pointer values
 			relax(valueNode(v.Args[0]), 0)
+		case v.IsCall():
+			// all call arguments are assumed to escape for the time being
+			// TODO: use per-callee summaries for static calls
+			for _, arg := range v.Args {
+				relax(valueNode(arg), 0)
+			}
 		}
 	}
 
