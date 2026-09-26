@@ -1,0 +1,20 @@
+fun mk () -> fun () -> int {
+    let x = 42;
+    let g = fun () -> int { return 0; };
+    let h = fun () -> int { return x; };
+    let set = fun () { g = h; };
+    set();
+    return g;
+}
+
+fun clobber (a int, b int, c int) -> int {
+    let p = (a, b, c, a, b, c, a, b, c, a, b, c);
+    let q = (p, p);
+    return q.0.0 + q.1.11;
+}
+
+fun main () -> int {
+    let g = mk();
+    clobber(1, 2, 3);
+    return g();
+}

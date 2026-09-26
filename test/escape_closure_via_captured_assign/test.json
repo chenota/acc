@@ -1,0 +1,5 @@
+{
+  "name": "Closure Escapes Through An Assignment To A Captured Variable",
+  "tags": ["vs10", "wip"],
+  "status": 42
+}

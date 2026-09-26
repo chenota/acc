@@ -1,0 +1,5 @@
+{
+  "name": "Closure Built By A Closure Call Escapes With An Outer Capture",
+  "tags": ["vs10", "wip"],
+  "status": 42
+}
