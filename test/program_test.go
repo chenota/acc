@@ -54,21 +54,7 @@ func TestProgram(t *testing.T) {
 				binaryPath := compileProgram(t, mainFile)
 				defer os.Remove(binaryPath)
 
-				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-				defer cancel()
-
-				cmd := exec.CommandContext(ctx, binaryPath)
-				err := cmd.Run()
-
-				// make sure context did not time out
-				require.NotErrorIs(t, ctx.Err(), context.DeadlineExceeded, "test timeout")
-
-				if err != nil {
-					var exitErr *exec.ExitError
-					require.ErrorAs(t, err, &exitErr, "unexpected runtime error", err.Error())
-				}
-
-				actualStatus := cmd.ProcessState.ExitCode()
+				actualStatus := runProgram(t, binaryPath)
 				verifyStatus(t, config, actualStatus)
 			}
 		})
@@ -114,6 +100,45 @@ func compileProgram(t *testing.T, mainFile string) string {
 	require.NoError(t, safeExecute(root.Execute), "failed to compile program")
 
 	return tmpBinary.Name()
+}
+
+const (
+	runTimeout = 3 * time.Second
+	reapGrace  = 1 * time.Second
+)
+
+// runProgram runs the binary at binaryPath and returns its exit status.
+func runProgram(t *testing.T, binaryPath string) int {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(t.Context(), runTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binaryPath)
+	require.NoError(t, cmd.Start(), "failed to start program")
+
+	// wait off to the side so a process that can't be reaped doesn't hang the whole suite
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	var err error
+	select {
+	case err = <-done:
+	case <-ctx.Done():
+		select {
+		case <-done:
+			require.FailNow(t, "test timeout")
+		case <-time.After(reapGrace):
+			require.FailNow(t, "test timeout", "program could not be reaped after being killed")
+		}
+	}
+
+	if err != nil {
+		var exitErr *exec.ExitError
+		require.ErrorAs(t, err, &exitErr, "unexpected runtime error", err.Error())
+	}
+
+	return cmd.ProcessState.ExitCode()
 }
 
 func safeExecute(run func() error) (err error) {
