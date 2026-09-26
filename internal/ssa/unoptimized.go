@@ -293,7 +293,7 @@ func closureEnvType(lambda *ir.Node) *types.Type {
 
 // capturedByValue reports whether lambda captured sym by value
 func capturedByValue(lambda *ir.Node, sym *ir.Sym) bool {
-	return !sym.Mutated && sym != lambda.RecSym()
+	return !sym.Observed(ir.SOMutated) && sym != lambda.RecSym()
 }
 
 // genClosure writes the (code, env) pair for code closing over lambda's captures into dest

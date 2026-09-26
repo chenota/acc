@@ -764,7 +764,7 @@ func TestAnalyze_LetRec(t *testing.T) {
 	require.Len(t, main.List, 2)
 	decl := main.List[0]
 	require.NotNil(t, decl.Sym)
-	assert.True(t, decl.Sym.Const)
+	assert.True(t, decl.Sym.Attribute(ir.SAConst))
 	assert.True(t, types.Equal(types.Function([]*types.Type{types.Int()}, types.Int()), decl.Sym.Type))
 
 	// g lives in main, so the lambda naming itself closes over g
@@ -876,7 +876,7 @@ func TestAnalyze_Mutated(t *testing.T) {
 			require.NotEmpty(t, funcs[0].List)
 			decl := funcs[0].List[0]
 			require.NotNil(t, decl.Sym)
-			assert.Equal(t, tt.mutated, decl.Sym.Mutated)
+			assert.Equal(t, tt.mutated, decl.Sym.Observed(ir.SOMutated))
 		})
 	}
 }
@@ -891,8 +891,8 @@ func TestAnalyze_Mutated_Params(t *testing.T) {
 	require.NotNil(t, params[1].Sym)
 
 	// a parameter is an ordinary variable once it's inside the function
-	assert.False(t, params[0].Sym.Mutated)
-	assert.True(t, params[1].Sym.Mutated)
+	assert.False(t, params[0].Sym.Observed(ir.SOMutated))
+	assert.True(t, params[1].Sym.Observed(ir.SOMutated))
 }
 
 // mustAnalyze parses and analyzes src, returning every function in the program, lifted lambdas included.

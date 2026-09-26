@@ -166,7 +166,7 @@ func (a *analyzer) analyzeRecDeclaration(scope *ir.Table, n *ir.Node) error {
 		return err
 	}
 	// a self-reference is fixed at declaration, so the binding can never change
-	sym.Const = true
+	sym.SetAttribute(ir.SAConst)
 
 	return a.analyzeFunctionBody(scope, e)
 }
@@ -604,7 +604,7 @@ func terminates(n *ir.Node) bool {
 }
 
 func isConst(n *ir.Node) bool {
-	return n.Op == ir.OpIdent && n.Sym.Const
+	return n.Op == ir.OpIdent && n.Sym.Attribute(ir.SAConst)
 }
 
 func markMutated(n *ir.Node) {
@@ -614,7 +614,7 @@ func markMutated(n *ir.Node) {
 	}
 	// only mark bare variables since derefs write through
 	if n.Op == ir.OpIdent {
-		n.Sym.Mutated = true
+		n.Sym.Observe(ir.SOMutated)
 	}
 }
 
@@ -644,7 +644,7 @@ func (a *analyzer) registerGlobalFunction(scope *ir.Table, f *ir.Node) error {
 	if sym == nil {
 		return diagnostic.NewError(name.Pos, "symbol '%s' already declared", name.Ident())
 	}
-	sym.Const = true // a global function's name always refers to that function
+	sym.SetAttribute(ir.SAConst) // a global function's name always refers to that function
 	f.Sym = sym
 
 	return nil

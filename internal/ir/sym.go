@@ -15,14 +15,52 @@ const (
 	SymParam
 )
 
+// SymAttribute is a property a symbol is declared with
+type SymAttribute int
+
+const (
+	SAConst SymAttribute = iota
+)
+
+// SymObservation is a property analysis discovers from a symbol's uses
+type SymObservation int
+
+const (
+	SOMutated SymObservation = iota
+)
+
 type Sym struct {
 	Name string
 	Type *types.Type
 	Kind SymKind
 	Def  *Node
 
-	Const   bool
-	Mutated bool // only correct after semantic analysis is complete
+	Attrs map[SymAttribute]struct{}
+	Obs   map[SymObservation]struct{}
+}
+
+func (s *Sym) SetAttribute(a SymAttribute) {
+	if s.Attrs == nil {
+		s.Attrs = make(map[SymAttribute]struct{})
+	}
+	s.Attrs[a] = struct{}{}
+}
+
+func (s *Sym) Attribute(a SymAttribute) bool {
+	_, ok := s.Attrs[a]
+	return ok
+}
+
+func (s *Sym) Observe(o SymObservation) {
+	if s.Obs == nil {
+		s.Obs = make(map[SymObservation]struct{})
+	}
+	s.Obs[o] = struct{}{}
+}
+
+func (s *Sym) Observed(o SymObservation) bool {
+	_, ok := s.Obs[o]
+	return ok
 }
 
 func NewTable() *Table {
