@@ -54,12 +54,22 @@ func (b *builder) bindCaptures(n *ir.Node) {
 		return
 	}
 
-	envType := closureEnvType(captures)
+	envType := closureEnvType(n)
 	env := b.targetFunc.appendValue(OpClosurePtr, types.Pointer(envType), b.currentBlock)
 
 	for i, sym := range captures {
+		field := addr{Ptr: env}.OffsetBy(envType.Offset(i))
+
+		if capturedByValue(n, sym) {
+			// if captured by value it's a regular local
+			slot := b.targetFunc.newSlot(sym, sym.Type)
+			b.genCopyFields(addr{Slot: slot}, field, sym.Type)
+			b.vars[sym] = slot
+			continue
+		}
+
 		// grab box pointer from environment
-		box := b.genLoadFrom(addr{Ptr: env}.OffsetBy(envType.Offset(i)), types.Pointer(sym.Type))
+		box := b.genLoadFrom(field, types.Pointer(sym.Type))
 		// create a slot for the captured variable and move
 		slot := b.targetFunc.newSlot(sym, types.Pointer(sym.Type))
 		b.genStoreTo(addr{Slot: slot}, box)
@@ -265,24 +275,34 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 	}
 }
 
-// closureEnvType is the layout of an environment closing over captures.
-func closureEnvType(captures []*ir.Sym) *types.Type {
+// closureEnvType is the layout of the environment lambda closes over
+func closureEnvType(lambda *ir.Node) *types.Type {
+	captures := lambda.Captures()
 	elems := make([]*types.Type, 0, len(captures))
 	for _, sym := range captures {
-		// captures are held by reference so make it a pointer
-		// TODO: Non-mutated singleton/atomic captures should be by value
+		if capturedByValue(lambda, sym) {
+			// items captured by value get their base type
+			elems = append(elems, sym.Type)
+			continue
+		}
+		// everything else is held by reference so make it a pointer
 		elems = append(elems, types.Pointer(sym.Type))
 	}
 	return types.Tuple(elems)
 }
 
-// genClosure writes the (code, env) pair for code closing over captures into dest
-func (b *builder) genClosure(dest addr, expr *ir.Node, code *Func, captures []*ir.Sym) error {
+// capturedByValue reports whether lambda captured sym by value
+func capturedByValue(lambda *ir.Node, sym *ir.Sym) bool {
+	return !sym.Mutated && sym != lambda.RecSym()
+}
+
+// genClosure writes the (code, env) pair for code closing over lambda's captures into dest
+func (b *builder) genClosure(dest addr, expr *ir.Node, code *Func, lambda *ir.Node) error {
 	codeRef := b.targetFunc.appendValue(OpLabelAddr, types.UnitPointer(), b.currentBlock)
 	// TODO: I hate this OpLabelAddr must be made more generic
 	codeRef.Value = code
 
-	envRef, err := b.genEnv(expr, captures)
+	envRef, err := b.genEnv(expr, lambda)
 	if err != nil {
 		return err
 	}
@@ -300,24 +320,36 @@ func (b *builder) genZero(t *types.Type) *Value {
 	return v
 }
 
-// genEnv generates an environment pointer for a closure
-func (b *builder) genEnv(expr *ir.Node, captures []*ir.Sym) (*Value, error) {
+// genEnv generates an environment pointer for a closure over lambda's captures
+func (b *builder) genEnv(expr *ir.Node, lambda *ir.Node) (*Value, error) {
+	captures := lambda.Captures()
 	if len(captures) == 0 {
 		// nothing to close over, so the callee never reads its environment
 		return b.genZero(types.UnitPointer()), nil
 	}
 
 	// create the environment
-	envType := closureEnvType(captures)
+	envType := closureEnvType(lambda)
 	env := addr{Slot: b.targetFunc.newSlot(nil, envType)}
 
-	// write pointers to captured values to the environment
+	// write captured values (or pointers to them) to the environment
 	for i, sym := range captures {
+		field := env.OffsetBy(envType.Offset(i))
+
+		if capturedByValue(lambda, sym) {
+			src, err := b.genSymPlace(expr, sym)
+			if err != nil {
+				return nil, err
+			}
+			b.genCopyFields(field, src, sym.Type)
+			continue
+		}
+
 		box, err := b.genBoxAddr(expr, sym)
 		if err != nil {
 			return nil, err
 		}
-		b.genStoreTo(env.OffsetBy(envType.Offset(i)), box)
+		b.genStoreTo(field, box)
 	}
 
 	// address the environment
@@ -397,7 +429,7 @@ func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
 		if code == nil {
 			return diagnostic.NewError(expr.Pos, "reference to unknown function: %s", expr.Signature.Label)
 		}
-		return b.genClosure(dest, expr, code, expr.Captures())
+		return b.genClosure(dest, expr, code, expr)
 	case expr.Op == ir.OpIdent && expr.Sym.Kind == ir.SymFunc:
 		// global functions are closures that don't capture anything
 		code := b.module.lookup(expr.Sym.Name)
@@ -505,14 +537,7 @@ func (a addr) OffsetBy(bytes int) addr {
 func (b *builder) genLValue(expr *ir.Node) (addr, error) {
 	switch expr.Op {
 	case ir.OpIdent:
-		if slot, ok := b.vars[expr.Sym]; ok {
-			return addr{Slot: slot}, nil
-		}
-		if slot, ok := b.captures[expr.Sym]; ok {
-			// a captured variable lives in a box the environment points at
-			return addr{Ptr: b.genLoadFrom(addr{Slot: slot}, types.Pointer(expr.Type))}, nil
-		}
-		return addr{}, diagnostic.NewError(expr.Pos, "variable missing slot: %s", expr.Sym.Name)
+		return b.genSymPlace(expr, expr.Sym)
 	case ir.OpDeref:
 		if len(expr.List) < 1 {
 			return addr{}, diagnostic.NewError(expr.Pos, "deref missing argument")
@@ -534,6 +559,18 @@ func (b *builder) genLValue(expr *ir.Node) (addr, error) {
 		return base.OffsetBy(expr.List[0].Type.Offset(idx)), nil
 	}
 	return addr{}, diagnostic.NewError(expr.Pos, "invalid op for lvalue: %v", expr.Op)
+}
+
+// genSymPlace is where sym's value lives from inside the function being built
+func (b *builder) genSymPlace(expr *ir.Node, sym *ir.Sym) (addr, error) {
+	if slot, ok := b.vars[sym]; ok {
+		return addr{Slot: slot}, nil
+	}
+	if slot, ok := b.captures[sym]; ok {
+		// a captured variable lives in a box
+		return addr{Ptr: b.genLoadFrom(addr{Slot: slot}, types.Pointer(sym.Type))}, nil
+	}
+	return addr{}, diagnostic.NewError(expr.Pos, "variable missing slot: %s", sym.Name)
 }
 
 // genLoadFrom reads the value of type t living at dest.

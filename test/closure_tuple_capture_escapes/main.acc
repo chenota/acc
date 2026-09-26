@@ -1,0 +1,15 @@
+fun mk (t (int, int)) -> fun () -> int {
+    return fun () -> int { return t.0 * 10 + t.1; };
+}
+
+fun clobber (a int, b int, c int) -> int {
+    let p = (a, b, c, a, b, c, a, b, c, a, b, c);
+    let q = (p, p);
+    return q.0.0 + q.1.11;
+}
+
+fun main () -> int {
+    let f = mk((3, 4));
+    clobber(1, 2, 3);
+    return f();
+}

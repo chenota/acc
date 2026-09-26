@@ -505,6 +505,9 @@ func TestAnalyze_Capture(t *testing.T) {
 
 	// and main itself, which owns x and f, closes over nothing
 	assert.Empty(t, captureNames(main))
+
+	// an ordinary let binds the lambda's value, not the lambda itself
+	assert.Nil(t, lambda.RecSym())
 }
 
 func TestAnalyze_Capture_LambdaParam(t *testing.T) {
@@ -767,6 +770,9 @@ func TestAnalyze_LetRec(t *testing.T) {
 	// g lives in main, so the lambda naming itself closes over g
 	assert.Equal(t, []string{"g"}, captureNames(lambda))
 	assert.Empty(t, captureNames(main))
+
+	// the lambda knows which binding names it
+	assert.Same(t, decl.Sym, lambda.RecSym())
 }
 
 func TestAnalyze_LetRec_Annotated(t *testing.T) {
@@ -840,6 +846,53 @@ func TestAnalyze_LetRec_Immutable_Err(t *testing.T) {
 func TestAnalyze_LetRec_CopyIsMutable(t *testing.T) {
 	// only the rec binding itself is fixed; a copy of it is an ordinary local
 	mustAnalyze(t, `fun main () -> int { let rec g = fun () -> int { return g(); }; let h = g; h = fun () -> int { return 0; }; return h(); }`)
+}
+
+func TestAnalyze_Mutated(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		mutated bool
+	}{
+		{"never written", `let x = 1; return x;`, false},
+		{"assigned", `let x = 1; x = 2; return x;`, true},
+		{"assign op", `let x = 1; x += 2; return x;`, true},
+		{"field assigned", `let x = (1, 2); x.0 = 3; return x.0;`, true},
+		{"nested field assigned", `let x = ((1, 2), 3); x.0.1 = 4; return x.1;`, true},
+		{"address taken", `let x = 1; let p = &x; return *p;`, true},
+		{"field address taken", `let x = (1, 2); let p = &x.1; return *p;`, true},
+		{"written through", `let x *int = nil; *x = 1; return 0;`, false},
+		{"field written through", `let x *(int, int) = nil; (*x).0 = 1; return 0;`, false},
+		{"read by a closure", `let x = 1; let f = fun () -> int { return x; }; return f();`, false},
+		{"assigned by a closure", `let x = 1; let f = fun () { x = 2; }; f(); return x;`, true},
+		{"let rec binding", `let rec x = fun () -> int { return x(); }; return x();`, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			funcs := mustAnalyze(t, "fun main () -> int { "+tt.body+" }")
+
+			require.NotEmpty(t, funcs)
+			require.NotEmpty(t, funcs[0].List)
+			decl := funcs[0].List[0]
+			require.NotNil(t, decl.Sym)
+			assert.Equal(t, tt.mutated, decl.Sym.Mutated)
+		})
+	}
+}
+
+func TestAnalyze_Mutated_Params(t *testing.T) {
+	funcs := mustAnalyze(t, `fun f (x int, y int) -> int { y = 1; return x + y; } fun main () -> int { return f(1, 2); }`)
+
+	require.NotEmpty(t, funcs)
+	params := funcs[0].Signature.Params
+	require.Len(t, params, 2)
+	require.NotNil(t, params[0].Sym)
+	require.NotNil(t, params[1].Sym)
+
+	// a parameter is an ordinary variable once it's inside the function
+	assert.False(t, params[0].Sym.Mutated)
+	assert.True(t, params[1].Sym.Mutated)
 }
 
 // mustAnalyze parses and analyzes src, returning every function in the program, lifted lambdas included.

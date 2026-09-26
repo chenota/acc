@@ -177,6 +177,14 @@ func (n *Node) Captures() []*Sym {
 	return n.Signature.captures
 }
 
+// RecSym is the symbol a let rec binds a lambda to.
+func (n *Node) RecSym() *Sym {
+	if n == nil || n.Parent == nil || n.Parent.Op != OpDeclaration || !n.Parent.Attribute(ARecursive) {
+		return nil
+	}
+	return n.Parent.Sym
+}
+
 func (n *Node) NextClosureCount() int {
 	if n == nil || n.Signature == nil {
 		return -1

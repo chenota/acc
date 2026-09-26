@@ -21,7 +21,8 @@ type Sym struct {
 	Kind SymKind
 	Def  *Node
 
-	Const bool
+	Const   bool
+	Mutated bool // only correct after semantic analysis is complete
 }
 
 func NewTable() *Table {

@@ -72,6 +72,7 @@ func (a *analyzer) analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 	if isConst(target) {
 		return diagnostic.NewError(target.Pos, "invalid assignment target: cannot assign to constant %s", target.Ident())
 	}
+	markMutated(target)
 
 	// the target's type is what the context expects of the right-hand side
 	if err := a.checkExpr(scope, e, target.Type); err != nil {
@@ -395,6 +396,8 @@ func (a *analyzer) inferRef(scope *ir.Table, n *ir.Node) error {
 	if isConst(sub) {
 		return diagnostic.NewError(sub.Pos, "cannot take reference of constant %s", sub.Ident())
 	}
+	// a pointer can be written through later, so we mark it as mutated to be safe
+	markMutated(sub)
 
 	// n's type is a pointer of sub's type
 	n.Type = types.Pointer(sub.Type)
@@ -602,6 +605,17 @@ func terminates(n *ir.Node) bool {
 
 func isConst(n *ir.Node) bool {
 	return n.Op == ir.OpIdent && n.Sym.Const
+}
+
+func markMutated(n *ir.Node) {
+	// loop through a dot chain to get to the actual thing being written to
+	for n.Op == ir.OpDot {
+		n = n.List[0]
+	}
+	// only mark bare variables since derefs write through
+	if n.Op == ir.OpIdent {
+		n.Sym.Mutated = true
+	}
 }
 
 func (a *analyzer) registerGlobalFunction(scope *ir.Table, f *ir.Node) error {

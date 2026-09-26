@@ -554,9 +554,10 @@ func TestHeapify_AddressCycle(t *testing.T) {
 
 	f := requireFunc(t, funcs, "mk")
 
-	// f holds a closure that captures r, which points back at f; every slot on that loop outlives the frame
+	// f holds a closure that holds r, which points back at f; f and the environment outlive the frame,
+	// while r is never written so the closure keeps a copy and r needs no storage of its own
 	// the first lambda captures nothing, so it has no environment to allocate
-	assert.Len(t, findAllocations(f), 3)
+	assert.Len(t, findAllocations(f), 2)
 	assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
 }
 
@@ -800,8 +801,8 @@ func TestHeapify_ClosureLeakingItselfThroughCaptureIsHeapified(t *testing.T) {
 
 	f := requireFunc(t, funcs, "mk")
 
-	// g reaches its own environment through its box, so calling it leaks the environment, g's box, and r's box
-	assert.Len(t, findAllocations(f), 3)
+	// g reaches its own environment through its box, so calling it leaks both the environment and g's box
+	assert.Len(t, findAllocations(f), 2)
 	assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
 }
 
@@ -914,15 +915,44 @@ func TestGenSsa_Closure_EnvironmentLayout(t *testing.T) {
 	f := requireFunc(t, funcs, "main")
 	env := requireEnvSlot(t, f)
 
-	// the code pointer travels in the closure itself, so the environment is just one pointer per captured variable
+	// the code pointer travels in the closure itself, so the environment is just the captured variables
+	assert.True(t, types.Equal(types.Tuple([]*types.Type{types.Int()}), env.Type),
+		"expected (int,), got %v", env.Type)
+
+	// nothing ever writes x, so the only field holds a copy of its value and x needs no storage of its own
+	capture := requireStoredAt(t, f, env, 0)
+	require.Equal(t, OpLiteral, capture.Op)
+	assert.Equal(t, int32(10), capture.Value)
+	assert.Nil(t, slotNamed(f, "x"))
+}
+
+func TestGenSsa_Closure_MutatedCaptureIsBoxed(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; let f = fun (y int) -> int { return x + y; }; x = 5; return x; }`)
+
+	f := requireFunc(t, funcs, "main")
+	env := requireEnvSlot(t, f)
+
+	// x is written after the closure is built, so the environment holds a pointer to it
 	assert.True(t, types.Equal(types.Tuple([]*types.Type{types.Pointer(types.Int())}), env.Type),
 		"expected (*int,), got %v", env.Type)
 
-	// the only field holds x's address rather than its value, so both sides see the same storage
+	// that pointer is x's address rather than its value, so both sides see the same storage
 	capture := requireStoredAt(t, f, env, 0)
 	require.Equal(t, OpLocalAddr, capture.Op)
 	assert.Same(t, slotNamed(f, "x"), capture.Slot())
 	assert.True(t, types.Equal(types.Pointer(types.Int()), capture.Type))
+}
+
+func TestGenSsa_LetRec_SelfCaptureIsBoxed(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let rec g = fun () -> int { return g(); }; return 1; }`)
+
+	f := requireFunc(t, funcs, "main")
+	env := requireEnvSlot(t, f)
+
+	// g is never written, but it has no value to copy until this very environment is built, so it stays boxed
+	gType := types.Function(nil, types.Int())
+	assert.True(t, types.Equal(types.Tuple([]*types.Type{types.Pointer(gType)}), env.Type),
+		"expected (*fun () -> int,), got %v", env.Type)
 }
 
 func TestGenSsa_Closure_PrologueReadsContextRegister(t *testing.T) {
@@ -938,8 +968,24 @@ func TestGenSsa_Closure_PrologueReadsContextRegister(t *testing.T) {
 	assert.Same(t, lambda.Entry.Values[0], env, "the environment must be read before any call can clobber it")
 }
 
-func TestGenSsa_Closure_ReadsCaptureThroughItsBox(t *testing.T) {
+func TestGenSsa_Closure_ReadsImmutableCaptureFromEnvironment(t *testing.T) {
 	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; let f = fun (y int) -> int { return x + y; }; return x; }`)
+
+	lambda := requireFunc(t, funcs, "main.func0")
+	env := requireClosurePtr(t, lambda)
+
+	// x's value sits right at the front of the environment, one hop away
+	value := requireLoadFrom(t, lambda, env)
+	assert.Zero(t, value.Offset)
+	assert.True(t, types.Equal(types.Int(), value.Type))
+
+	adds := findValues(lambda.Entry.Values, OpAdd)
+	require.Len(t, adds, 1)
+	assert.Contains(t, adds[0].Args, value, "the captured value is what feeds the addition")
+}
+
+func TestGenSsa_Closure_ReadsCaptureThroughItsBox(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; let f = fun (y int) -> int { return x + y; }; x = 5; return x; }`)
 
 	lambda := requireFunc(t, funcs, "main.func0")
 	env := requireClosurePtr(t, lambda)
@@ -966,10 +1012,29 @@ func TestGenSsa_Closure_EscapingEnvironmentIsHeapified(t *testing.T) {
 
 	f := requireFunc(t, funcs, "adderFactory")
 
-	// the closure outlives the frame, so both it and the variable it captures move to the heap
-	assert.Len(t, findAllocations(f), 2)
+	// the closure outlives the frame, so its environment moves to the heap, carrying its own copy of x along
+	requireAllocate(t, f)
 	assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
 	assert.Empty(t, findValues(f.Entry.Values, OpLocalAddr))
+}
+
+func TestGenSsa_Closure_NestedCaptureForwardsTheValue(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int {
+		let x = 10;
+		let f = fun () -> int {
+			let g = fun () -> int { return x; };
+			return 2;
+		};
+		return 3;
+	}`)
+
+	// the middle lambda never had x on its frame, so it copies over the value it was handed
+	middle := requireFunc(t, funcs, "main.func0")
+	value := requireLoadFrom(t, middle, requireClosurePtr(t, middle))
+	assert.True(t, types.Equal(types.Int(), value.Type))
+
+	inner := requireStoredAt(t, middle, requireEnvSlot(t, middle), 0)
+	assert.Same(t, value, inner, "the inner environment must hold the value the middle one was handed")
 }
 
 func TestGenSsa_Closure_NestedCaptureForwardsTheSamePointer(t *testing.T) {
@@ -979,6 +1044,7 @@ func TestGenSsa_Closure_NestedCaptureForwardsTheSamePointer(t *testing.T) {
 			let g = fun () -> int { return x; };
 			return 2;
 		};
+		x = 11;
 		return 3;
 	}`)
 

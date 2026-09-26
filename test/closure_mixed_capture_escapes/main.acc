@@ -1,0 +1,22 @@
+fun mk (a int) -> fun () -> int {
+    let b = (2, 3);
+    let c = 4;
+    let f = fun () -> int {
+        c += 10;
+        return a + b.0 + b.1 + c;
+    };
+    return f;
+}
+
+fun clobber (a int, b int, c int) -> int {
+    let p = (a, b, c, a, b, c, a, b, c, a, b, c);
+    let q = (p, p);
+    return q.0.0 + q.1.11;
+}
+
+fun main () -> int {
+    let f = mk(1);
+    clobber(1, 2, 3);
+    f();
+    return f();
+}

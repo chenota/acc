@@ -1,0 +1,5 @@
+{
+  "name": "Closure Holding A Pointer By Value Sees Later Writes To Its Pointee",
+  "tags": ["vs10"],
+  "status": 5
+}
