@@ -771,6 +771,40 @@ func TestGenSsa_LetRec_EscapingClosureIsHeapified(t *testing.T) {
 	assert.Empty(t, findValues(f.Entry.Values, OpLocalAddr))
 }
 
+func TestHeapify_CalledClosureEnvironmentStaysOnFrame(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun mk () -> *int {
+			let x = 1;
+			let f = fun () -> *int { return &x; };
+			return f();
+		}
+		fun main () -> int { let p = mk(); return *p; }`)
+
+	f := requireFunc(t, funcs, "mk")
+
+	// calling a closure hands the callee its environment, but the callee has no way to leak the environment itself
+	requireEnvSlot(t, f)
+
+	// what the environment points at is still fair game, and this callee hands x's box back out
+	requireAllocate(t, f)
+	assert.Nil(t, slotNamed(f, "x"))
+}
+
+func TestHeapify_ClosureLeakingItselfThroughCaptureIsHeapified(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun mk (r *fun () -> int) {
+			let rec g = fun () -> int { *r = g; return 1; };
+			g();
+		}
+		fun main () -> int { let h = fun () -> int { return 0; }; mk(&h); return h(); }`)
+
+	f := requireFunc(t, funcs, "mk")
+
+	// g reaches its own environment through its box, so calling it leaks the environment, g's box, and r's box
+	assert.Len(t, findAllocations(f), 3)
+	assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
+}
+
 // requireReturned unwraps b's single result and hands back the value feeding it.
 func requireReturned(t *testing.T, b *Block) *Value {
 	t.Helper()
@@ -1038,10 +1072,10 @@ func TestGenSsa_ClosureCall_OperandOrder(t *testing.T) {
 	require.Equal(t, OpLabelAddr, code.Op)
 	assert.Equal(t, "main.func0", code.Callee().Name())
 
-	// the second is the environment, which leaks to the unknown target and so lives wherever the allocator put it
+	// the second is the environment, which the unknown target can't leak, so it stays on the frame
 	env := throughCopies(call.Args[1])
-	require.Equal(t, OpCallResult, env.Op)
-	assert.Same(t, Alloc, env.Args[0].Callee())
+	require.Equal(t, OpLocalAddr, env.Op)
+	assert.Same(t, requireEnvSlot(t, f), env.Slot())
 
 	// the code pointer travels in the closure itself, so nothing loads it out of the environment
 	assert.Empty(t, findValues(f.Entry.Values, OpLoad),

@@ -269,9 +269,11 @@ func (f *Func) heapSeeds() []seed {
 		case OpStore:
 			seeds = append(seeds, seed{valueNode(v.Args[0]), 0})
 		case OpClosureCall:
-			// unknown callee, so the environment and every argument are assumed to escape
+			// unknown callee, so every argument is assumed to escape
 			// TODO: turn as many closures into static calls as possible in an optimization step
-			for _, arg := range v.Args[1:] {
+			// environment itself can't escape so start at a surplus
+			seeds = append(seeds, seed{valueNode(v.Args[1]), 1})
+			for _, arg := range v.CallArgs() {
 				seeds = append(seeds, seed{valueNode(arg), 0})
 			}
 		case OpStaticCall:
