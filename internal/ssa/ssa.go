@@ -14,7 +14,7 @@ func BuildAndAllocate(program []*ir.Node) ([]*Func, error) {
 			return nil, diagnostic.NewError(n.Pos, "expected function node")
 		}
 		// a lifted lambda has no symbol of its own, so functions are keyed by label
-		m.declare(n.Signature.Label)
+		m.declare(n.Signature.Label, n.Type)
 	}
 
 	// build every body. this is looking ahead a bit but basically this will eventually allow all lambdas to get added to the module

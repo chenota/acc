@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/chenota/acc/internal/ir"
+	"github.com/chenota/acc/internal/iterutil"
 	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/types"
 )
@@ -202,8 +203,20 @@ type Func struct {
 	Entry  *Block
 	Slots  []*Slot
 
+	Params  []*types.Type
+	Results []*types.Type
+
 	valueId int
 	blockId int
+}
+
+func newFunc(name string, sig *types.Type) *Func {
+	return &Func{
+		name: name,
+		// kind of hacky but wrapping sig.Params in a tuple type lets us get the leaves w/o a loop in here
+		Params:  slices.Collect(iterutil.Second(types.Tuple(sig.Params()).Leaves())),
+		Results: slices.Collect(iterutil.Second(sig.Result().Leaves())),
+	}
 }
 
 // Slot is a variable's home in the stack frame.
