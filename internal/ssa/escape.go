@@ -2,6 +2,61 @@ package ssa
 
 // escapeAnalysis determines the frame slots whose storage outlives the call.
 func escapeAnalysis(f *Func) []*Slot {
+	var sinks []seed
+	for v := range f.UnorderedValues() {
+		switch {
+		case v.Op == OpStore || v.Op == OpResult: // return values and stored-through-pointer values
+			sinks = append(sinks, seed{valueNode(v.Args[0]), 0})
+		case v.IsCall():
+			// all call arguments are assumed to escape for the time being
+			// TODO: use per-callee summaries for static calls
+			for _, arg := range v.Args {
+				sinks = append(sinks, seed{valueNode(arg), 0})
+			}
+		}
+	}
+
+	result := walk(f, sinks)
+
+	var escaped []*Slot
+	for _, s := range f.Slots {
+		if d, ok := result[slotNode(s)]; ok && d < 0 {
+			escaped = append(escaped, s)
+		}
+	}
+
+	return escaped
+}
+
+// a node is either an ssa value or a frame slot
+type node struct {
+	value *Value
+	slot  *Slot
+}
+
+func slotNode(s *Slot) node {
+	return node{slot: s}
+}
+
+func valueNode(v *Value) node {
+	return node{value: v}
+}
+
+// a seed is a node that reaches a sink directly, with a deref count tied to it so callers
+// can use function summary results as a base for the seed
+type seed struct {
+	node   node
+	derefs int
+}
+
+// TODO: this is unused will be picked up w/ function summaries
+type paramSummary struct {
+	heap    int   // lowest deref count from the parameter to the heap
+	results []int // lowest deref count from the parameter to each result leaf
+}
+
+// walk returns the lowest deref count from each node (value/slot) to any of the seeded sinks
+func walk(f *Func, seeds []seed) map[node]int {
 	derefs := make(map[node]int)
 
 	var queue []node
@@ -14,18 +69,9 @@ func escapeAnalysis(f *Func) []*Slot {
 		queue = append(queue, n)
 	}
 
-	// enqueue every sink type to be looked at
-	for v := range f.UnorderedValues() {
-		switch {
-		case v.Op == OpResult || v.Op == OpStore: // return values and stored-through-pointer values
-			relax(valueNode(v.Args[0]), 0)
-		case v.IsCall():
-			// all call arguments are assumed to escape for the time being
-			// TODO: use per-callee summaries for static calls
-			for _, arg := range v.Args {
-				relax(valueNode(arg), 0)
-			}
-		}
+	// enqueue every sink to be looked at
+	for _, s := range seeds {
+		relax(s.node, s.derefs)
 	}
 
 	for len(queue) > 0 {
@@ -58,26 +104,5 @@ func escapeAnalysis(f *Func) []*Slot {
 		}
 	}
 
-	var escaped []*Slot
-	for _, slot := range f.Slots {
-		if d, ok := derefs[slotNode(slot)]; ok && d < 0 {
-			escaped = append(escaped, slot)
-		}
-	}
-
-	return escaped
-}
-
-// a node is either an ssa value or a frame slot
-type node struct {
-	value *Value
-	slot  *Slot
-}
-
-func slotNode(s *Slot) node {
-	return node{slot: s}
-}
-
-func valueNode(v *Value) node {
-	return node{value: v}
+	return derefs
 }
