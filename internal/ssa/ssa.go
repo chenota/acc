@@ -17,15 +17,21 @@ func BuildAndAllocate(program []*ir.Node) ([]*Func, error) {
 		m.declare(n.Signature.Label, n.Type)
 	}
 
-	// build every body. this is looking ahead a bit but basically this will eventually allow all lambdas to get added to the module
+	// build every body
 	for _, n := range program {
 		if err := m.buildFuncBody(n); err != nil {
 			return nil, err
 		}
 	}
 
-	// optimize and allocate every function in the now-complete pool
+	// run memory/register optimizations on unoptimized function bodies
 	for _, f := range m.Funcs {
+		mem2reg(f)
+	}
+
+	// heapify and optimize every function in the now-complete pool
+	for _, f := range m.Funcs {
+		heapify(f)
 		if err := optimizeAndAllocate(f); err != nil {
 			return nil, err
 		}
@@ -35,11 +41,6 @@ func BuildAndAllocate(program []*ir.Node) ([]*Func, error) {
 }
 
 func optimizeAndAllocate(f *Func) error {
-	mem2reg(f)
-
-	escaped := escapeAnalysis(f)
-	heapify(f, escaped)
-
 	unaryFold(f)
 	quickFold(f)
 	associativeFold(f)

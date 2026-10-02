@@ -1,7 +1,7 @@
 package ssa
 
-// escapeAnalysis determines the frame slots whose storage outlives the call.
-func escapeAnalysis(f *Func) []*Slot {
+// slotEscapes determines the frame slots whose storage outlives the call.
+func (f *Func) slotEscapes() []*Slot {
 	var sinks []seed
 	for v := range f.UnorderedValues() {
 		switch {
@@ -49,7 +49,6 @@ type seed struct {
 	derefs int
 }
 
-// TODO: this is unused will be picked up w/ function summaries
 type paramSummary struct {
 	heap    int   // lowest deref count from the parameter to the heap
 	results []int // lowest deref count from the parameter to each result leaf
