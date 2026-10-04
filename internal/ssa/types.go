@@ -208,6 +208,12 @@ type Func struct {
 
 	valueId int
 	blockId int
+
+	// memoized parameter escape summary
+	escapes []paramSummary
+	// set while f's summary is being computed
+	// TODO: I hate this here has to be a better way
+	escapeInProgress bool
 }
 
 func newFunc(name string, sig *types.Type) *Func {
@@ -217,6 +223,13 @@ func newFunc(name string, sig *types.Type) *Func {
 		Params:  slices.Collect(iterutil.Second(types.Tuple(sig.Params()).Leaves())),
 		Results: slices.Collect(iterutil.Second(sig.Result().Leaves())),
 	}
+}
+
+// newExternFunc declares a function whose body lives outside the module
+func newExternFunc(name string, sig *types.Type, escapes []paramSummary) *Func {
+	f := newFunc(name, sig)
+	f.escapes = escapes
+	return f
 }
 
 // Slot is a variable's home in the stack frame.
@@ -231,6 +244,55 @@ func (f *Func) newSlot(sym *ir.Sym, t *types.Type) *Slot {
 	s := &Slot{Sym: sym, Type: t}
 	f.Slots = append(f.Slots, s)
 	return s
+}
+
+// paramValues return f's parameter SSA values in order
+func (f *Func) paramValues() []*Value {
+	vals := make([]*Value, len(f.Params))
+	for v := range f.UnorderedValues() {
+		if v.Op == OpParam {
+			vals[v.Value.(int)] = v
+		}
+	}
+	return vals
+}
+
+// heapSeeds gives the values in f that reach the heap directly
+func (f *Func) heapSeeds() []seed {
+	var seeds []seed
+	for v := range f.UnorderedValues() {
+		switch v.Op {
+		case OpStore:
+			seeds = append(seeds, seed{valueNode(v.Args[0]), 0})
+		case OpClosureCall:
+			// unknown calle, every value assumed to escape
+			// TODO: turn as many closures into static calls as possible in an optimization step
+			for _, arg := range v.Args {
+				seeds = append(seeds, seed{valueNode(arg), 0})
+			}
+		case OpStaticCall:
+			// use callee's summary to figure out which paramters reach the heap and at what level
+			for i, s := range v.Callee().escapeSummary() {
+				if s.heap != nil {
+					seeds = append(seeds, seed{valueNode(v.Args[i]), *s.heap})
+				}
+			}
+		}
+	}
+	return seeds
+}
+
+// resultValues returns all results in f with index i
+func (f *Func) resultValues(i int) []*Value {
+	var vals []*Value
+	for v := range f.UnorderedValues() {
+		if v.Op == OpResult {
+			if k, ok := v.Value.(int); ok && k == i {
+				vals = append(vals, v)
+			}
+		}
+	}
+	return vals
 }
 
 // OrderedBlocks flattens a function's blocks using reverse post-order traversal

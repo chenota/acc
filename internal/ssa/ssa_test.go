@@ -544,6 +544,31 @@ func TestHeapify_CopyIntoEscapingSlotStaysOnFrame(t *testing.T) {
 	assert.NotNil(t, slotNamed(f, "z"))
 }
 
+func TestEscapeSummary_SelfRecursionAssumesTheWorst(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun f (p *int) -> *int { return f(p); }
+		fun main () -> int { return 0; }`)
+	f := requireFunc(t, funcs, "f")
+
+	// the call back into f can't use a summary that's still being computed, so p is handed to it as if it escapes
+	require.Len(t, f.escapes, 1)
+	require.NotNil(t, f.escapes[0].heap)
+	assert.Equal(t, 0, *f.escapes[0].heap)
+}
+
+func TestEscapeSummary_MutualRecursionTerminates(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun even (p *int) -> *int { return odd(p); }
+		fun odd (p *int) -> *int { return even(p); }
+		fun main () -> int { return 0; }`)
+
+	for _, name := range []string{"even", "odd"} {
+		f := requireFunc(t, funcs, name)
+		require.Len(t, f.escapes, 1, name)
+		assert.NotNil(t, f.escapes[0].heap, name)
+	}
+}
+
 func TestLowerResults_PinnedToResultRegister(t *testing.T) {
 	funcs := requireBuildSSA(t, `fun main () -> int { return 7; }`)
 

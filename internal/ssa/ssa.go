@@ -29,9 +29,10 @@ func BuildAndAllocate(program []*ir.Node) ([]*Func, error) {
 		mem2reg(f)
 	}
 
-	// TODO: parameter escape analysis goes here
-	// general idea is to add a memoized escape summary helper and call that for each function in list
-	// helper is recursive in the sense that if a func doesn't have a summary yet it will go determine it
+	for _, f := range m.Funcs {
+		// call escape summary to memoize it
+		f.escapeSummary()
+	}
 
 	// heapify and optimize every function in the now-complete pool
 	for _, f := range m.Funcs {
