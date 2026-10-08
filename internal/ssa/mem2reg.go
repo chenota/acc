@@ -4,10 +4,11 @@ import (
 	"iter"
 )
 
-// mem2reg promotes scalar never-addressed slots to SSA values
+// mem2reg promotes never-addressed slots to SSA values, one leaf at a time
 func mem2reg(f *Func) {
 	for slot := range promotableSlots(f) {
-		var currentDef *Value
+		// the most recent value stored to each leaf
+		currentDefs := make(map[int]*Value)
 
 		for v := range f.OrderedValues() {
 			if v.Slot() != slot {
@@ -15,12 +16,12 @@ func mem2reg(f *Func) {
 			}
 			switch v.Op {
 			case OpStaticStore:
-				// capture the most recent value stored to this slot and delete the store operation
-				currentDef = v.Args[0]
+				// capture the most recent value stored to this leaf and delete the store operation
+				currentDefs[v.Offset] = v.Args[0]
 				f.removeValue(v)
 			case OpStaticLoad:
-				// point users at the stored value and delete the load
-				f.redirectUses(v, currentDef)
+				// point users at the value stored to this leaf and delete the load
+				f.redirectUses(v, currentDefs[v.Offset])
 				f.removeValue(v)
 			}
 		}
@@ -29,24 +30,17 @@ func mem2reg(f *Func) {
 
 func promotableSlots(f *Func) iter.Seq[*Slot] {
 	return func(yield func(*Slot) bool) {
-		addressed := make(map[*Slot]struct{})
+		pinned := make(map[*Slot]struct{})
 
 		for v := range f.UnorderedValues() {
-			if v.Slot() == nil {
-				continue
-			}
-			if v.Op != OpStaticLoad && v.Op != OpStaticStore {
-				addressed[v.Slot()] = struct{}{}
+			// anything other than a static load and store of a slot pins to memory
+			if s := v.Slot(); s != nil && v.Op != OpStaticLoad && v.Op != OpStaticStore {
+				pinned[s] = struct{}{}
 			}
 		}
 
-		for _, s := range f.Slots {
-			// non-scalar and addressed slots stay in memory
-			if _, ok := addressed[s]; ok || !s.Type.IsScalar() {
-				continue
-			}
-			// slot is promotable
-			if !yield(s) {
+		for slot := range pinned {
+			if !yield(slot) {
 				break
 			}
 		}

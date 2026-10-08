@@ -76,6 +76,16 @@ func TestGenSsa_FoldsToLiteral(t *testing.T) {
 			src:  `fun f (x int) -> int { x = 55; return x; }`,
 			want: 55,
 		},
+		{
+			name: "promoted tuple fields fold",
+			src:  `fun main () -> int { let t = (20, 22); return t.0 + t.1; }`,
+			want: 42,
+		},
+		{
+			name: "tuple fields are promoted independently",
+			src:  `fun main () -> int { let t = (1, 2); t.0 = 5; return t.1; }`,
+			want: 2,
+		},
 	}
 
 	for _, tt := range tests {
@@ -109,6 +119,19 @@ func TestGenSsa_Variable(t *testing.T) {
 	ret := requireReturned(t, b)
 	assert.Equal(t, OpLiteral, ret.Op)
 	assert.Equal(t, int32(10), ret.Value)
+}
+
+func TestGenSsa_TupleVariable(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int { let t = (1, 2); return t.1; }`)
+
+	b := funcs[0].Blocks[0]
+
+	// mem2reg promotes each field of t, so no memory operations survive
+	assert.Empty(t, findValues(b.Values, OpStaticLoad), "loads should be promoted away")
+	assert.Empty(t, findValues(b.Values, OpStaticStore), "stores should be promoted away")
+
+	// nothing names the slot any more, so layout drops it from the frame
+	assert.Empty(t, funcs[0].Slots, "promoted slot should be dropped")
 }
 
 func TestLowerCalls_ArgRegisters(t *testing.T) {
@@ -462,9 +485,11 @@ func TestGenSsa_UnitFunction_CallStatement(t *testing.T) {
 }
 
 func TestGenSsa_UnitTupleField_IsNotStored(t *testing.T) {
+	// taking t's address keeps it in memory so its stores survive mem2reg
 	funcs := requireBuildSSA(t, `
 		fun main () -> int {
 			let t = (1, (), 41);
+			let p = &t;
 			return t.0 + t.2;
 		}
 	`)
@@ -476,8 +501,10 @@ func TestGenSsa_UnitTupleField_IsNotStored(t *testing.T) {
 }
 
 func TestGenSsa_UnitTupleField_IsNotLoaded(t *testing.T) {
+	// taking t's address keeps it in memory so its loads survive mem2reg
 	funcs := requireBuildSSA(t, `
 		fun f (t (int, ())) -> int {
+			let p = &t;
 			let u = t.1;
 			return t.0;
 		}

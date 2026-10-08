@@ -342,13 +342,6 @@ func (t *Type) ToDefault() *Type {
 			elems[i] = t.params[i].ToDefault()
 		}
 		return Tuple(elems)
-	default:
-		// untyped nil lands here with nothing to settle on; the analyzer rejects it rather than defaulting it
-		return t
 	}
-}
-
-func (t *Type) IsScalar() bool {
-	// every type but a tuple fits in a register right now
-	return !t.IsTuple()
+	return t
 }
