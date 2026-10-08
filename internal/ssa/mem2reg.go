@@ -39,8 +39,12 @@ func promotableSlots(f *Func) iter.Seq[*Slot] {
 			}
 		}
 
-		for slot := range pinned {
-			if !yield(slot) {
+		for _, s := range f.Slots {
+			if _, ok := pinned[s]; ok {
+				continue
+			}
+			// slot is promotable
+			if !yield(s) {
 				break
 			}
 		}
