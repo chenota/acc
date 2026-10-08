@@ -40,6 +40,8 @@ func TestProgram(t *testing.T) {
 		config := readTestConfig(t, dirPath)
 
 		t.Run(config.Name, func(t *testing.T) {
+			t.Parallel()
+
 			if userTag == "" || !userNegative == slices.Contains(config.Tags, userTag) {
 				mainFile := filepath.Join(dirPath, "main.acc")
 				require.FileExists(t, mainFile, "each source directory must contain a main file")
