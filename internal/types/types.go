@@ -3,10 +3,7 @@ package types
 import (
 	"fmt"
 	"iter"
-	"slices"
 	"strings"
-
-	"github.com/chenota/acc/internal/iterutil"
 )
 
 type Kind int
@@ -154,6 +151,11 @@ func (t *Type) IsTuple() bool {
 	}
 
 	return t.kind == KTuple
+}
+
+// IsAggregate reports whether t is an aggregate type
+func (t *Type) IsAggregate() bool {
+	return t.IsTuple() || t.IsFunction()
 }
 
 func (t *Type) IsPointer() bool {
@@ -350,7 +352,11 @@ func (t *Type) leaves(base int, yield func(int, *Type) bool) bool {
 
 // LeafCount returns the number of leaves this type has
 func (t *Type) LeafCount() int {
-	return len(slices.Collect(iterutil.Second(t.Leaves())))
+	var n int
+	for range t.Leaves() {
+		n += 1
+	}
+	return n
 }
 
 func (t *Type) ToDefault() *Type {

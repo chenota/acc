@@ -265,7 +265,7 @@ func closureEnvType(captures []*ir.Sym) *types.Type {
 	return types.Tuple(elems)
 }
 
-// genClosure builds a closure object
+// genClosure writes the (code, env) pair for code closing over captures into dest
 func (b *builder) genClosure(dest addr, expr *ir.Node, code *Func, captures []*ir.Sym) error {
 	codeRef := b.targetFunc.appendValue(OpLabelAddr, types.UnitPointer(), b.currentBlock)
 	// TODO: I hate this OpLabelAddr must be made more generic
@@ -281,8 +281,10 @@ func (b *builder) genClosure(dest addr, expr *ir.Node, code *Func, captures []*i
 	return nil
 }
 
-func (b *builder) genNilPointer() *Value {
-	v := b.targetFunc.appendValue(OpLiteral, types.UnitPointer(), b.currentBlock)
+// genZero is a zero literal of the register-sized type t
+func (b *builder) genZero(t *types.Type) *Value {
+	v := b.targetFunc.appendValue(OpLiteral, t, b.currentBlock)
+	// TODO: This needs to be an int64(0) when there's better plumbing for this sort of thing
 	v.Value = int32(0)
 	return v
 }
@@ -290,7 +292,8 @@ func (b *builder) genNilPointer() *Value {
 // genEnv generates an environment pointer for a closure
 func (b *builder) genEnv(expr *ir.Node, captures []*ir.Sym) (*Value, error) {
 	if len(captures) == 0 {
-		return b.genNilPointer(), nil
+		// nothing to close over, so the callee never reads its environment
+		return b.genZero(types.UnitPointer()), nil
 	}
 
 	// create the environment
@@ -336,10 +339,7 @@ func (b *builder) genNil(expr *ir.Node) (*Value, error) {
 		return nil, diagnostic.NewError(expr.Pos, "unknown nil type: %v", expr.Type)
 	}
 
-	v := b.targetFunc.appendValue(OpLiteral, types.Int64(), b.currentBlock)
-	// TODO: This needs to be an int64(0) when there's better plumbing for this sort of thing
-	v.Value = int32(0)
-	return v, nil
+	return b.genZero(types.Int64()), nil
 }
 
 // genPlace returns an addressable bucket for expr
@@ -394,7 +394,7 @@ func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
 			return diagnostic.NewError(expr.Pos, "reference to unknown function: %s", expr.Sym.Name)
 		}
 		return b.genClosure(dest, expr, code, nil)
-	case isPlace(expr) && expr.Type.LeafCount() > 1:
+	case isPlace(expr) && expr.Type.IsAggregate():
 		// existing places must be copied
 		src, err := b.genLValue(expr)
 		if err != nil {
@@ -625,7 +625,7 @@ func (b *builder) genStaticCall(expr *ir.Node, callee *ir.Node) (*Value, error) 
 	return v, nil
 }
 
-// genClosureCall calls through an environment
+// genClosureCall calls the code pointer a closure carries, handing it the closure's environment
 func (b *builder) genClosureCall(expr *ir.Node, callee *ir.Node) (*Value, error) {
 	// use genArg to explode the callee into (code, env)
 	closure, err := b.genArg(callee)

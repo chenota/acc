@@ -25,15 +25,15 @@ const (
 	OpDivide
 	OpNegate
 	OpCopy
-	OpStaticCall // direct call to the function in Value
-	OpSignExtend // sign-extends the accumulator into the high register (cdq/cqo)
-	OpParam      // incoming function argument - more of a placeholder for a location than an acutal value in its own right
-	OpResult     // outgoing function result - the mirror of OpParam, naming the location Args[0] is handed back in
-	OpCallResult // incoming call result
-	OpLocalAddr  // address bound to a static stack slot
-	OpFieldAddr  // address at Offset from the pointer in Args[0]
-	OpClosurePtr
-	OpClosureCall
+	OpStaticCall  // direct call to the function in Value
+	OpSignExtend  // sign-extends the accumulator into the high register (cdq/cqo)
+	OpParam       // incoming function argument - more of a placeholder for a location than an acutal value in its own right
+	OpResult      // outgoing function result - the mirror of OpParam
+	OpCallResult  // incoming call result
+	OpLocalAddr   // address bound to a static stack slot
+	OpFieldAddr   // address at Offset from the pointer in Args[0]
+	OpClosurePtr  // incoming environment pointer the caller left in the context register
+	OpClosureCall // indirect call to the code pointer in Args[0], with its environment in Args[1] and ABI arguments after
 	OpUnit
 	OpLabelAddr // address bound to a label
 )
@@ -265,9 +265,9 @@ func (f *Func) heapSeeds() []seed {
 		case OpStore:
 			seeds = append(seeds, seed{valueNode(v.Args[0]), 0})
 		case OpClosureCall:
-			// unknown calle, every value assumed to escape
+			// unknown callee, so the environment and every argument are assumed to escape
 			// TODO: turn as many closures into static calls as possible in an optimization step
-			for _, arg := range v.Args {
+			for _, arg := range v.Args[1:] {
 				seeds = append(seeds, seed{valueNode(arg), 0})
 			}
 		case OpStaticCall:
@@ -501,7 +501,7 @@ func (f *Func) maxOutgoingSize() int {
 			continue
 		}
 		nArgs := len(v.CallArgs())
-		slots := outgoingArgs.overflow(nArgs) + incomingResults(nArgs).overflow(leafCount(v.Type))
+		slots := outgoingArgs.overflow(nArgs) + incomingResults(nArgs).overflow(v.Type.LeafCount())
 		most = max(most, stackSlotSize*slots)
 	}
 	return most
@@ -514,15 +514,6 @@ func (f *Func) paramLeaves() int {
 		if v.Op == OpParam {
 			n += 1
 		}
-	}
-	return n
-}
-
-// leafCount is the number of ABI leaves t flattens into.
-func leafCount(t *types.Type) int {
-	var n int
-	for range t.Leaves() {
-		n += 1
 	}
 	return n
 }
