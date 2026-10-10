@@ -108,6 +108,10 @@ func (v *Value) NeedsRegister() bool {
 		v.Type.IsSingleton())
 }
 
+func (v *Value) Rematerializable() bool {
+	return v.Op == OpLiteral || v.Op == OpLabelAddr || v.Op == OpLocalAddr
+}
+
 // Slot is the frame slot this value reads or writes, or nil if it does not touch one.
 func (v *Value) Slot() *Slot {
 	s, _ := v.Value.(*Slot)

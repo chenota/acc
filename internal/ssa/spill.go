@@ -25,8 +25,7 @@ func spill(f *Func) {
 			m := s.scratch(p)
 			s.makeRoom(f, v, p, m)
 
-			reload := f.insertValueBefore(v, OpStaticLoad, a.Type, v.Block)
-			reload.Value = s.state(a).slot
+			reload := s.reload(f, v, a)
 			v.Args[i] = reload
 			s.take(reload, m)
 		}
@@ -52,6 +51,10 @@ func spill(f *Func) {
 		s.makeRoom(f, v, p, avail)
 		s.take(v, avail)
 	}
+
+	for _, v := range s.dropped {
+		f.removeIfDead(v)
+	}
 }
 
 type spiller struct {
@@ -59,6 +62,7 @@ type spiller struct {
 	holders  map[register.Register]*Value // the value sitting on each register of the free pool
 	used     register.Mask                // the registers holders covers
 	blockers []*regInterval
+	dropped  []*Value // rematerializable values evicted without a spill slot
 }
 
 type valueState struct {
@@ -152,7 +156,15 @@ func (s *spiller) pickVictim(p int, m register.Mask, operands []*Value) *Value {
 			return cand // never read again, so nothing is cheaper to give up
 		}
 
-		if victim == nil || d > far {
+		if victim == nil {
+			far, victim = d, cand
+			continue
+		}
+
+		// prefer rematerializable candidates
+		cheaper := cand.Rematerializable() && !victim.Rematerializable()
+		same := cand.Rematerializable() == victim.Rematerializable()
+		if cheaper || (same && d > far) {
 			far, victim = d, cand
 		}
 	}
@@ -192,11 +204,14 @@ func (s *spiller) release(v *Value) {
 	}
 }
 
-// evict stores victim to its stack slot so its register can be reused.
+// evict frees victim's register for reuse
 func (s *spiller) evict(f *Func, cur *Value, victim *Value) {
 	st := s.state(victim)
 
-	if st.slot == nil {
+	if victim.Rematerializable() {
+		// completely drop rematerializable victims
+		s.dropped = append(s.dropped, victim)
+	} else if st.slot == nil {
 		st.slot = f.newSlot(nil, victim.Type)
 		store := f.insertValueBefore(cur, OpStaticStore, victim.Type, cur.Block)
 		store.Args = []*Value{victim}
@@ -204,6 +219,21 @@ func (s *spiller) evict(f *Func, cur *Value, victim *Value) {
 	}
 
 	s.release(victim)
+}
+
+// reload brings evicted a back into a register just before v reads it.
+func (s *spiller) reload(f *Func, v *Value, a *Value) *Value {
+	if a.Rematerializable() {
+		// recomputing is cheaper than a round trip through memory
+		r := f.insertValueBefore(v, a.Op, a.Type, v.Block)
+		r.Value = a.Value
+		r.Offset = a.Offset
+		return r
+	}
+
+	r := f.insertValueBefore(v, OpStaticLoad, a.Type, v.Block)
+	r.Value = s.state(a).slot
+	return r
 }
 
 // nextUse is the next tick v is read at, and whether it is read again at all.

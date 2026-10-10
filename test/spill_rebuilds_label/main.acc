@@ -1,0 +1,15 @@
+fun one () -> int { return 1; }
+fun two () -> int { return 2; }
+fun three () -> int { return 3; }
+fun four () -> int { return 4; }
+fun five () -> int { return 5; }
+fun six () -> int { return 6; }
+fun seven () -> int { return 7; }
+fun eight () -> int { return 8; }
+
+fun main () -> int {
+    let t = (one, one, one, one, one, one, one, one);
+    let p = &t;
+    *p = (one, two, three, four, five, six, seven, eight);
+    return t.0() * 100 + t.6() * 10 + t.7();
+}

@@ -1106,3 +1106,50 @@ func TestGenSsa_DirectCall_BuildsNoEnvironment(t *testing.T) {
 	assert.Empty(t, findValues(f.Entry.Values, OpLabelAddr))
 	assert.Empty(t, f.Slots)
 }
+
+func TestSpill_EvictedLiteralIsRebuiltAtItsUse(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int {
+		let t = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+		let p = &t;
+		*p = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+		return t.0 + t.15;
+	}`)
+
+	values := requireFunc(t, funcs, "main").Entry.Values
+
+	// every field is built before the first store, so more literals are live at once than there are registers;
+	// the ones that lose theirs are rebuilt in among the stores that need them
+	firstStore := slices.IndexFunc(values, func(v *Value) bool { return v.Op == OpStore })
+	require.GreaterOrEqual(t, firstStore, 0)
+
+	lastLiteral := -1
+	for i, v := range values {
+		if v.Op == OpLiteral {
+			lastLiteral = i
+		}
+	}
+	assert.Greater(t, lastLiteral, firstStore, "an evicted literal must be rebuilt where a later store reads it")
+
+	// rather than taking a round trip through a spill slot
+	for _, v := range values {
+		if v.Op == OpStaticStore && v.Slot().Sym == nil {
+			assert.NotEqual(t, OpLiteral, v.Args[0].Op, "a literal must never be spilled")
+		}
+	}
+}
+
+func TestSpill_RebuiltLiteralLeavesNoDeadOriginal(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int {
+		let t = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+		let p = &t;
+		*p = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+		return t.0 + t.15;
+	}`)
+
+	f := requireFunc(t, funcs, "main")
+
+	// a literal rebuilt at every use leaves nothing reading its first definition, so that definition goes too
+	for _, v := range findValues(f.Entry.Values, OpLiteral) {
+		assert.True(t, f.hasUses(v), "literal %v is defined but never read", v.Value)
+	}
+}
