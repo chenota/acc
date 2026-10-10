@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -52,30 +53,6 @@ func (a *app) run(cmd *cobra.Command, args []string) error {
 	}
 	defer input.Close()
 
-	var output io.WriteCloser
-	if a.outputPath == "-" {
-		output = os.Stdout
-	} else {
-		// ensure defaults if empty
-		if a.outputPath == "" {
-			extension := "out"
-			if a.isAssembly {
-				extension = "s"
-			}
-			a.outputPath = fmt.Sprintf("%s.%s", strings.TrimSuffix(inputPath, filepath.Ext(inputPath)), extension)
-		}
-		perm := os.FileMode(0777)
-		if a.isAssembly {
-			perm = 0666
-		}
-		f, err := os.OpenFile(a.outputPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
-		if err != nil {
-			return err
-		}
-		output = f
-	}
-	defer output.Close()
-
 	var opts []compiler.Option
 
 	if a.isAssembly {
@@ -87,7 +64,31 @@ func (a *app) run(cmd *cobra.Command, args []string) error {
 		inputName = "stdin"
 	}
 
-	return compiler.Compile(compiler.FileDetail{Reader: input, Name: inputName}, output, opts...)
+	// compile into memory
+	var compiled bytes.Buffer
+	if err := compiler.Compile(compiler.FileDetail{Reader: input, Name: inputName}, &compiled, opts...); err != nil {
+		return err
+	}
+
+	if a.outputPath == "-" {
+		_, err := compiled.WriteTo(os.Stdout)
+		return err
+	}
+
+	// ensure defaults if empty
+	if a.outputPath == "" {
+		extension := "out"
+		if a.isAssembly {
+			extension = "s"
+		}
+		a.outputPath = fmt.Sprintf("%s.%s", strings.TrimSuffix(inputPath, filepath.Ext(inputPath)), extension)
+	}
+	perm := os.FileMode(0777)
+	if a.isAssembly {
+		perm = 0666
+	}
+
+	return os.WriteFile(a.outputPath, compiled.Bytes(), perm)
 }
 
 func validatePositionalArgs(cmd *cobra.Command, args []string) error {

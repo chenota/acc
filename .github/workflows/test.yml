@@ -25,7 +25,7 @@ jobs:
           cache: true
 
       - name: Run unit tests
-        run: go test -count=1 ./internal/...
+        run: go test -count=1 ./internal/... ./cmd/...
 
   program-tests:
     name: Program Tests (${{ matrix.os }})
