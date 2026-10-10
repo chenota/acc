@@ -59,7 +59,7 @@ func (b *builder) bindCaptures(n *ir.Node) {
 
 	for i, sym := range captures {
 		// grab box pointer from environment
-		box := b.genLoadFrom(addr{Ptr: env}.OffsetBy(envType.Offset(1+i)), types.Pointer(sym.Type))
+		box := b.genLoadFrom(addr{Ptr: env}.OffsetBy(envType.Offset(i)), types.Pointer(sym.Type))
 		// create a slot for the captured variable and move
 		slot := b.targetFunc.newSlot(sym, types.Pointer(sym.Type))
 		b.genStoreTo(addr{Slot: slot}, box)
@@ -249,8 +249,6 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 		return b.genLoadFrom(place, expr.Type), nil
 	case ir.OpNil:
 		return b.genNil(expr)
-	case ir.OpFunction:
-		return b.genFunc(expr)
 	default:
 		return nil, diagnostic.NewError(expr.Pos, "unknown expression operation: %d", expr.Op)
 	}
@@ -258,59 +256,61 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 
 // closureEnvType is the layout of an environment closing over captures.
 func closureEnvType(captures []*ir.Sym) *types.Type {
-	elems := []*types.Type{types.Int64()}
+	elems := make([]*types.Type, 0, len(captures))
 	for _, sym := range captures {
 		// captures are held by reference so make it a pointer
+		// TODO: Non-mutated singleton/atomic captures should be by value
 		elems = append(elems, types.Pointer(sym.Type))
 	}
 	return types.Tuple(elems)
 }
 
-// genFunc builds a lambda's environment and returns the address to that environment
-func (b *builder) genFunc(expr *ir.Node) (*Value, error) {
-	code := b.module.lookup(expr.Signature.Label)
-	if code == nil {
-		return nil, diagnostic.NewError(expr.Pos, "reference to unknown function: %s", expr.Signature.Label)
+// genClosure builds a closure object
+func (b *builder) genClosure(dest addr, expr *ir.Node, code *Func, captures []*ir.Sym) error {
+	codeRef := b.targetFunc.appendValue(OpLabelAddr, types.UnitPointer(), b.currentBlock)
+	// TODO: I hate this OpLabelAddr must be made more generic
+	codeRef.Value = code
+
+	envRef, err := b.genEnv(expr, captures)
+	if err != nil {
+		return err
 	}
 
-	return b.genEnv(expr, code, expr.Captures())
+	b.implode(dest, expr.Type, []*Value{codeRef, envRef})
+
+	return nil
 }
 
-// genGlobal makes a closure value out of a global.
-// TODO: This should be pulled from .data rather than constructed on demand eventually
-func (b *builder) genGlobal(expr *ir.Node) (*Value, error) {
-	code := b.module.lookup(expr.Sym.Name)
-	if code == nil {
-		return nil, diagnostic.NewError(expr.Pos, "reference to unknown function: %s", expr.Sym.Name)
+func (b *builder) genNilPointer() *Value {
+	v := b.targetFunc.appendValue(OpLiteral, types.UnitPointer(), b.currentBlock)
+	v.Value = int32(0)
+	return v
+}
+
+// genEnv generates an environment pointer for a closure
+func (b *builder) genEnv(expr *ir.Node, captures []*ir.Sym) (*Value, error) {
+	if len(captures) == 0 {
+		return b.genNilPointer(), nil
 	}
 
-	return b.genEnv(expr, code, nil)
-}
-
-// genEnv builds a closure environment
-func (b *builder) genEnv(expr *ir.Node, code *Func, captures []*ir.Sym) (*Value, error) {
+	// create the environment
 	envType := closureEnvType(captures)
 	env := addr{Slot: b.targetFunc.newSlot(nil, envType)}
 
-	// code pointer goes in first field
-	labelVal := b.targetFunc.appendValue(OpLabelAddr, types.Int64(), b.currentBlock)
-	labelVal.Value = code
-	b.genStoreTo(env.OffsetBy(envType.Offset(0)), labelVal)
-
-	// every capture goes after
+	// write pointers to captured values to the environment
 	for i, sym := range captures {
 		box, err := b.genBoxAddr(expr, sym)
 		if err != nil {
 			return nil, err
 		}
-		b.genStoreTo(env.OffsetBy(envType.Offset(1+i)), box)
+		b.genStoreTo(env.OffsetBy(envType.Offset(i)), box)
 	}
 
-	// the closure value is the environment's address
-	v := b.targetFunc.appendValue(OpLocalAddr, expr.Type, b.currentBlock)
-	v.Value = env.Slot
+	// address the environment
+	envRef := b.targetFunc.appendValue(OpLocalAddr, types.UnitPointer(), b.currentBlock)
+	envRef.Value = env.Slot
 
-	return v, nil
+	return envRef, nil
 }
 
 // genBoxAddr is the address of sym's storage
@@ -361,8 +361,8 @@ func (b *builder) genPlace(expr *ir.Node) (addr, error) {
 
 // genExprInto generates an expression value into an area of memory
 func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
-	switch expr.Op {
-	case ir.OpTuple:
+	switch {
+	case expr.Op == ir.OpTuple:
 		params := expr.Type.Params()
 
 		if len(expr.List) != len(params) {
@@ -375,23 +375,34 @@ func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
 				return err
 			}
 		}
-	case ir.OpCall:
+	case expr.Op == ir.OpCall:
 		vals, err := b.genCallResults(expr)
 		if err != nil {
 			return err
 		}
 		b.implode(dest, expr.Type, vals)
-	default:
-		// existing tuples must be copied
-		if expr.Type.IsTuple() && isPlace(expr) {
-			src, err := b.genLValue(expr)
-			if err != nil {
-				return err
-			}
-			b.genCopyFields(dest, src, expr.Type)
-			return nil
+	case expr.Op == ir.OpFunction:
+		code := b.module.lookup(expr.Signature.Label)
+		if code == nil {
+			return diagnostic.NewError(expr.Pos, "reference to unknown function: %s", expr.Signature.Label)
 		}
-
+		return b.genClosure(dest, expr, code, expr.Captures())
+	case expr.Op == ir.OpIdent && expr.Sym.Kind == ir.SymFunc:
+		// global functions are closures that don't capture anything
+		code := b.module.lookup(expr.Sym.Name)
+		if code == nil {
+			return diagnostic.NewError(expr.Pos, "reference to unknown function: %s", expr.Sym.Name)
+		}
+		return b.genClosure(dest, expr, code, nil)
+	case isPlace(expr) && expr.Type.LeafCount() > 1:
+		// existing places must be copied
+		src, err := b.genLValue(expr)
+		if err != nil {
+			return err
+		}
+		b.genCopyFields(dest, src, expr.Type)
+		return nil
+	default:
 		v, err := b.genExpr(expr)
 		if err != nil {
 			return err
@@ -616,8 +627,8 @@ func (b *builder) genStaticCall(expr *ir.Node, callee *ir.Node) (*Value, error) 
 
 // genClosureCall calls through an environment
 func (b *builder) genClosureCall(expr *ir.Node, callee *ir.Node) (*Value, error) {
-	// the callee is evaluated before its arguments
-	env, err := b.genExpr(callee)
+	// use genArg to explode the callee into (code, env)
+	closure, err := b.genArg(callee)
 	if err != nil {
 		return nil, err
 	}
@@ -628,9 +639,10 @@ func (b *builder) genClosureCall(expr *ir.Node, callee *ir.Node) (*Value, error)
 	}
 
 	v := b.targetFunc.appendValue(OpClosureCall, expr.Type, b.currentBlock)
-	v.Args = make([]*Value, 1+len(argVals))
-	v.Args[0] = env           // environment (first arg code pointer, remaining captured variables)
-	copy(v.Args[1:], argVals) // ordinary call args
+	v.Args = make([]*Value, 2+len(argVals))
+	v.Args[0] = closure[0]    // code pointer
+	v.Args[1] = closure[1]    // environment pointer
+	copy(v.Args[2:], argVals) // ordinary call args
 
 	return v, nil
 }
@@ -704,8 +716,6 @@ func (b *builder) genNegate(expr *ir.Node) (*Value, error) {
 
 func (b *builder) genIdent(expr *ir.Node) (*Value, error) {
 	switch expr.Sym.Kind {
-	case ir.SymFunc:
-		return b.genGlobal(expr)
 	case ir.SymParam, ir.SymLocal:
 		place, err := b.genLValue(expr)
 		if err != nil {

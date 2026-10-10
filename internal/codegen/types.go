@@ -18,7 +18,7 @@ const (
 	KMemory
 	KText
 	KRipRelative // a label addressed relative to the instruction pointer
-	KIndirect    // a jump or call target read from memory, as a byte offset from a register
+	KIndirect    // a jump or call target held in a register
 )
 
 type Arg struct {

@@ -3,7 +3,10 @@ package types
 import (
 	"fmt"
 	"iter"
+	"slices"
 	"strings"
+
+	"github.com/chenota/acc/internal/iterutil"
 )
 
 type Kind int
@@ -19,6 +22,9 @@ const (
 	KUntypedNil
 	KInt64
 )
+
+// code pointer, environment pointer
+var funcLayout = Tuple([]*Type{UnitPointer(), UnitPointer()})
 
 type Type struct {
 	kind Kind // making this private so outside callers are forced to use Equal.
@@ -256,6 +262,10 @@ func Pointer(sub *Type) *Type {
 	}
 }
 
+func UnitPointer() *Type {
+	return Pointer(Unit())
+}
+
 // Size returns the type's size in bytes
 func (t *Type) Size() int {
 	switch t.kind {
@@ -271,6 +281,8 @@ func (t *Type) Size() int {
 			size = roundUp(size, elem.Align()) + elem.Size()
 		}
 		return roundUp(size, t.Align())
+	case KFunction:
+		return funcLayout.Size()
 	default:
 		return 8
 	}
@@ -291,6 +303,8 @@ func (t *Type) Align() int {
 			align = max(align, elem.Align())
 		}
 		return align
+	case KFunction:
+		return funcLayout.Align()
 	default:
 		return 8
 	}
@@ -326,10 +340,17 @@ func (t *Type) leaves(base int, yield func(int, *Type) bool) bool {
 			}
 		}
 		return true
+	case KFunction:
+		return funcLayout.leaves(base, yield)
 	default:
 		// everything else already fits in a register
 		return yield(base, t)
 	}
+}
+
+// LeafCount returns the number of leaves this type has
+func (t *Type) LeafCount() int {
+	return len(slices.Collect(iterutil.Second(t.Leaves())))
 }
 
 func (t *Type) ToDefault() *Type {

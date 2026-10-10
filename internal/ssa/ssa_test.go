@@ -555,7 +555,8 @@ func TestHeapify_AddressCycle(t *testing.T) {
 	f := requireFunc(t, funcs, "mk")
 
 	// f holds a closure that captures r, which points back at f; every slot on that loop outlives the frame
-	assert.Len(t, findAllocations(f), 4)
+	// the first lambda captures nothing, so it has no environment to allocate
+	assert.Len(t, findAllocations(f), 3)
 	assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
 }
 
@@ -879,17 +880,12 @@ func TestGenSsa_Closure_EnvironmentLayout(t *testing.T) {
 	f := requireFunc(t, funcs, "main")
 	env := requireEnvSlot(t, f)
 
-	// the environment is a code pointer followed by one pointer per captured variable
-	assert.True(t, types.Equal(types.Tuple([]*types.Type{types.Int64(), types.Pointer(types.Int())}), env.Type),
-		"expected (int64, *int), got %v", env.Type)
+	// the code pointer travels in the closure itself, so the environment is just one pointer per captured variable
+	assert.True(t, types.Equal(types.Tuple([]*types.Type{types.Pointer(types.Int())}), env.Type),
+		"expected (*int,), got %v", env.Type)
 
-	// the first field names the lifted lambda
-	code := requireStoredAt(t, f, env, 0)
-	require.Equal(t, OpLabelAddr, code.Op)
-	assert.Equal(t, "main.func0", code.Callee().Name())
-
-	// the second holds x's address rather than its value, so both sides see the same storage
-	capture := requireStoredAt(t, f, env, 8)
+	// the only field holds x's address rather than its value, so both sides see the same storage
+	capture := requireStoredAt(t, f, env, 0)
 	require.Equal(t, OpLocalAddr, capture.Op)
 	assert.Same(t, slotNamed(f, "x"), capture.Slot())
 	assert.True(t, types.Equal(types.Pointer(types.Int()), capture.Type))
@@ -914,9 +910,9 @@ func TestGenSsa_Closure_ReadsCaptureThroughItsBox(t *testing.T) {
 	lambda := requireFunc(t, funcs, "main.func0")
 	env := requireClosurePtr(t, lambda)
 
-	// one hop to the box pointer sitting in the environment
+	// one hop to the box pointer sitting at the front of the environment
 	box := requireLoadFrom(t, lambda, env)
-	assert.Equal(t, 8, box.Offset)
+	assert.Zero(t, box.Offset)
 	assert.True(t, types.Equal(types.Pointer(types.Int()), box.Type))
 
 	// and a second to x itself, which is what keeps a write on either side visible to both
@@ -956,7 +952,7 @@ func TestGenSsa_Closure_NestedCaptureForwardsTheSamePointer(t *testing.T) {
 	middle := requireFunc(t, funcs, "main.func0")
 	box := requireLoadFrom(t, middle, requireClosurePtr(t, middle))
 
-	inner := requireStoredAt(t, middle, requireEnvSlot(t, middle), 8)
+	inner := requireStoredAt(t, middle, requireEnvSlot(t, middle), 0)
 	assert.Same(t, box, inner, "both environments must name the one box")
 }
 
@@ -1000,6 +996,14 @@ func requireStoredAt(t *testing.T, f *Func, slot *Slot, offset int) *Value {
 	return found[0].Args[0]
 }
 
+// throughCopies follows v back past any copies to the value that produced it.
+func throughCopies(v *Value) *Value {
+	for v.Op == OpCopy {
+		v = v.Args[0]
+	}
+	return v
+}
+
 // requireLoadFrom returns the single value read through ptr.
 func requireLoadFrom(t *testing.T, f *Func, ptr *Value) *Value {
 	t.Helper()
@@ -1025,16 +1029,26 @@ func TestGenSsa_ClosureCall_OperandOrder(t *testing.T) {
 	f := requireFunc(t, funcs, "main")
 	call := requireClosureCall(t, funcs, "main")
 
-	// the environment is the only operand ahead of the two ABI arguments
-	require.Len(t, call.Args, 3)
-	assert.Len(t, call.CallArgs(), 2, "the leading operand is not an argument")
+	// the code pointer and the environment are the only operands ahead of the two ABI arguments
+	require.Len(t, call.Args, 4)
+	assert.Len(t, call.CallArgs(), 2, "the leading operands are not arguments")
 
-	// the call reads its own target out of the environment, so nothing loads it beforehand
+	// the first operand names the lifted lambda directly
+	code := throughCopies(call.Args[0])
+	require.Equal(t, OpLabelAddr, code.Op)
+	assert.Equal(t, "main.func0", code.Callee().Name())
+
+	// the second is the environment, which leaks to the unknown target and so lives wherever the allocator put it
+	env := throughCopies(call.Args[1])
+	require.Equal(t, OpCallResult, env.Op)
+	assert.Same(t, Alloc, env.Args[0].Callee())
+
+	// the code pointer travels in the closure itself, so nothing loads it out of the environment
 	assert.Empty(t, findValues(f.Entry.Values, OpLoad),
-		"the code pointer must be read by the call itself")
+		"the code pointer must not be read through memory")
 }
 
-func TestLowerCalls_ClosureObjectPinnedToContextRegister(t *testing.T) {
+func TestLowerCalls_EnvironmentPinnedToContextRegister(t *testing.T) {
 	funcs := requireBuildSSA(t, `fun main () -> int {
 		let x = 10;
 		let f = fun (y int, z int) -> int { return x + y + z; };
@@ -1043,12 +1057,11 @@ func TestLowerCalls_ClosureObjectPinnedToContextRegister(t *testing.T) {
 
 	call := requireClosureCall(t, funcs, "main")
 
-	// the callee reads its captures out of the context register, and the call reads the
-	// address it jumps to from the same place, so the environment has to land there
-	object := call.Args[0]
-	assert.Equal(t, OpCopy, object.Op, "the environment must be placed by a copy into its register")
-	assert.Equal(t, LocRegister, object.Loc.Kind)
-	assert.Equal(t, register.ClosureContext, object.Loc.Reg)
+	// the callee reads its captures out of the context register, so the environment has to land there
+	env := call.Args[1]
+	assert.Equal(t, OpCopy, env.Op, "the environment must be placed by a copy into its register")
+	assert.Equal(t, LocRegister, env.Loc.Kind)
+	assert.Equal(t, register.ClosureContext, env.Loc.Reg)
 }
 
 func TestLowerCalls_ClosureArgRegisters(t *testing.T) {
