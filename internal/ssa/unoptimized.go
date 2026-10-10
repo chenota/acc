@@ -291,9 +291,17 @@ func closureEnvType(lambda *ir.Node) *types.Type {
 	return types.Tuple(elems)
 }
 
+// TODO: raise this once captures are unpacked lazily and the per-call copy goes away
+const maxByValueLeaves = 4
+
 // capturedByValue reports whether lambda captured sym by value
 func capturedByValue(lambda *ir.Node, sym *ir.Sym) bool {
-	return !sym.Observed(ir.SOMutated) && sym != lambda.RecSym()
+	if sym.Observed(ir.SOMutated) || sym == lambda.RecSym() {
+		return false
+	}
+
+	// large aggregates are cheaper to share than to copy
+	return sym.Type.LeafCount() <= maxByValueLeaves
 }
 
 // genClosure writes the (code, env) pair for code closing over lambda's captures into dest

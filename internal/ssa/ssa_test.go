@@ -1056,6 +1056,46 @@ func TestGenSsa_Closure_NestedCaptureForwardsTheSamePointer(t *testing.T) {
 	assert.Same(t, box, inner, "both environments must name the one box")
 }
 
+func TestGenSsa_Closure_CaptureAtLeafCapIsCopied(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int {
+		let x = (1, 2, 3, 4);
+		let f = fun () -> int { return x.0; };
+		return 0;
+	}`)
+
+	f := requireFunc(t, funcs, "main")
+	env := requireEnvSlot(t, f)
+
+	// four leaves is still cheap enough to copy, so the environment holds x itself
+	xType := types.Tuple([]*types.Type{types.Int(), types.Int(), types.Int(), types.Int()})
+	assert.True(t, types.Equal(types.Tuple([]*types.Type{xType}), env.Type),
+		"expected ((int, int, int, int),), got %v", env.Type)
+
+	// and x needs no storage of its own
+	assert.Nil(t, slotNamed(f, "x"))
+}
+
+func TestGenSsa_Closure_CaptureOverLeafCapIsBoxed(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int {
+		let x = (1, 2, 3, 4, 5);
+		let f = fun () -> int { return x.0; };
+		return 0;
+	}`)
+
+	f := requireFunc(t, funcs, "main")
+	env := requireEnvSlot(t, f)
+
+	// x is never written, but five leaves is too many to copy on every call, so the environment points at it
+	xType := types.Tuple([]*types.Type{types.Int(), types.Int(), types.Int(), types.Int(), types.Int()})
+	assert.True(t, types.Equal(types.Tuple([]*types.Type{types.Pointer(xType)}), env.Type),
+		"expected (*(int, int, int, int, int),), got %v", env.Type)
+
+	// that pointer is x's address, so x keeps its storage
+	capture := requireStoredAt(t, f, env, 0)
+	require.Equal(t, OpLocalAddr, capture.Op)
+	assert.Same(t, slotNamed(f, "x"), capture.Slot())
+}
+
 // requireEnvSlot returns the single closure environment f builds.
 func requireEnvSlot(t *testing.T, f *Func) *Slot {
 	t.Helper()
