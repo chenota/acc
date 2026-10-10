@@ -1,0 +1,6 @@
+fun main () -> int {
+    let t = (1, 2);
+    let p = &t;
+    t = ((*p).1, (*p).0);
+    return t.0 * 10 + t.1;
+}

@@ -219,8 +219,19 @@ func (b *builder) genAssign(n *ir.Node) error {
 		return err
 	}
 
+	// build-tnen-copy tuples to get around self-assign issues
+	rhs := n.List[1]
+	if rhs.Op == ir.OpTuple {
+		tmp := addr{Slot: b.targetFunc.newSlot(nil, rhs.Type)}
+		if err := b.genExprInto(tmp, rhs); err != nil {
+			return err
+		}
+		b.genCopyFields(dest, tmp, rhs.Type)
+		return nil
+	}
+
 	// generate new value into destination
-	return b.genExprInto(dest, n.List[1])
+	return b.genExprInto(dest, rhs)
 }
 
 func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
