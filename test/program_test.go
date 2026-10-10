@@ -56,8 +56,6 @@ func TestProgram(t *testing.T) {
 				}()
 
 				binaryPath := compileProgram(t, accPath, mainFile)
-				defer os.Remove(binaryPath)
-
 				actualStatus := runProgram(t, binaryPath)
 				verifyStatus(t, config, actualStatus)
 			}
@@ -86,21 +84,15 @@ func readTestConfig(t *testing.T, dirPath string) testConfig {
 func compileProgram(t *testing.T, accPath, mainFile string) string {
 	t.Helper()
 
-	tmpBinary, err := os.CreateTemp("", "acc_*")
-	require.NoError(t, err)
-
-	// immediately close our temporary file to avoid conflicts
-	require.NoError(t, tmpBinary.Close())
-
-	require.NoError(t, os.Chmod(tmpBinary.Name(), 0755))
+	binaryPath := filepath.Join(t.TempDir(), "main.out")
 
 	ctx, cancel := context.WithTimeout(t.Context(), compileTimeout)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, accPath, "-o", tmpBinary.Name(), mainFile).CombinedOutput()
+	out, err := exec.CommandContext(ctx, accPath, "-o", binaryPath, mainFile).CombinedOutput()
 	require.NoError(t, err, "failed to compile program:\n%s", out)
 
-	return tmpBinary.Name()
+	return binaryPath
 }
 
 const (

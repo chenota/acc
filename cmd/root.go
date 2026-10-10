@@ -64,7 +64,11 @@ func (a *app) run(cmd *cobra.Command, args []string) error {
 			}
 			a.outputPath = fmt.Sprintf("%s.%s", strings.TrimSuffix(inputPath, filepath.Ext(inputPath)), extension)
 		}
-		f, err := os.Create(a.outputPath)
+		perm := os.FileMode(0777)
+		if a.isAssembly {
+			perm = 0666
+		}
+		f, err := os.OpenFile(a.outputPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
 		if err != nil {
 			return err
 		}
