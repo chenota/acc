@@ -3,17 +3,14 @@ package test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime/debug"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/chenota/acc/cmd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,6 +23,11 @@ type testConfig struct {
 }
 
 func TestProgram(t *testing.T) {
+	// compile the acc executable with go.
+	accPath := filepath.Join(t.TempDir(), "acc")
+	out, err := exec.CommandContext(t.Context(), "go", "build", "-o", accPath, "github.com/chenota/acc").CombinedOutput()
+	require.NoError(t, err, "failed to build acc:\n%s", out)
+
 	entries, err := os.ReadDir(".")
 	require.NoError(t, err)
 
@@ -40,6 +42,8 @@ func TestProgram(t *testing.T) {
 		config := readTestConfig(t, dirPath)
 
 		t.Run(config.Name, func(t *testing.T) {
+			t.Parallel()
+
 			if userTag == "" || !userNegative == slices.Contains(config.Tags, userTag) {
 				mainFile := filepath.Join(dirPath, "main.acc")
 				require.FileExists(t, mainFile, "each source directory must contain a main file")
@@ -47,11 +51,11 @@ func TestProgram(t *testing.T) {
 				// on failure dump the assembly acc generated so it's debuggable
 				defer func() {
 					if t.Failed() && verboseFail {
-						dumpAssembly(t, mainFile)
+						dumpAssembly(t, accPath, mainFile)
 					}
 				}()
 
-				binaryPath := compileProgram(t, mainFile)
+				binaryPath := compileProgram(t, accPath, mainFile)
 				defer os.Remove(binaryPath)
 
 				actualStatus := runProgram(t, binaryPath)
@@ -79,32 +83,30 @@ func readTestConfig(t *testing.T, dirPath string) testConfig {
 	return config
 }
 
-func compileProgram(t *testing.T, mainFile string) string {
+func compileProgram(t *testing.T, accPath, mainFile string) string {
 	t.Helper()
 
 	tmpBinary, err := os.CreateTemp("", "acc_*")
 	require.NoError(t, err)
 
 	// immediately close our temporary file to avoid conflicts
-	tmpBinary.Close()
+	require.NoError(t, tmpBinary.Close())
 
-	err = os.Chmod(tmpBinary.Name(), 0755)
-	require.NoError(t, err)
+	require.NoError(t, os.Chmod(tmpBinary.Name(), 0755))
 
-	root := cmd.NewRootCommand()
-	root.SetArgs([]string{
-		mainFile,
-		"-o", tmpBinary.Name(),
-	})
+	ctx, cancel := context.WithTimeout(t.Context(), compileTimeout)
+	defer cancel()
 
-	require.NoError(t, safeExecute(root.Execute), "failed to compile program")
+	out, err := exec.CommandContext(ctx, accPath, "-o", tmpBinary.Name(), mainFile).CombinedOutput()
+	require.NoError(t, err, "failed to compile program:\n%s", out)
 
 	return tmpBinary.Name()
 }
 
 const (
-	runTimeout = 3 * time.Second
-	reapGrace  = 1 * time.Second
+	compileTimeout = 10 * time.Second
+	runTimeout     = 3 * time.Second
+	reapGrace      = 1 * time.Second
 )
 
 // runProgram runs the binary at binaryPath and returns its exit status.
@@ -141,16 +143,6 @@ func runProgram(t *testing.T, binaryPath string) int {
 	return cmd.ProcessState.ExitCode()
 }
 
-func safeExecute(run func() error) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("compiler panicked: %v\n%s", r, debug.Stack())
-		}
-	}()
-
-	return run()
-}
-
 func verifyStatus(t *testing.T, config testConfig, actualStatus int) {
 	t.Helper()
 
@@ -182,9 +174,8 @@ func tag(t *testing.T) (value string, isNegative bool) {
 	return
 }
 
-// dumpAssembly makes a best-effort attempt to log the assembly acc generates for mainFile with the -S flag.
-// if it can't just print out the error preventing assembly generation.
-func dumpAssembly(t *testing.T, mainFile string) {
+// dumpAssembly makes a best-effort attempt to log the assembly acc generates for mainFile
+func dumpAssembly(t *testing.T, accPath, mainFile string) {
 	t.Helper()
 
 	tmpAsm, err := os.CreateTemp("", "acc_*.s")
@@ -195,14 +186,11 @@ func dumpAssembly(t *testing.T, mainFile string) {
 	tmpAsm.Close()
 	defer os.Remove(tmpAsm.Name())
 
-	root := cmd.NewRootCommand()
-	root.SetArgs([]string{
-		mainFile,
-		"-S",
-		"-o", tmpAsm.Name(),
-	})
-	if err := safeExecute(root.Execute); err != nil {
-		t.Logf("could not generate assembly for %s: %v", mainFile, err)
+	ctx, cancel := context.WithTimeout(t.Context(), compileTimeout)
+	defer cancel()
+
+	if out, err := exec.CommandContext(ctx, accPath, "-S", "-o", tmpAsm.Name(), mainFile).CombinedOutput(); err != nil {
+		t.Logf("could not generate assembly for %s: %v\n%s", mainFile, err, out)
 		return
 	}
 
