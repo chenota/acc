@@ -264,7 +264,7 @@ Atom       = Integer
            | "(" [ Exprlist ] ")" ;
 ```
 
-### Vertical Slice 10: Closures [Work in Progress]
+### Vertical Slice 10: Closures [Complete]
 
 Closures let `acc` use functions as values.
 
@@ -316,6 +316,69 @@ Type     = "fun" "(" [ Typelist ] ")" [ "->" Type ]
 Typelist = Type { "," Type } [ "," ] ;
 ```
 
-### Vertical Slice 11: String Literals and File Output [Not Started]
+### Vertical Slice 11: Control Flow [Work in Progress]
 
-With functions and variables out of the way, we can finally add a format print which greatly expands the usefulness of the `acc` language.
+I'd like to get into file I/O, but it's not reasonable to do so until we have control flow, so that's what I'm doing. Also this is going to be a HUGE shake up of the compiler's structure so it'll be good to get this out of the way early.
+
+#### Program Grammar (PEG)
+
+```
+Program       <- Function+
+Function      <- "fun" Ident "(" Paramlist ")" ( "->" Type )? Block
+Paramlist     <- ( Param ( "," Param )* )?
+Param         <- Ident Type
+Block         <- "{" Statement* "}"
+Statement     <- Declaration / Assignment / AssignmentOp / Return / CallStatement / Conditional / Loop / "break" / "continue"
+Declaration   <- "let" "rec"? Ident Type? "=" Expression ";"
+Assignment    <- Expression "=" Expression ";"
+AssignmentOp  <- Expression ( "+=" / "-=" / "*=" / "/=" ) Expression ";"
+Return        <- "return" Expression? ";"
+CallStatement <- Expression ";"
+Conditional   <- "if" Expression Block ( "elif" Expression Block )* { "else" Block }
+Loop          <- "loop" Block
+```
+
+#### Expression Grammar (EBNF)
+
+```
+Expression = Or ;
+Or         = And { "||" And } ;
+And        = Cmp { "&&" Cmp } ;
+Cmp        = Add [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) Add ] ;
+Add        = Mul { ( "+" | "-" ) Mul } ;
+Mul        = Comp { ( "*" | "/" ) Unary } ;
+Unary      = ( "-" | "&" | "*" | "!" ) Unary
+           | Postfix ;
+Postfix    = Atom { Call | Field } ;
+Call       = "(" [ Exprlist ] ")" ;
+Field      = "." Integer ;
+Exprlist   = Expression { "," Expression } [ "," ] ;
+Atom       = Integer
+           | Ident
+           | "true" | "false"
+           | "nil"
+           | Lambda
+           | "(" [ Exprlist ] ")" ;
+Lambda     = "fun" "(" Paramlist ")" [ "->" Type ] Block ;
+```
+
+`Paramlist` and `Block` are the same rules as in the program grammar.
+
+#### Type Grammar (EBNF)
+
+```
+Type     = "fun" "(" [ Typelist ] ")" [ "->" Type ]
+         | "*" Type
+         | "(" [ Typelist ] ")"
+         | "int"
+         | "bool" ;
+Typelist = Type { "," Type } [ "," ] ;
+```
+
+### Vertical Slice 12: Strings and File Output [Not Started]
+
+First real step towards file I/O is going to be writing to files in a super primitive way.
+
+### Vertical Slice 13: File API and File Input [Not Started]
+
+With a string base for working with files we can implement a useful file API.
