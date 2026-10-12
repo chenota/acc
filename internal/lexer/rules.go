@@ -31,6 +31,24 @@ const (
 	KDot
 	KNilKw
 	KRecKw
+	KIfKw
+	KElifKw
+	KElseKw
+	KLoopKw
+	KBreakKw
+	KContinueKw
+	KTrueKw
+	KFalseKw
+	KBoolKw
+	KOr
+	KAnd
+	KEqEq
+	KNotEq
+	KLess
+	KLessEq
+	KGreater
+	KGreaterEq
+	KNot
 )
 
 type tokenRule struct {
@@ -45,11 +63,29 @@ var rules = []tokenRule{
 	{KLetKw, mustAnchor(`let`)},
 	{KNilKw, mustAnchor(`nil`)},
 	{KRecKw, mustAnchor(`rec`)},
+	{KIfKw, mustAnchor(`if`)},
+	{KElifKw, mustAnchor(`elif`)},
+	{KElseKw, mustAnchor(`else`)},
+	{KLoopKw, mustAnchor(`loop`)},
+	{KBreakKw, mustAnchor(`break`)},
+	{KContinueKw, mustAnchor(`continue`)},
+	{KTrueKw, mustAnchor(`true`)},
+	{KFalseKw, mustAnchor(`false`)},
+	{KBoolKw, mustAnchor(`bool`)},
 	{KArrow, mustAnchor(`->`)},
 	{KPlusEq, mustAnchor(`\+=`)},
 	{KMinusEq, mustAnchor(`-=`)},
 	{KMulEq, mustAnchor(`\*=`)},
 	{KDivEq, mustAnchor(`/=`)},
+	{KOr, mustAnchor(`\|\|`)},
+	{KAnd, mustAnchor(`&&`)},
+	{KEqEq, mustAnchor(`==`)},
+	{KNotEq, mustAnchor(`!=`)},
+	{KLessEq, mustAnchor(`<=`)},
+	{KGreaterEq, mustAnchor(`>=`)},
+	{KLess, mustAnchor(`<`)},
+	{KGreater, mustAnchor(`>`)},
+	{KNot, mustAnchor(`!`)},
 	{KLBracket, mustAnchor(`{`)},
 	{KRBracket, mustAnchor(`}`)},
 	{KLParen, mustAnchor(`\(`)},

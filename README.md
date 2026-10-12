@@ -328,14 +328,16 @@ Function      <- "fun" Ident "(" Paramlist ")" ( "->" Type )? Block
 Paramlist     <- ( Param ( "," Param )* )?
 Param         <- Ident Type
 Block         <- "{" Statement* "}"
-Statement     <- Declaration / Assignment / AssignmentOp / Return / CallStatement / Conditional / Loop / "break" / "continue"
+Statement     <- Declaration / Assignment / AssignmentOp / Return / CallStatement / Conditional / Loop / Break / Continue
 Declaration   <- "let" "rec"? Ident Type? "=" Expression ";"
 Assignment    <- Expression "=" Expression ";"
 AssignmentOp  <- Expression ( "+=" / "-=" / "*=" / "/=" ) Expression ";"
 Return        <- "return" Expression? ";"
 CallStatement <- Expression ";"
-Conditional   <- "if" Expression Block ( "elif" Expression Block )* { "else" Block }
+Conditional   <- "if" Expression Block ( "elif" Expression Block )* ( "else" Block )?
 Loop          <- "loop" Block
+Break         <- "break" ";"
+Continue      <- "continue" ";"
 ```
 
 #### Expression Grammar (EBNF)
@@ -344,9 +346,9 @@ Loop          <- "loop" Block
 Expression = Or ;
 Or         = And { "||" And } ;
 And        = Cmp { "&&" Cmp } ;
-Cmp        = Add [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) Add ] ;
+Cmp        = Add { ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) Add } ;
 Add        = Mul { ( "+" | "-" ) Mul } ;
-Mul        = Comp { ( "*" | "/" ) Unary } ;
+Mul        = Unary { ( "*" | "/" ) Unary } ;
 Unary      = ( "-" | "&" | "*" | "!" ) Unary
            | Postfix ;
 Postfix    = Atom { Call | Field } ;
