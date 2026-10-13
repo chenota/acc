@@ -51,6 +51,10 @@ func (p *parser) typ() (*types.Type, error) {
 		p.t.Advance()
 
 		return types.Int(), nil
+	case lexer.KBoolKw:
+		p.t.Advance()
+
+		return types.Bool(), nil
 	default:
 		return nil, diagnostic.NewError(tok.Pos, "expected type")
 	}

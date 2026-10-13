@@ -130,8 +130,140 @@ func (p *parser) parseStmt() (*ir.Node, bool) {
 		return n, true
 	}
 
+	if n, ok := p.parseLoop(); ok {
+		return n, true
+	}
+
+	if n, ok := p.parseBreak(); ok {
+		return n, true
+	}
+
+	if n, ok := p.parseContinue(); ok {
+		return n, true
+	}
+
+	if n, ok := p.parseConditional(lexer.KIfKw); ok {
+		return n, true
+	}
+
 	p.markErr("expected valid statement")
 	return nil, false
+}
+
+// parseConditional parses an if (or elif)
+func (p *parser) parseConditional(head lexer.TokenKind) (*ir.Node, bool) {
+	loc := p.t.Mark()
+
+	n := &ir.Node{
+		Op:   ir.OpConditional,
+		Pos:  p.t.Pos(),
+		List: make([]*ir.Node, 3),
+	}
+
+	if _, ok := p.t.Expect(head); !ok {
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	cond, ok := p.parseExpr()
+	if !ok {
+		p.t.Restore(loc)
+		return nil, false
+	}
+	n.List[0] = cond
+
+	then, ok := p.parseBlock()
+	if !ok {
+		p.t.Restore(loc)
+		return nil, false
+	}
+	n.List[1] = then
+
+	// an elif is an else whose body is another conditional
+	if tok, ok := p.t.Peek(); ok && tok.Kind == lexer.KElifKw {
+		alt, ok := p.parseConditional(lexer.KElifKw)
+		if !ok {
+			p.t.Restore(loc)
+			return nil, false
+		}
+		n.List[2] = alt
+	} else if _, ok := p.t.Expect(lexer.KElseKw); ok {
+		alt, ok := p.parseBlock()
+		if !ok {
+			p.t.Restore(loc)
+			return nil, false
+		}
+		n.List[2] = alt
+	}
+
+	return n, true
+}
+
+func (p *parser) parseBreak() (*ir.Node, bool) {
+	loc := p.t.Mark()
+	pos := p.t.Pos()
+
+	if _, ok := p.t.Expect(lexer.KBreakKw); !ok {
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	if _, ok := p.t.Expect(lexer.KSemicolon); !ok {
+		p.markErr("expected semicolon after break")
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	return &ir.Node{
+		Op:  ir.OpBreak,
+		Pos: pos,
+	}, true
+}
+
+func (p *parser) parseContinue() (*ir.Node, bool) {
+	loc := p.t.Mark()
+	pos := p.t.Pos()
+
+	if _, ok := p.t.Expect(lexer.KContinueKw); !ok {
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	if _, ok := p.t.Expect(lexer.KSemicolon); !ok {
+		p.markErr("expected semicolon after continue")
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	return &ir.Node{
+		Op:  ir.OpContinue,
+		Pos: pos,
+	}, true
+}
+
+func (p *parser) parseLoop() (*ir.Node, bool) {
+	loc := p.t.Mark()
+
+	n := &ir.Node{
+		Op:  ir.OpLoop,
+		Pos: p.t.Pos(),
+	}
+
+	if _, ok := p.t.Expect(lexer.KLoopKw); !ok {
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	bl, ok := p.parseBlock()
+	if !ok {
+		p.t.Restore(loc)
+		return nil, false
+	}
+
+	// flatten block's statement list into loop's statement list
+	n.List = bl.List
+
+	return n, true
 }
 
 func (p *parser) parseAssignmentOp() (*ir.Node, bool) {

@@ -18,6 +18,7 @@ const (
 	KTuple
 	KUntypedNil
 	KInt64
+	KBool
 )
 
 // code pointer, environment pointer
@@ -94,6 +95,8 @@ func (t *Type) String() string {
 		return "int"
 	case KInt64:
 		return "int64"
+	case KBool:
+		return "bool"
 	case KFunction:
 		params := make([]string, len(t.params))
 		for i := range t.params {
@@ -230,6 +233,10 @@ func Int64() *Type {
 	return &Type{kind: KInt64}
 }
 
+func Bool() *Type {
+	return &Type{kind: KBool}
+}
+
 func UntypedInt() *Type {
 	return &Type{kind: KUntypedInt}
 }
@@ -273,6 +280,8 @@ func (t *Type) Size() int {
 	switch t.kind {
 	case KUnit:
 		return 0
+	case KBool:
+		return 1
 	case KInt:
 		return 4
 	case KInt64:
@@ -293,7 +302,7 @@ func (t *Type) Size() int {
 // Align returns the address alignment the type requires, in bytes.
 func (t *Type) Align() int {
 	switch t.kind {
-	case KUnit:
+	case KUnit, KBool:
 		return 1
 	case KInt:
 		return 4

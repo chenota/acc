@@ -39,6 +39,20 @@ const (
 	OpUnit
 	OpTuple
 	OpNil
+	OpLoop
+	OpBreak
+	OpContinue
+	OpConditional
+	OpBool
+	OpNot
+	OpAnd
+	OpOr
+	OpEqual
+	OpNotEqual
+	OpLess
+	OpLessEqual
+	OpGreater
+	OpGreaterEqual
 )
 
 type Signature struct {

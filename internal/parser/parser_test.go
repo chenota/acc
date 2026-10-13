@@ -91,6 +91,10 @@ func TestParser_ExprErr(t *testing.T) {
 		{"missing left operand", `fun main () -> int { return / 5; }`},
 		{"operator by itself", `fun main () -> int { return *; }`},
 		{"reference missing operand", `fun main () -> int { return &; }`},
+		{"not missing operand", `fun main () -> int { return !; }`},
+		{"or missing right operand", `fun main () -> int { return a || ; }`},
+		{"and missing left operand", `fun main () -> int { return && b; }`},
+		{"comparison missing right operand", `fun main () -> int { return a < ; }`},
 	}
 
 	for _, tt := range tests {
@@ -896,6 +900,11 @@ func TestParser_FunType(t *testing.T) {
 			`*fun ()`,
 			types.Pointer(types.Function(nil, types.Unit())),
 		},
+		{
+			"bool param and result",
+			`fun (bool) -> bool`,
+			types.Function([]*types.Type{types.Bool()}, types.Bool()),
+		},
 	}
 
 	for _, tt := range tests {
@@ -1237,6 +1246,602 @@ func TestParser_LetRec(t *testing.T) {
 	rec := fun.List[0]
 
 	assert.True(t, rec.Attribute(ir.ARecursive))
+}
+
+func TestParser_Bool(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+		want bool
+	}{
+		{"true", `fun () { return true; }`, true},
+		{"false", `fun () { return false; }`, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := requireTokenize(t, tt.test)
+
+			funcs, err := ParseProgram(tokens)
+			require.NoError(t, err)
+
+			require.Len(t, funcs, 1)
+			fun := funcs[0]
+
+			require.Len(t, fun.List, 1)
+			ret := fun.List[0]
+
+			require.Len(t, ret.List, 1)
+			e := ret.List[0]
+			assert.Equal(t, ir.OpBool, e.Op)
+			assert.Equal(t, tt.want, e.Val)
+		})
+	}
+}
+
+func TestParser_BoolType(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { let b bool = x; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	decl := fun.List[0]
+
+	require.Len(t, decl.List, 3)
+	varType := decl.List[1]
+	require.NotNil(t, varType)
+	assert.True(t, types.Equal(types.Bool(), varType.Type))
+}
+
+func TestParser_Not(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { return !x; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	e := ret.List[0]
+	assert.Equal(t, ir.OpNot, e.Op)
+
+	require.Len(t, e.List, 1)
+	assert.Equal(t, "x", e.List[0].Ident())
+}
+
+func TestParser_Not_Nested(t *testing.T) {
+	// prefix operators bind right, so !!x is !(!x)
+	tokens := requireTokenize(t, `fun () { return !!x; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	outer := ret.List[0]
+	assert.Equal(t, ir.OpNot, outer.Op)
+
+	require.Len(t, outer.List, 1)
+	inner := outer.List[0]
+	assert.Equal(t, ir.OpNot, inner.Op)
+
+	require.Len(t, inner.List, 1)
+	assert.Equal(t, "x", inner.List[0].Ident())
+}
+
+func TestParser_Not_ComparisonPrecedence(t *testing.T) {
+	// !a == b parses as (!a) == b
+	tokens := requireTokenize(t, `fun () { return !a == b; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	e := ret.List[0]
+	assert.Equal(t, ir.OpEqual, e.Op)
+
+	require.Len(t, e.List, 2)
+	assert.Equal(t, ir.OpNot, e.List[0].Op)
+	assert.Equal(t, "b", e.List[1].Ident())
+}
+
+func TestParser_Not_CallPrecedence(t *testing.T) {
+	// !f() parses as !(f())
+	tokens := requireTokenize(t, `fun () { return !f(); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	e := ret.List[0]
+	assert.Equal(t, ir.OpNot, e.Op)
+
+	require.Len(t, e.List, 1)
+	assert.Equal(t, ir.OpCall, e.List[0].Op)
+}
+
+func TestParser_LogicalOperators(t *testing.T) {
+	tests := []struct {
+		name string
+		op   string
+		want ir.Op
+	}{
+		{"or", "||", ir.OpOr},
+		{"and", "&&", ir.OpAnd},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := requireTokenize(t, fmt.Sprintf(`fun () { return a %s b; }`, tt.op))
+
+			funcs, err := ParseProgram(tokens)
+			require.NoError(t, err)
+
+			require.Len(t, funcs, 1)
+			fun := funcs[0]
+
+			require.Len(t, fun.List, 1)
+			ret := fun.List[0]
+
+			require.Len(t, ret.List, 1)
+			e := ret.List[0]
+			assert.Equal(t, tt.want, e.Op)
+
+			require.Len(t, e.List, 2)
+			assert.Equal(t, "a", e.List[0].Ident())
+			assert.Equal(t, "b", e.List[1].Ident())
+		})
+	}
+}
+
+func TestParser_ComparisonOperators(t *testing.T) {
+	tests := []struct {
+		name string
+		op   string
+		want ir.Op
+	}{
+		{"equal", "==", ir.OpEqual},
+		{"not equal", "!=", ir.OpNotEqual},
+		{"less", "<", ir.OpLess},
+		{"less or equal", "<=", ir.OpLessEqual},
+		{"greater", ">", ir.OpGreater},
+		{"greater or equal", ">=", ir.OpGreaterEqual},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := requireTokenize(t, fmt.Sprintf(`fun () { return a %s b; }`, tt.op))
+
+			funcs, err := ParseProgram(tokens)
+			require.NoError(t, err)
+
+			require.Len(t, funcs, 1)
+			fun := funcs[0]
+
+			require.Len(t, fun.List, 1)
+			ret := fun.List[0]
+
+			require.Len(t, ret.List, 1)
+			e := ret.List[0]
+			assert.Equal(t, tt.want, e.Op)
+
+			require.Len(t, e.List, 2)
+			assert.Equal(t, "a", e.List[0].Ident())
+			assert.Equal(t, "b", e.List[1].Ident())
+		})
+	}
+}
+
+func TestParser_LogicalPrecedence(t *testing.T) {
+	// a || b && c parses as a || (b && c)
+	tokens := requireTokenize(t, `fun () { return a || b && c; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	e := ret.List[0]
+	assert.Equal(t, ir.OpOr, e.Op)
+
+	require.Len(t, e.List, 2)
+	assert.Equal(t, "a", e.List[0].Ident())
+	assert.Equal(t, ir.OpAnd, e.List[1].Op)
+}
+
+func TestParser_LogicalAssociativity(t *testing.T) {
+	// a && b && c parses as (a && b) && c
+	tokens := requireTokenize(t, `fun () { return a && b && c; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	e := ret.List[0]
+	assert.Equal(t, ir.OpAnd, e.Op)
+
+	require.Len(t, e.List, 2)
+	assert.Equal(t, ir.OpAnd, e.List[0].Op)
+	assert.Equal(t, "c", e.List[1].Ident())
+}
+
+func TestParser_ComparisonPrecedence(t *testing.T) {
+	// a && b == c parses as a && (b == c)
+	tokens := requireTokenize(t, `fun () { return a && b == c; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	e := ret.List[0]
+	assert.Equal(t, ir.OpAnd, e.Op)
+
+	require.Len(t, e.List, 2)
+	assert.Equal(t, "a", e.List[0].Ident())
+	assert.Equal(t, ir.OpEqual, e.List[1].Op)
+}
+
+func TestParser_Comparison_ArithmeticPrecedence(t *testing.T) {
+	// a + 1 < b * 2 parses as (a + 1) < (b * 2)
+	tokens := requireTokenize(t, `fun () { return a + 1 < b * 2; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	e := ret.List[0]
+	assert.Equal(t, ir.OpLess, e.Op)
+
+	require.Len(t, e.List, 2)
+	assert.Equal(t, ir.OpPlus, e.List[0].Op)
+	assert.Equal(t, ir.OpTimes, e.List[1].Op)
+}
+
+func TestParser_Comparison_AcrossLogical(t *testing.T) {
+	// comparisons separated by a logical operator are not a chain
+	tokens := requireTokenize(t, `fun () { return a < b && b < c; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	e := ret.List[0]
+	assert.Equal(t, ir.OpAnd, e.Op)
+
+	require.Len(t, e.List, 2)
+	assert.Equal(t, ir.OpLess, e.List[0].Op)
+	assert.Equal(t, ir.OpLess, e.List[1].Op)
+}
+
+func TestParser_Comparison_Parenthesized(t *testing.T) {
+	// parentheses make a comparison an operand of another comparison
+	tokens := requireTokenize(t, `fun () { return (a < b) == c; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	ret := fun.List[0]
+
+	require.Len(t, ret.List, 1)
+	e := ret.List[0]
+	assert.Equal(t, ir.OpEqual, e.Op)
+
+	require.Len(t, e.List, 2)
+	assert.Equal(t, ir.OpLess, e.List[0].Op)
+	assert.Equal(t, "c", e.List[1].Ident())
+}
+
+func TestParser_ComparisonChainErr(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"same operator", `fun () { return a < b < c; }`},
+		{"mixed operators", `fun () { return a == b != c; }`},
+		{"through arithmetic", `fun () { return a < b + 1 > c; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := requireTokenize(t, tt.test)
+			_, err := ParseProgram(tokens)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestParser_Loop(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { loop { f(); g(); } }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	loop := fun.List[0]
+	assert.Equal(t, ir.OpLoop, loop.Op)
+
+	// the body's statements hang directly off the loop
+	require.Len(t, loop.List, 2)
+	assert.Equal(t, ir.OpCall, loop.List[0].Op)
+	assert.Equal(t, ir.OpCall, loop.List[1].Op)
+}
+
+func TestParser_Loop_Empty(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { loop {} }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	loop := fun.List[0]
+	assert.Equal(t, ir.OpLoop, loop.Op)
+	assert.Empty(t, loop.List)
+}
+
+func TestParser_Break(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { loop { break; } }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	loop := fun.List[0]
+
+	require.Len(t, loop.List, 1)
+	brk := loop.List[0]
+	assert.Equal(t, ir.OpBreak, brk.Op)
+	assert.Empty(t, brk.List)
+}
+
+func TestParser_Continue(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { loop { continue; } }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	loop := fun.List[0]
+
+	require.Len(t, loop.List, 1)
+	cont := loop.List[0]
+	assert.Equal(t, ir.OpContinue, cont.Op)
+	assert.Empty(t, cont.List)
+}
+
+func TestParser_LoopErr(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"loop missing block", `fun () { loop f(); }`},
+		{"loop unclosed block", `fun () { loop { f(); }`},
+		{"break missing semicolon", `fun () { loop { break } }`},
+		{"continue missing semicolon", `fun () { loop { continue } }`},
+		{"break with value", `fun () { loop { break 1; } }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := requireTokenize(t, tt.test)
+			_, err := ParseProgram(tokens)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestParser_Conditional(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { if x < 10 { f(); } }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	cond := fun.List[0]
+	assert.Equal(t, ir.OpConditional, cond.Op)
+
+	require.Len(t, cond.List, 3)
+	assert.Equal(t, ir.OpLess, cond.List[0].Op)
+
+	then := cond.List[1]
+	require.NotNil(t, then)
+	assert.Equal(t, ir.OpBlock, then.Op)
+	require.Len(t, then.List, 1)
+	assert.Equal(t, ir.OpCall, then.List[0].Op)
+
+	// no else branch
+	assert.Nil(t, cond.List[2])
+}
+
+func TestParser_Conditional_Else(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { if x { } else { f(); } }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	cond := fun.List[0]
+
+	require.Len(t, cond.List, 3)
+	alt := cond.List[2]
+	require.NotNil(t, alt)
+	assert.Equal(t, ir.OpBlock, alt.Op)
+	require.Len(t, alt.List, 1)
+	assert.Equal(t, ir.OpCall, alt.List[0].Op)
+}
+
+func TestParser_Conditional_Elif(t *testing.T) {
+	// an elif is an else whose body is another conditional
+	tokens := requireTokenize(t, `fun () { if a { } elif b { } }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	cond := fun.List[0]
+
+	require.Len(t, cond.List, 3)
+	assert.Equal(t, "a", cond.List[0].Ident())
+
+	alt := cond.List[2]
+	require.NotNil(t, alt)
+	assert.Equal(t, ir.OpConditional, alt.Op)
+
+	require.Len(t, alt.List, 3)
+	assert.Equal(t, "b", alt.List[0].Ident())
+	assert.Equal(t, ir.OpBlock, alt.List[1].Op)
+	assert.Nil(t, alt.List[2])
+}
+
+func TestParser_Conditional_ElifChain(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { if a { } elif b { } elif c { } else { } }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 1)
+	cond := fun.List[0]
+
+	require.Len(t, cond.List, 3)
+	assert.Equal(t, "a", cond.List[0].Ident())
+
+	first := cond.List[2]
+	require.NotNil(t, first)
+	assert.Equal(t, ir.OpConditional, first.Op)
+	require.Len(t, first.List, 3)
+	assert.Equal(t, "b", first.List[0].Ident())
+
+	second := first.List[2]
+	require.NotNil(t, second)
+	assert.Equal(t, ir.OpConditional, second.Op)
+	require.Len(t, second.List, 3)
+	assert.Equal(t, "c", second.List[0].Ident())
+
+	last := second.List[2]
+	require.NotNil(t, last)
+	assert.Equal(t, ir.OpBlock, last.Op)
+}
+
+func TestParser_Conditional_FollowingStmt(t *testing.T) {
+	// a conditional has no terminator, so the next statement starts right after it
+	tokens := requireTokenize(t, `fun () { if a { } else { } f(); }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.List, 2)
+	assert.Equal(t, ir.OpConditional, fun.List[0].Op)
+	assert.Equal(t, ir.OpCall, fun.List[1].Op)
+}
+
+func TestParser_ConditionalErr(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"missing condition", `fun () { if { } }`},
+		{"missing then block", `fun () { if x f(); }`},
+		{"elif missing condition", `fun () { if a { } elif { } }`},
+		{"elif missing block", `fun () { if a { } elif b }`},
+		{"else missing block", `fun () { if a { } else f(); }`},
+		{"else if instead of elif", `fun () { if a { } else if b { } }`},
+		{"elif after else", `fun () { if a { } else { } elif b { } }`},
+		{"double else", `fun () { if a { } else { } else { } }`},
+		{"else without if", `fun () { else { } }`},
+		{"elif without if", `fun () { elif a { } }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := requireTokenize(t, tt.test)
+			_, err := ParseProgram(tokens)
+			assert.Error(t, err)
+		})
+	}
 }
 
 func requireTokenize(t *testing.T, input string) *lexer.TokenList {

@@ -346,7 +346,7 @@ Continue      <- "continue" ";"
 Expression = Or ;
 Or         = And { "||" And } ;
 And        = Cmp { "&&" Cmp } ;
-Cmp        = Add { ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) Add } ;
+Cmp        = Add [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) Add ] ;
 Add        = Mul { ( "+" | "-" ) Mul } ;
 Mul        = Unary { ( "*" | "/" ) Unary } ;
 Unary      = ( "-" | "&" | "*" | "!" ) Unary

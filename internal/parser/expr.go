@@ -162,6 +162,23 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 			Op:  ir.OpNil,
 			Pos: left.Pos,
 		}, nil
+	case lexer.KTrueKw, lexer.KFalseKw:
+		return &ir.Node{
+			Op:  ir.OpBool,
+			Pos: left.Pos,
+			Val: left.Kind == lexer.KTrueKw,
+		}, nil
+	case lexer.KNot:
+		e, err := p.expr(unaryBindingPower)
+		if err != nil {
+			return nil, err
+		}
+
+		return &ir.Node{
+			Op:   ir.OpNot,
+			Pos:  left.Pos,
+			List: []*ir.Node{e},
+		}, nil
 	default:
 		return nil, diagnostic.NewError(left.Pos, "expected prefix or literal expression")
 	}
@@ -180,6 +197,13 @@ func (p *parser) led(left *ir.Node, op lexer.Token) (*ir.Node, error) {
 		right, err := p.expr(rightBindingPower)
 		if err != nil {
 			return nil, err
+		}
+
+		// comparisons don't chain
+		if isComparison(op) {
+			if next, ok := p.t.Peek(); ok && isComparison(next) {
+				return nil, diagnostic.NewError(next.Pos, "comparison operators cannot be chained")
+			}
 		}
 
 		return &ir.Node{
@@ -263,6 +287,15 @@ func isRightAssociative(lexer.Token) bool {
 	return false
 }
 
+func isComparison(t lexer.Token) bool {
+	switch t.Kind {
+	case lexer.KEqEq, lexer.KNotEq, lexer.KLess, lexer.KLessEq, lexer.KGreater, lexer.KGreaterEq:
+		return true
+	default:
+		return false
+	}
+}
+
 func isOperator(t lexer.Token) bool {
 	return bopFrom(t) != ir.OpUnknown || t.Kind == lexer.KLParen || t.Kind == lexer.KDot
 }
@@ -272,6 +305,12 @@ const unaryBindingPower = 30
 
 func bindingPower(t lexer.Token) int {
 	switch t.Kind {
+	case lexer.KOr:
+		return 4
+	case lexer.KAnd:
+		return 6
+	case lexer.KEqEq, lexer.KNotEq, lexer.KLess, lexer.KLessEq, lexer.KGreater, lexer.KGreaterEq:
+		return 8
 	case lexer.KPlus, lexer.KMinus:
 		return 10
 	case lexer.KStar, lexer.KDiv:
@@ -294,6 +333,22 @@ func bopFrom(t lexer.Token) ir.Op {
 		return ir.OpTimes
 	case lexer.KDiv:
 		return ir.OpDiv
+	case lexer.KOr:
+		return ir.OpOr
+	case lexer.KAnd:
+		return ir.OpAnd
+	case lexer.KEqEq:
+		return ir.OpEqual
+	case lexer.KNotEq:
+		return ir.OpNotEqual
+	case lexer.KLess:
+		return ir.OpLess
+	case lexer.KLessEq:
+		return ir.OpLessEqual
+	case lexer.KGreater:
+		return ir.OpGreater
+	case lexer.KGreaterEq:
+		return ir.OpGreaterEqual
 	default:
 		return ir.OpUnknown
 	}
