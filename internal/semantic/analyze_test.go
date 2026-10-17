@@ -895,6 +895,273 @@ func TestAnalyze_Mutated_Params(t *testing.T) {
 	assert.True(t, params[1].Sym.Observed(ir.SOMutated))
 }
 
+func TestAnalyze_UntypedArithmetic(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let x = 1 + 2 * 3; return x; }`)
+
+	require.Len(t, funcs, 1)
+	main := funcs[0]
+
+	require.Len(t, main.List, 2)
+	decl := main.List[0]
+	require.NotNil(t, decl.Sym)
+	assert.True(t, types.Equal(types.Int(), decl.Sym.Type))
+
+	// materializing the declaration pushes the default all the way down to the literals
+	e := decl.List[2]
+	assert.True(t, types.Equal(types.Int(), e.Type))
+	assert.True(t, types.Equal(types.Int(), e.List[0].Type))
+	assert.True(t, types.Equal(types.Int(), e.List[1].Type))
+	assert.True(t, types.Equal(types.Int(), e.List[1].List[0].Type))
+}
+
+func TestAnalyze_UntypedArithmetic_Tuple(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let x = (1 + 2, 3); return x.0; }`)
+
+	require.Len(t, funcs, 1)
+	decl := funcs[0].List[0]
+
+	require.NotNil(t, decl.Sym)
+	assert.True(t, types.Equal(types.Tuple([]*types.Type{types.Int(), types.Int()}), decl.Sym.Type))
+}
+
+func TestAnalyze_Negation_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"bool", `fun main () -> int { let b = -true; return 0; }`},
+		{"bool annotation", `fun main () -> int { let b bool = -true; return 0; }`},
+		{"pointer", `fun main () -> int { let x = 1; let p = -&x; return 0; }`},
+		{"tuple", `fun main () -> int { let t = -(1, 2); return 0; }`},
+		{"returned as int", `fun main () -> int { return -true; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestAnalyze_Bool(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let a = true; let b bool = false; return 0; }`)
+
+	require.Len(t, funcs, 1)
+	main := funcs[0]
+
+	require.Len(t, main.List, 3)
+	for _, decl := range main.List[:2] {
+		require.NotNil(t, decl.Sym)
+		assert.True(t, types.Equal(types.Bool(), decl.Sym.Type))
+		assert.True(t, types.Equal(types.Bool(), decl.List[2].Type))
+	}
+}
+
+func TestAnalyze_Bool_Param(t *testing.T) {
+	funcs := mustAnalyze(t, `fun f (b bool) -> bool { return !b; } fun main () -> int { let b = f(true); return 0; }`)
+
+	require.Len(t, funcs, 2)
+	assert.True(t, types.Equal(types.Function([]*types.Type{types.Bool()}, types.Bool()), funcs[0].Type))
+
+	decl := funcs[1].List[0]
+	require.NotNil(t, decl.Sym)
+	assert.True(t, types.Equal(types.Bool(), decl.Sym.Type))
+}
+
+func TestAnalyze_Not(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let a = true; let b = !!a; return 0; }`)
+
+	require.Len(t, funcs, 1)
+	main := funcs[0]
+
+	require.Len(t, main.List, 3)
+	e := main.List[1].List[2]
+	require.Equal(t, ir.OpNot, e.Op)
+	assert.True(t, types.Equal(types.Bool(), e.Type))
+
+	require.Len(t, e.List, 1)
+	assert.True(t, types.Equal(types.Bool(), e.List[0].Type))
+}
+
+func TestAnalyze_Logical(t *testing.T) {
+	tests := []struct {
+		name string
+		op   ir.Op
+		test string
+	}{
+		{"and", ir.OpAnd, `fun main () -> int { let a = true; let b = a && false; return 0; }`},
+		{"or", ir.OpOr, `fun main () -> int { let a = true; let b = a || false; return 0; }`},
+		{"nested", ir.OpOr, `fun main () -> int { let a = true; let b = a && false || !a; return 0; }`},
+		{"comparison operands", ir.OpAnd, `fun main () -> int { let x = 1; let b = x < 2 && x != 0; return 0; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			funcs := mustAnalyze(t, tt.test)
+
+			require.Len(t, funcs, 1)
+			main := funcs[0]
+
+			require.Len(t, main.List, 3)
+			e := main.List[1].List[2]
+			require.Equal(t, tt.op, e.Op)
+			assert.True(t, types.Equal(types.Bool(), e.Type))
+
+			require.Len(t, e.List, 2)
+			assert.True(t, types.Equal(types.Bool(), e.List[0].Type))
+			assert.True(t, types.Equal(types.Bool(), e.List[1].Type))
+		})
+	}
+}
+
+func TestAnalyze_Logical_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"untyped int operands", `fun main () -> int { let b = 1 && 2; return 0; }`},
+		{"int left", `fun main () -> int { let x = 1; let b = x && true; return 0; }`},
+		{"int right", `fun main () -> int { let x = 1; let b = true || x; return 0; }`},
+		{"nil operand", `fun main () -> int { let b = nil && true; return 0; }`},
+		{"pointer operand", `fun main () -> int { let x = true; let b = &x || true; return 0; }`},
+		{"result into int", `fun main () -> int { let x int = true && false; return x; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestAnalyze_Comparison(t *testing.T) {
+	tests := []struct {
+		name string
+		op   ir.Op
+		test string
+	}{
+		{"equal", ir.OpEqual, `fun main () -> int { let x = 1; let b = x == 2; return 0; }`},
+		{"not equal", ir.OpNotEqual, `fun main () -> int { let x = 1; let b = x != 2; return 0; }`},
+		{"less", ir.OpLess, `fun main () -> int { let x = 1; let b = x < 2; return 0; }`},
+		{"less equal", ir.OpLessEqual, `fun main () -> int { let x = 1; let b = x <= 2; return 0; }`},
+		{"greater", ir.OpGreater, `fun main () -> int { let x = 1; let b = x > 2; return 0; }`},
+		{"greater equal", ir.OpGreaterEqual, `fun main () -> int { let x = 1; let b = x >= 2; return 0; }`},
+		{"untyped on left", ir.OpLess, `fun main () -> int { let x = 1; let b = 2 < x; return 0; }`},
+		{"both untyped", ir.OpLess, `fun main () -> int { let x = 1; let b = 1 < 2; return 0; }`},
+		{"untyped arithmetic", ir.OpEqual, `fun main () -> int { let x = 1; let b = 1 + 2 == 3; return 0; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			funcs := mustAnalyze(t, tt.test)
+
+			require.Len(t, funcs, 1)
+			main := funcs[0]
+
+			require.Len(t, main.List, 3)
+			e := main.List[1].List[2]
+			require.Equal(t, tt.op, e.Op)
+			assert.True(t, types.Equal(types.Bool(), e.Type))
+
+			// operands always settle on a concrete type, even when neither side has one
+			require.Len(t, e.List, 2)
+			assert.True(t, types.Equal(types.Int(), e.List[0].Type))
+			assert.True(t, types.Equal(types.Int(), e.List[1].Type))
+		})
+	}
+}
+
+func TestAnalyze_Comparison_Equality(t *testing.T) {
+	tests := []struct {
+		name    string
+		operand *types.Type
+		test    string
+	}{
+		{"bool", types.Bool(), `fun main () -> int { let a = true; let b = a == false; return 0; }`},
+		{"pointer", types.Pointer(types.Int()), `fun main () -> int { let x = 1; let b = &x != &x; return 0; }`},
+		{"pointer and nil", types.Pointer(types.Int()), `fun main () -> int { let p *int = nil; let b = p == nil; return 0; }`},
+		{"nil and pointer", types.Pointer(types.Int()), `fun main () -> int { let p *int = nil; let b = nil != p; return 0; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			funcs := mustAnalyze(t, tt.test)
+
+			require.Len(t, funcs, 1)
+			main := funcs[0]
+
+			require.Len(t, main.List, 3)
+			e := main.List[1].List[2]
+			assert.True(t, types.Equal(types.Bool(), e.Type))
+
+			// a nil operand takes its pointer type from the other side
+			require.Len(t, e.List, 2)
+			assert.True(t, types.Equal(tt.operand, e.List[0].Type))
+			assert.True(t, types.Equal(tt.operand, e.List[1].Type))
+		})
+	}
+}
+
+func TestAnalyze_Comparison_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"int and bool", `fun main () -> int { let x = 1; let b = x == true; return 0; }`},
+		{"untyped int and bool", `fun main () -> int { let b = 1 == true; return 0; }`},
+		{"int and pointer", `fun main () -> int { let x = 1; let b = &x == 1; return 0; }`},
+		{"mismatched pointers", `fun main () -> int { let x = 1; let y = true; let b = &x == &y; return 0; }`},
+		{"nil and nil", `fun main () -> int { let b = nil == nil; return 0; }`},
+		{"nil and untyped int", `fun main () -> int { let b = nil == 1; return 0; }`},
+		{"nil and int", `fun main () -> int { let x = 1; let b = x != nil; return 0; }`},
+		{"overflowing literal", `fun main () -> int { let x = 1; let b = x < 2_147_483_648; return 0; }`},
+		{"ordered bools", `fun main () -> int { let b = true < false; return 0; }`},
+		{"ordered pointers", `fun main () -> int { let x = 1; let b = &x <= &x; return 0; }`},
+		{"functions", `fun f () {} fun main () -> int { let b = f == f; return 0; }`},
+		{"function and nil", `fun f () {} fun main () -> int { let b = f == nil; return 0; }`},
+		{"tuples", `fun main () -> int { let t = (1, 2); let b = t == t; return 0; }`},
+		{"units", `fun main () -> int { let b = () == (); return 0; }`},
+		{"result into int", `fun main () -> int { let x int = 1 == 1; return x; }`},
+		{"returned as int", `fun main () -> int { return 1 < 2; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestAnalyze_Bool_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"not on untyped int", `fun main () -> int { let b = !1; return 0; }`},
+		{"not on int", `fun main () -> int { let x = 1; let b = !x; return 0; }`},
+		{"not on nil", `fun main () -> int { let b = !nil; return 0; }`},
+		{"int annotation", `fun main () -> int { let x int = true; return x; }`},
+		{"bool annotation on int", `fun main () -> int { let b bool = 1; return 0; }`},
+		{"bool annotation on arithmetic", `fun main () -> int { let b bool = 1 + 2; return 0; }`},
+		{"nil into bool", `fun main () -> int { let b bool = nil; return 0; }`},
+		{"arithmetic", `fun main () -> int { let b = true + false; return 0; }`},
+		{"arithmetic with int", `fun main () -> int { let b = true * 2; return 0; }`},
+		{"assignment op", `fun main () -> int { let b = true; b += false; return 0; }`},
+		{"returned as int", `fun main () -> int { return true; }`},
+		{"bool argument for int", `fun f (x int) -> int { return x; } fun main () -> int { return f(true); }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			assert.Error(t, err)
+		})
+	}
+}
+
 // mustAnalyze parses and analyzes src, returning every function in the program, lifted lambdas included.
 func mustAnalyze(t *testing.T, src string) []*ir.Node {
 	t.Helper()

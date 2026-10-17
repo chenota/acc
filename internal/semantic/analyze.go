@@ -192,11 +192,20 @@ func (a *analyzer) inferExpr(scope *ir.Table, n *ir.Node) error {
 	case ir.OpInt:
 		n.Type = types.UntypedInt()
 		return nil
+	case ir.OpBool:
+		n.Type = types.Bool()
+		return nil
 	case ir.OpNil:
 		n.Type = types.UntypedNil()
 		return nil
 	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
 		return a.inferBop(scope, n)
+	case ir.OpAnd, ir.OpOr:
+		return a.inferLogical(scope, n)
+	case ir.OpNot:
+		return a.inferNot(scope, n)
+	case ir.OpEqual, ir.OpNotEqual, ir.OpLess, ir.OpLessEqual, ir.OpGreater, ir.OpGreaterEqual:
+		return a.inferComparison(scope, n)
 	case ir.OpIdent:
 		return a.inferIdent(scope, n)
 	case ir.OpNegate:
@@ -219,6 +228,94 @@ func (a *analyzer) inferExpr(scope *ir.Table, n *ir.Node) error {
 	default:
 		return diagnostic.NewError(n.Pos, "unknown expression operation: %d", n.Op)
 	}
+}
+
+func (a *analyzer) inferNot(scope *ir.Table, n *ir.Node) error {
+	if len(n.List) != 1 {
+		return diagnostic.NewError(n.Pos, "not without an argument")
+	}
+
+	child := n.List[0]
+
+	if err := a.inferExpr(scope, child); err != nil {
+		return err
+	}
+
+	if !types.Equal(child.Type, types.Bool()) {
+		return diagnostic.NewError(n.Pos, "not on non-boolean type: %v", child.Type)
+	}
+
+	n.Type = types.Bool()
+
+	return nil
+}
+
+func (a *analyzer) inferLogical(scope *ir.Table, n *ir.Node) error {
+	left, right, err := bopOperands(n)
+	if err != nil {
+		return err
+	}
+
+	for _, e := range []*ir.Node{left, right} {
+		if err := a.inferExpr(scope, e); err != nil {
+			return err
+		}
+		if !types.Equal(e.Type, types.Bool()) {
+			return diagnostic.NewError(e.Pos, "logical operation on non-boolean type: %v", e.Type)
+		}
+	}
+
+	n.Type = types.Bool()
+
+	return nil
+}
+
+func (a *analyzer) inferComparison(scope *ir.Table, n *ir.Node) error {
+	left, right, err := bopOperands(n)
+	if err != nil {
+		return err
+	}
+
+	if err := a.inferExpr(scope, left); err != nil {
+		return err
+	}
+	if err := a.inferExpr(scope, right); err != nil {
+		return err
+	}
+
+	// resolve untyped siblings
+	if isUntyped(left.Type) && !isUntyped(right.Type) {
+		if err := a.checkExpr(scope, left, right.Type); err != nil {
+			return err
+		}
+	} else if isUntyped(right.Type) && !isUntyped(left.Type) {
+		if err := a.checkExpr(scope, right, left.Type); err != nil {
+			return err
+		}
+	}
+
+	// anything still untyped gets materialized
+	if err := a.materialize(scope, left); err != nil {
+		return err
+	}
+	if err := a.materialize(scope, right); err != nil {
+		return err
+	}
+
+	if !types.Equal(left.Type, right.Type) {
+		return diagnostic.NewError(n.Pos, "comparison with mismatched types: %v and %v", left.Type, right.Type)
+	}
+
+	if isOrdering(n.Op) && !left.Type.IsConcreteNumeric() {
+		return diagnostic.NewError(n.Pos, "ordering comparison unavailable for type: %v", left.Type)
+	}
+	if !isComparable(left.Type) {
+		return diagnostic.NewError(n.Pos, "equality comparison unavailable for type: %v", left.Type)
+	}
+
+	n.Type = types.Bool()
+
+	return nil
 }
 
 func (a *analyzer) checkExpr(scope *ir.Table, n *ir.Node, want *types.Type) error {
@@ -479,6 +576,9 @@ func (a *analyzer) inferNegate(scope *ir.Table, n *ir.Node) error {
 	if err := a.inferExpr(scope, e); err != nil {
 		return err
 	}
+	if !isNumeric(e.Type) {
+		return diagnostic.NewError(n.Pos, "negation unavailable for type: %v", e.Type)
+	}
 
 	// steal type from sub-expression
 	n.Type = e.Type
@@ -494,6 +594,9 @@ func (a *analyzer) checkNegate(scope *ir.Table, n *ir.Node, want *types.Type) er
 
 	if err := a.checkExpr(scope, e, want); err != nil {
 		return err
+	}
+	if !isNumeric(e.Type) {
+		return diagnostic.NewError(n.Pos, "negation unavailable for type: %v", e.Type)
 	}
 
 	n.Type = e.Type
@@ -575,8 +678,8 @@ func (a *analyzer) settleBop(scope *ir.Table, n *ir.Node, left *ir.Node, right *
 		return diagnostic.NewError(n.Pos, "binary operation with mismatched types: %v and %v", left.Type, right.Type)
 	}
 
-	// restrict what can be added to numeric types
-	if !left.Type.IsConcreteNumeric() {
+	// restrict what can be added to numeric types; two untyped operands stay untyped until materialized
+	if !isNumeric(left.Type) {
 		return diagnostic.NewError(n.Pos, "binary operation unavailable for type: %v", left.Type)
 	}
 
@@ -592,6 +695,28 @@ func bopOperands(n *ir.Node) (*ir.Node, *ir.Node, error) {
 	}
 
 	return n.List[0], n.List[1], nil
+}
+
+func isNumeric(t *types.Type) bool {
+	return t.IsConcreteNumeric() || t.IsUntypedNumeric()
+}
+
+func isUntyped(t *types.Type) bool {
+	return t.IsUntypedNumeric() || t.IsUntypedNil()
+}
+
+func isComparable(t *types.Type) bool {
+	return t.IsConcreteNumeric() || t.IsPointer() || types.Equal(t, types.Bool())
+}
+
+// isOrdering reports whether op compares by order rather than equality
+func isOrdering(op ir.Op) bool {
+	switch op {
+	case ir.OpLess, ir.OpLessEqual, ir.OpGreater, ir.OpGreaterEqual:
+		return true
+	default:
+		return false
+	}
 }
 
 // terminates reports whether control cannot flow past n.
