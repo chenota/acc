@@ -327,44 +327,46 @@ Program       <- Function+
 Function      <- "fun" Ident "(" Paramlist ")" ( "->" Type )? Block
 Paramlist     <- ( Param ( "," Param )* )?
 Param         <- Ident Type
-Block         <- "{" Statement* "}"
-Statement     <- Declaration / Assignment / AssignmentOp / Return / CallStatement / Conditional / Loop / Break / Continue
+Block         <- "{" Statement* Expression? "}"
+Statement     <- Declaration / Assignment / AssignmentOp / Return / Break / Continue / ExprStatement
 Declaration   <- "let" "rec"? Ident Type? "=" Expression ";"
 Assignment    <- Expression "=" Expression ";"
 AssignmentOp  <- Expression ( "+=" / "-=" / "*=" / "/=" ) Expression ";"
 Return        <- "return" Expression? ";"
-CallStatement <- Expression ";"
-Conditional   <- "if" Expression Block ( "elif" Expression Block )* ( "else" Block )?
-Loop          <- "loop" Block
-Break         <- "break" ";"
+Break         <- "break" Expression? ";"
 Continue      <- "continue" ";"
+ExprStatement <- Expression ";"
 ```
 
 #### Expression Grammar (EBNF)
 
 ```
-Expression = Or ;
-Or         = And { "||" And } ;
-And        = Cmp { "&&" Cmp } ;
-Cmp        = Add [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) Add ] ;
-Add        = Mul { ( "+" | "-" ) Mul } ;
-Mul        = Unary { ( "*" | "/" ) Unary } ;
-Unary      = ( "-" | "&" | "*" | "!" ) Unary
-           | Postfix ;
-Postfix    = Atom { Call | Field } ;
-Call       = "(" [ Exprlist ] ")" ;
-Field      = "." Integer ;
-Exprlist   = Expression { "," Expression } [ "," ] ;
-Atom       = Integer
-           | Ident
-           | "true" | "false"
-           | "nil"
-           | Lambda
-           | "(" [ Exprlist ] ")" ;
-Lambda     = "fun" "(" Paramlist ")" [ "->" Type ] Block ;
+Expression  = Or ;
+Or          = And { "||" And } ;
+And         = Cmp { "&&" Cmp } ;
+Cmp         = Add [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) Add ] ;
+Add         = Mul { ( "+" | "-" ) Mul } ;
+Mul         = Unary { ( "*" | "/" ) Unary } ;
+Unary       = ( "-" | "&" | "*" | "!" ) Unary
+            | Postfix ;
+Postfix     = Atom { Call | Field } ;
+Call        = "(" [ Exprlist ] ")" ;
+Field       = "." Integer ;
+Exprlist    = Expression { "," Expression } [ "," ] ;
+Atom        = Integer
+            | Ident
+            | "true" | "false"
+            | "nil"
+            | Lambda
+            | Conditional
+            | Loop
+            | "(" [ Exprlist ] ")" ;
+Lambda      = "fun" "(" Paramlist ")" [ "->" Type ] Block ;
+Conditional = "if" Expression Block { "elif" Expression Block } [ "else" Block ] ;
+Loop        = "loop" Block ;
 ```
 
-`Paramlist` and `Block` are the same rules as in the program grammar.
+`Paramlist` and `Block` are the same rules as in the program grammar, which uses `Conditional` and `Loop` from this grammar.
 
 #### Type Grammar (EBNF)
 
