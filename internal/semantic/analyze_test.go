@@ -24,8 +24,8 @@ func TestAnalyze_Basic(t *testing.T) {
 	require.NotNil(t, fun.Sym)
 	assert.Equal(t, "main", fun.Sym.Name)
 
-	require.Len(t, fun.List, 1)
-	e := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	e := fun.Body().List[0].List[0]
 	assert.Equal(t, types.Int(), e.Type)
 }
 
@@ -71,8 +71,8 @@ func TestAnalyze_UnitFunction_NeedsNoReturn(t *testing.T) {
 
 	// no statement is synthesized to stand in for the implicit return
 	require.Len(t, funcs, 1)
-	require.Len(t, funcs[0].List, 1)
-	assert.Equal(t, ir.OpAssignment, funcs[0].List[0].Op)
+	require.Len(t, funcs[0].Body().List, 1)
+	assert.Equal(t, ir.OpAssignment, funcs[0].Body().List[0].Op)
 }
 
 func TestAnalyze_MainMustReturnInt(t *testing.T) {
@@ -93,10 +93,23 @@ func TestAnalyze_CallAsStmt(t *testing.T) {
 	require.Len(t, funcs, 2)
 	fun := funcs[1]
 
-	require.Len(t, fun.List, 2)
-	call := fun.List[0]
+	require.Len(t, fun.Body().List, 2)
+	call := fun.Body().List[0]
 
 	assert.True(t, types.Equal(types.Int(), call.Type))
+}
+
+func TestAnalyze_NonCallExprStmt_Err(t *testing.T) {
+	// the parser accepts any expression as a statement, so analysis has to reject the rest
+	_, err := analyzeSrc(t, `fun main () -> int { let x = 1; x + 1; return x; }`)
+
+	assert.Error(t, err)
+}
+
+func TestAnalyze_BlockValue_Unsupported(t *testing.T) {
+	_, err := analyzeSrc(t, `fun main () -> int { 0 }`)
+
+	assert.Error(t, err)
 }
 
 func TestAnalyze_DuplicateParam(t *testing.T) {
@@ -120,8 +133,8 @@ func TestAnalyze_SimpleBop(t *testing.T) {
 	require.NotNil(t, fun.Type)
 	assert.Equal(t, types.Function(nil, types.Int()), fun.Type)
 
-	require.Len(t, fun.List, 1)
-	bopExpr := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	bopExpr := fun.Body().List[0].List[0]
 
 	assert.Equal(t, types.Int(), bopExpr.Type)
 	assert.Equal(t, types.Int(), bopExpr.List[0].Type)
@@ -143,8 +156,8 @@ func TestAnalyze_VariableDeclaration(t *testing.T) {
 	require.NotNil(t, fun.Type)
 	assert.Equal(t, types.Function(nil, types.Int()), fun.Type)
 
-	require.Len(t, fun.List, 2)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 2)
+	decl := fun.Body().List[0]
 	require.NotNil(t, decl.Sym)
 	assert.Equal(t, types.Int(), decl.Sym.Type)
 	assert.Equal(t, "x", decl.Sym.Name)
@@ -163,8 +176,8 @@ func TestAnalyze_VariableDeclaration_Inference(t *testing.T) {
 	require.NotNil(t, fun.Type)
 	assert.Equal(t, types.Function(nil, types.Int()), fun.Type)
 
-	require.Len(t, fun.List, 2)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 2)
+	decl := fun.Body().List[0]
 	require.NotNil(t, decl.Sym)
 	assert.Equal(t, types.Int(), decl.Sym.Type)
 	assert.Equal(t, "x", decl.Sym.Name)
@@ -189,8 +202,8 @@ func TestAnalyze_VariableUsage(t *testing.T) {
 	require.NotNil(t, fun.Type)
 	assert.Equal(t, types.Function(nil, types.Int()), fun.Type)
 
-	require.Len(t, fun.List, 2)
-	ret := fun.List[1]
+	require.Len(t, fun.Body().List, 2)
+	ret := fun.Body().List[1]
 
 	require.NotNil(t, ret)
 	require.Len(t, ret.List, 1)
@@ -198,7 +211,7 @@ func TestAnalyze_VariableUsage(t *testing.T) {
 
 	require.NotNil(t, e)
 	assert.Equal(t, types.Int(), e.Type)
-	assert.Equal(t, fun.List[0].Sym, e.Sym)
+	assert.Equal(t, fun.Body().List[0].Sym, e.Sym)
 }
 
 func TestAnalyze_VariableUsage_BeforeDeclared(t *testing.T) {
@@ -216,9 +229,9 @@ func TestAnalyze_Assignment(t *testing.T) {
 	require.NotNil(t, fun.Type)
 	assert.Equal(t, types.Function(nil, types.Int()), fun.Type)
 
-	require.Len(t, fun.List, 3)
-	decl := fun.List[0]
-	assign := fun.List[1]
+	require.Len(t, fun.Body().List, 3)
+	decl := fun.Body().List[0]
+	assign := fun.Body().List[1]
 	assert.Equal(t, decl.Sym, assign.List[0].Sym)
 }
 
@@ -257,8 +270,8 @@ func TestAnalyze_Negation(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 2)
-	ret := fun.List[1]
+	require.Len(t, fun.Body().List, 2)
+	ret := fun.Body().List[1]
 
 	require.NotNil(t, ret)
 	require.Len(t, ret.List, 1)
@@ -274,9 +287,9 @@ func TestAnalyze_AssignmentOp(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 3)
-	decl := fun.List[0]
-	assign := fun.List[1]
+	require.Len(t, fun.Body().List, 3)
+	decl := fun.Body().List[0]
+	assign := fun.Body().List[1]
 	assert.Equal(t, decl.Sym, assign.List[0].Sym)
 }
 
@@ -309,8 +322,8 @@ func TestAnalyze_Call(t *testing.T) {
 	f := funcs[0]
 	main := funcs[1]
 
-	require.Len(t, main.List, 1)
-	ret := main.List[0]
+	require.Len(t, main.Body().List, 1)
+	ret := main.Body().List[0]
 	require.Len(t, ret.List, 1)
 	call := ret.List[0]
 	assert.Equal(t, ir.OpCall, call.Op)
@@ -335,8 +348,8 @@ func TestAnalyze_Call_ZeroArgs(t *testing.T) {
 	require.Len(t, funcs, 2)
 	main := funcs[1]
 
-	require.Len(t, main.List, 1)
-	call := main.List[0].List[0]
+	require.Len(t, main.Body().List, 1)
+	call := main.Body().List[0].List[0]
 	assert.Equal(t, ir.OpCall, call.Op)
 
 	require.Len(t, call.List, 1)
@@ -371,8 +384,8 @@ func TestAnalyze_ForwardReference(t *testing.T) {
 	f := funcs[1]
 
 	// the forward call actually resolved to the later function's symbol
-	require.Len(t, main.List, 1)
-	call := main.List[0].List[0]
+	require.Len(t, main.Body().List, 1)
+	call := main.Body().List[0].List[0]
 	require.Equal(t, ir.OpCall, call.Op)
 	require.Len(t, call.List, 2)
 	assert.Equal(t, f.Sym, call.List[0].Sym)
@@ -390,8 +403,8 @@ func TestAnalyze_Reference(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 3)
-	decl := fun.List[1]
+	require.Len(t, fun.Body().List, 3)
+	decl := fun.Body().List[1]
 
 	require.Len(t, decl.List, 3)
 	ref := decl.List[2]
@@ -408,8 +421,8 @@ func TestAnalyze_Deref(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 3)
-	ret := fun.List[2]
+	require.Len(t, fun.Body().List, 3)
+	ret := fun.Body().List[2]
 
 	require.Len(t, ret.List, 1)
 	deref := ret.List[0]
@@ -481,8 +494,8 @@ func TestAnalyze_LiftsLambdas(t *testing.T) {
 	assert.Equal(t, "main.func0.func0", funcs[2].Signature.Label)
 
 	// lifting exposes the lambdas without detaching them from the tree they came from
-	require.Len(t, funcs[0].List, 2)
-	decl := funcs[0].List[0]
+	require.Len(t, funcs[0].Body().List, 2)
+	decl := funcs[0].Body().List[0]
 	require.Len(t, decl.List, 3)
 	assert.Same(t, funcs[1], decl.List[2])
 }
@@ -561,8 +574,8 @@ func TestAnalyze_Tuple(t *testing.T) {
 	require.Len(t, funcs, 1)
 	f := funcs[0]
 
-	require.Len(t, f.List, 2)
-	e := f.List[0]
+	require.Len(t, f.Body().List, 2)
+	e := f.Body().List[0]
 
 	require.Len(t, e.List, 3)
 	assert.True(t, types.Equal(e.List[2].Type, types.Tuple([]*types.Type{types.Int(), types.Unit()})))
@@ -574,8 +587,8 @@ func TestAnalyze_Tuple_Inference(t *testing.T) {
 	require.Len(t, funcs, 1)
 	f := funcs[0]
 
-	require.Len(t, f.List, 2)
-	e := f.List[0]
+	require.Len(t, f.Body().List, 2)
+	e := f.Body().List[0]
 
 	require.Len(t, e.List, 3)
 	assert.True(t, types.Equal(e.List[2].Type, types.Tuple([]*types.Type{types.Int(), types.Unit()})))
@@ -587,8 +600,8 @@ func TestAnalyze_Tuple_Direct(t *testing.T) {
 	require.Len(t, funcs, 1)
 	f := funcs[0]
 
-	require.Len(t, f.List, 1)
-	e := f.List[0]
+	require.Len(t, f.Body().List, 1)
+	e := f.Body().List[0]
 
 	require.Len(t, e.List, 1)
 	dot := e.List[0]
@@ -605,8 +618,8 @@ func TestAnalyze_Tuple_Nested(t *testing.T) {
 	require.Len(t, funcs, 1)
 	f := funcs[0]
 
-	require.Len(t, f.List, 2)
-	e := f.List[0]
+	require.Len(t, f.Body().List, 2)
+	e := f.Body().List[0]
 
 	require.Len(t, e.List, 3)
 	inner := types.Tuple([]*types.Type{types.Int(), types.Int()})
@@ -619,8 +632,8 @@ func TestAnalyze_Tuple_LValue(t *testing.T) {
 	require.Len(t, funcs, 1)
 	f := funcs[0]
 
-	require.Len(t, f.List, 1)
-	e := f.List[0]
+	require.Len(t, f.Body().List, 1)
+	e := f.Body().List[0]
 
 	require.Len(t, e.List, 2)
 	assert.Equal(t, ir.OpDot, e.List[0].Op)
@@ -633,8 +646,8 @@ func TestAnalyze_Tuple_Ref(t *testing.T) {
 	require.Len(t, funcs, 1)
 	f := funcs[0]
 
-	require.Len(t, f.List, 2)
-	e := f.List[1]
+	require.Len(t, f.Body().List, 2)
+	e := f.Body().List[1]
 
 	require.Len(t, e.List, 1)
 	assert.Equal(t, ir.OpDeref, e.List[0].Op)
@@ -667,8 +680,8 @@ func TestAnalyze_Nil(t *testing.T) {
 	require.Len(t, funcs, 1)
 	f := funcs[0]
 
-	require.Len(t, f.List, 1)
-	ret := f.List[0]
+	require.Len(t, f.Body().List, 1)
+	ret := f.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	assert.Equal(t, ir.OpNil, ret.List[0].Op)
@@ -681,8 +694,8 @@ func TestAnalyze_Nil_Assignment(t *testing.T) {
 	require.Len(t, funcs, 1)
 	main := funcs[0]
 
-	require.Len(t, main.List, 4)
-	assign := main.List[2]
+	require.Len(t, main.Body().List, 4)
+	assign := main.Body().List[2]
 	require.Equal(t, ir.OpAssignment, assign.Op)
 
 	// the target's type is what reaches the nil on the right
@@ -697,8 +710,8 @@ func TestAnalyze_Nil_CallArgument(t *testing.T) {
 	require.Len(t, funcs, 2)
 	main := funcs[1]
 
-	require.Len(t, main.List, 1)
-	call := main.List[0].List[0]
+	require.Len(t, main.Body().List, 1)
+	call := main.Body().List[0].List[0]
 	require.Equal(t, ir.OpCall, call.Op)
 
 	// the parameter is what this position expects of the argument
@@ -713,8 +726,8 @@ func TestAnalyze_Nil_TupleElement(t *testing.T) {
 	require.Len(t, funcs, 1)
 	main := funcs[0]
 
-	require.Len(t, main.List, 2)
-	decl := main.List[0]
+	require.Len(t, main.Body().List, 2)
+	decl := main.Body().List[0]
 
 	// the annotation's first component is pushed down into the nil sitting at that position
 	require.Len(t, decl.List, 3)
@@ -761,8 +774,8 @@ func TestAnalyze_LetRec(t *testing.T) {
 	lambda := funcByLabel(t, funcs, "main.func0")
 
 	// the binding takes the lambda's type and is fixed as a constant
-	require.Len(t, main.List, 2)
-	decl := main.List[0]
+	require.Len(t, main.Body().List, 2)
+	decl := main.Body().List[0]
 	require.NotNil(t, decl.Sym)
 	assert.True(t, decl.Sym.Attribute(ir.SAConst))
 	assert.True(t, types.Equal(types.Function([]*types.Type{types.Int()}, types.Int()), decl.Sym.Type))
@@ -779,7 +792,7 @@ func TestAnalyze_LetRec_Annotated(t *testing.T) {
 	funcs := mustAnalyze(t, `fun main () -> int { let rec g fun (int) -> int = fun (n int) -> int { return g(n); }; return g(1); }`)
 
 	require.Len(t, funcs, 2)
-	decl := funcs[0].List[0]
+	decl := funcs[0].Body().List[0]
 	require.NotNil(t, decl.Sym)
 	assert.True(t, types.Equal(types.Function([]*types.Type{types.Int()}, types.Int()), decl.Sym.Type))
 }
@@ -873,8 +886,8 @@ func TestAnalyze_Mutated(t *testing.T) {
 			funcs := mustAnalyze(t, "fun main () -> int { "+tt.body+" }")
 
 			require.NotEmpty(t, funcs)
-			require.NotEmpty(t, funcs[0].List)
-			decl := funcs[0].List[0]
+			require.NotEmpty(t, funcs[0].Body().List)
+			decl := funcs[0].Body().List[0]
 			require.NotNil(t, decl.Sym)
 			assert.Equal(t, tt.mutated, decl.Sym.Observed(ir.SOMutated))
 		})
@@ -901,8 +914,8 @@ func TestAnalyze_UntypedArithmetic(t *testing.T) {
 	require.Len(t, funcs, 1)
 	main := funcs[0]
 
-	require.Len(t, main.List, 2)
-	decl := main.List[0]
+	require.Len(t, main.Body().List, 2)
+	decl := main.Body().List[0]
 	require.NotNil(t, decl.Sym)
 	assert.True(t, types.Equal(types.Int(), decl.Sym.Type))
 
@@ -918,7 +931,7 @@ func TestAnalyze_UntypedArithmetic_Tuple(t *testing.T) {
 	funcs := mustAnalyze(t, `fun main () -> int { let x = (1 + 2, 3); return x.0; }`)
 
 	require.Len(t, funcs, 1)
-	decl := funcs[0].List[0]
+	decl := funcs[0].Body().List[0]
 
 	require.NotNil(t, decl.Sym)
 	assert.True(t, types.Equal(types.Tuple([]*types.Type{types.Int(), types.Int()}), decl.Sym.Type))
@@ -950,8 +963,8 @@ func TestAnalyze_Bool(t *testing.T) {
 	require.Len(t, funcs, 1)
 	main := funcs[0]
 
-	require.Len(t, main.List, 3)
-	for _, decl := range main.List[:2] {
+	require.Len(t, main.Body().List, 3)
+	for _, decl := range main.Body().List[:2] {
 		require.NotNil(t, decl.Sym)
 		assert.True(t, types.Equal(types.Bool(), decl.Sym.Type))
 		assert.True(t, types.Equal(types.Bool(), decl.List[2].Type))
@@ -964,7 +977,7 @@ func TestAnalyze_Bool_Param(t *testing.T) {
 	require.Len(t, funcs, 2)
 	assert.True(t, types.Equal(types.Function([]*types.Type{types.Bool()}, types.Bool()), funcs[0].Type))
 
-	decl := funcs[1].List[0]
+	decl := funcs[1].Body().List[0]
 	require.NotNil(t, decl.Sym)
 	assert.True(t, types.Equal(types.Bool(), decl.Sym.Type))
 }
@@ -975,8 +988,8 @@ func TestAnalyze_Not(t *testing.T) {
 	require.Len(t, funcs, 1)
 	main := funcs[0]
 
-	require.Len(t, main.List, 3)
-	e := main.List[1].List[2]
+	require.Len(t, main.Body().List, 3)
+	e := main.Body().List[1].List[2]
 	require.Equal(t, ir.OpNot, e.Op)
 	assert.True(t, types.Equal(types.Bool(), e.Type))
 
@@ -1003,8 +1016,8 @@ func TestAnalyze_Logical(t *testing.T) {
 			require.Len(t, funcs, 1)
 			main := funcs[0]
 
-			require.Len(t, main.List, 3)
-			e := main.List[1].List[2]
+			require.Len(t, main.Body().List, 3)
+			e := main.Body().List[1].List[2]
 			require.Equal(t, tt.op, e.Op)
 			assert.True(t, types.Equal(types.Bool(), e.Type))
 
@@ -1060,8 +1073,8 @@ func TestAnalyze_Comparison(t *testing.T) {
 			require.Len(t, funcs, 1)
 			main := funcs[0]
 
-			require.Len(t, main.List, 3)
-			e := main.List[1].List[2]
+			require.Len(t, main.Body().List, 3)
+			e := main.Body().List[1].List[2]
 			require.Equal(t, tt.op, e.Op)
 			assert.True(t, types.Equal(types.Bool(), e.Type))
 
@@ -1092,8 +1105,8 @@ func TestAnalyze_Comparison_Equality(t *testing.T) {
 			require.Len(t, funcs, 1)
 			main := funcs[0]
 
-			require.Len(t, main.List, 3)
-			e := main.List[1].List[2]
+			require.Len(t, main.Body().List, 3)
+			e := main.Body().List[1].List[2]
 			assert.True(t, types.Equal(types.Bool(), e.Type))
 
 			// a nil operand takes its pointer type from the other side

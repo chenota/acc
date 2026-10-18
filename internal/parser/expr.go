@@ -157,6 +157,22 @@ func (p *parser) nud(left lexer.Token) (*ir.Node, error) {
 			return nil, diagnostic.NewError(left.Pos, "unable to parse function")
 		}
 		return f, nil
+	case lexer.KIfKw:
+		// return if keyword back to token stream
+		p.t.Retreat()
+		c, ok := p.parseConditional(lexer.KIfKw)
+		if !ok {
+			return nil, diagnostic.NewError(left.Pos, "unable to parse conditional")
+		}
+		return c, nil
+	case lexer.KLoopKw:
+		// return loop keyword back to token stream
+		p.t.Retreat()
+		l, ok := p.parseLoop()
+		if !ok {
+			return nil, diagnostic.NewError(left.Pos, "unable to parse loop")
+		}
+		return l, nil
 	case lexer.KNilKw:
 		return &ir.Node{
 			Op:  ir.OpNil,

@@ -32,7 +32,7 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 	b.bindCaptures(n)
 	b.bindParams(n.Signature.Params)
 
-	for _, stmt := range n.List {
+	for _, stmt := range n.Body().Stmts() {
 		if err := b.genStatement(stmt); err != nil {
 			return err
 		}

@@ -790,15 +790,23 @@ func (a *analyzer) analyzeFunctionBody(scope *ir.Table, f *ir.Node) error {
 		p.Sym = sym
 	}
 
+	body := f.Body()
+
+	// TODO: type a block's trailing value and use it as the function's result
+	if v := body.Value(); v != nil {
+		return diagnostic.NewError(v.Pos, "block values are not supported yet")
+	}
+
 	// analyze types of body statements
-	for _, s := range f.List {
+	stmts := body.Stmts()
+	for _, s := range stmts {
 		if err := a.analyzeStmt(funScope, s); err != nil {
 			return err
 		}
 	}
 
 	// TODO: point this at the body's closing brace instead of the function's start once nodes carry an end position
-	if !(len(f.List) > 0 && terminates(f.List[len(f.List)-1])) && !f.Type.Result().IsUnit() {
+	if !(len(stmts) > 0 && terminates(stmts[len(stmts)-1])) && !f.Type.Result().IsUnit() {
 		return diagnostic.NewError(f.Pos, "missing return at end of function")
 	}
 

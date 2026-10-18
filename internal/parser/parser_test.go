@@ -30,8 +30,8 @@ func TestParser_MainFunc(t *testing.T) {
 	require.NotNil(t, fun.Signature.Result)
 	assert.True(t, types.Equal(types.Int(), fun.Signature.Result.Type))
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 	assert.Equal(t, ir.OpReturn, ret.Op)
 
 	require.Len(t, ret.List, 1)
@@ -115,8 +115,8 @@ func TestParser_Precedence(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -140,8 +140,8 @@ func TestParser_Associativity(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -165,8 +165,8 @@ func TestParser_NegationPrecedence(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -194,8 +194,8 @@ func TestParser_PrecedenceWithParens(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -219,8 +219,8 @@ func TestParser_NestedParens(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -236,8 +236,8 @@ func TestParser_Ident(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -254,8 +254,8 @@ func TestParser_Declaration_WithType(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	decl := fun.Body().List[0]
 	assert.Equal(t, ir.OpDeclaration, decl.Op)
 
 	require.Len(t, decl.List, 3)
@@ -277,8 +277,8 @@ func TestParser_Declaration_WithoutType(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	decl := fun.Body().List[0]
 	assert.Equal(t, ir.OpDeclaration, decl.Op)
 
 	require.Len(t, decl.List, 3)
@@ -300,8 +300,8 @@ func TestParser_Assignment(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	decl := fun.Body().List[0]
 	assert.Equal(t, ir.OpAssignment, decl.Op)
 
 	require.Len(t, decl.List, 2)
@@ -323,8 +323,8 @@ func TestParser_Assignment_NonIdentTarget(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	assign := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	assign := fun.Body().List[0]
 	assert.Equal(t, ir.OpAssignment, assign.Op)
 
 	require.Len(t, assign.List, 2)
@@ -340,7 +340,7 @@ func TestParser_StmtList(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	assert.Len(t, fun.List, 3)
+	assert.Len(t, fun.Body().List, 3)
 }
 
 func TestParser_AssignmentOp(t *testing.T) {
@@ -352,8 +352,8 @@ func TestParser_AssignmentOp(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	decl := fun.Body().List[0]
 	assert.Equal(t, ir.OpPlusEq, decl.Op)
 
 	require.Len(t, decl.List, 2)
@@ -485,9 +485,80 @@ func TestParser_Call_AsStmt(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	call := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	call := fun.Body().List[0]
 	assert.Equal(t, ir.OpCall, call.Op)
+
+	// the semicolon makes it a statement rather than the body's value
+	assert.Nil(t, fun.Body().Value())
+}
+
+func TestParser_ExprStmt_NonCall(t *testing.T) {
+	// any expression parses as a statement; semantic analysis decides which ones are allowed
+	tokens := requireTokenize(t, `fun main () { x + 1; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.Body().Stmts(), 1)
+	assert.Equal(t, ir.OpPlus, fun.Body().Stmts()[0].Op)
+	assert.Nil(t, fun.Body().Value())
+}
+
+func TestParser_TrailingValue(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { let x = 1; x + 1 }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	body := funcs[0].Body()
+	require.NotNil(t, body)
+	assert.Equal(t, ir.OpBlock, body.Op)
+	assert.True(t, body.Attribute(ir.AHasValue))
+
+	require.Len(t, body.Stmts(), 1)
+	assert.Equal(t, ir.OpDeclaration, body.Stmts()[0].Op)
+
+	value := body.Value()
+	require.NotNil(t, value)
+	assert.Equal(t, ir.OpPlus, value.Op)
+}
+
+func TestParser_TrailingValue_Only(t *testing.T) {
+	tokens := requireTokenize(t, `fun main () -> int { 0 }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	body := funcs[0].Body()
+
+	assert.Empty(t, body.Stmts())
+	require.NotNil(t, body.Value())
+	assert.Equal(t, ir.OpInt, body.Value().Op)
+}
+
+func TestParser_TrailingValueErr(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"two trailing values", `fun main () -> int { 1 2 }`},
+		{"value before statement", `fun main () -> int { 1 return 2; }`},
+		{"call missing semicolon", `fun main () { f() g(); }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens := requireTokenize(t, tt.test)
+			_, err := ParseProgram(tokens)
+			assert.Error(t, err)
+		})
+	}
 }
 
 func TestParser_Call_NoArgs(t *testing.T) {
@@ -499,8 +570,8 @@ func TestParser_Call_NoArgs(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	call := ret.List[0]
@@ -521,8 +592,8 @@ func TestParser_Call_OneArg(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	call := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	call := fun.Body().List[0].List[0]
 	assert.Equal(t, ir.OpCall, call.Op)
 
 	require.Len(t, call.List, 2)
@@ -540,8 +611,8 @@ func TestParser_Call_MultipleArgs(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	call := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	call := fun.Body().List[0].List[0]
 	assert.Equal(t, ir.OpCall, call.Op)
 
 	require.Len(t, call.List, 4)
@@ -561,8 +632,8 @@ func TestParser_Call_Chained(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	call := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	call := fun.Body().List[0].List[0]
 	assert.Equal(t, ir.OpCall, call.Op)
 
 	require.Len(t, call.List, 1)
@@ -581,8 +652,8 @@ func TestParser_Call_NegationPrecedence(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	e := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	e := fun.Body().List[0].List[0]
 	assert.Equal(t, ir.OpNegate, e.Op)
 
 	require.Len(t, e.List, 1)
@@ -598,8 +669,8 @@ func TestParser_Call_BinaryPrecedence(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	e := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	e := fun.Body().List[0].List[0]
 	assert.Equal(t, ir.OpPlus, e.Op)
 
 	require.Len(t, e.List, 2)
@@ -636,8 +707,8 @@ func TestParser_Reference(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	e := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	e := fun.Body().List[0].List[0]
 	assert.Equal(t, ir.OpRef, e.Op)
 
 	require.Len(t, e.List, 1)
@@ -654,8 +725,8 @@ func TestParser_Dereference(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	e := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	e := fun.Body().List[0].List[0]
 	assert.Equal(t, ir.OpDeref, e.Op)
 
 	require.Len(t, e.List, 1)
@@ -673,8 +744,8 @@ func TestParser_Dereference_Nested(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	outer := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	outer := fun.Body().List[0].List[0]
 	assert.Equal(t, ir.OpDeref, outer.Op)
 
 	require.Len(t, outer.List, 1)
@@ -695,8 +766,8 @@ func TestParser_Dereference_MultiplyPrecedence(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	e := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	e := fun.Body().List[0].List[0]
 	assert.Equal(t, ir.OpTimes, e.Op)
 
 	require.Len(t, e.List, 2)
@@ -722,8 +793,8 @@ func TestParser_Reference_BinaryPrecedence(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	e := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	e := fun.Body().List[0].List[0]
 	assert.Equal(t, ir.OpPlus, e.Op)
 
 	require.Len(t, e.List, 2)
@@ -741,8 +812,8 @@ func TestParser_Dereference_CallPrecedence(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	e := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	e := fun.Body().List[0].List[0]
 	assert.Equal(t, ir.OpDeref, e.Op)
 
 	require.Len(t, e.List, 1)
@@ -758,8 +829,8 @@ func TestParser_PointerType(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	decl := fun.Body().List[0]
 	assert.Equal(t, ir.OpDeclaration, decl.Op)
 
 	require.Len(t, decl.List, 3)
@@ -778,8 +849,8 @@ func TestParser_PointerType_Nested(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	decl := fun.Body().List[0]
 
 	require.Len(t, decl.List, 3)
 	varType := decl.List[1]
@@ -856,12 +927,12 @@ func TestParser_FuncAsExpr(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 2)
-	innerFun := fun.List[0].List[2]
+	require.Len(t, fun.Body().List, 2)
+	innerFun := fun.Body().List[0].List[2]
 
 	require.NotNil(t, innerFun.Signature)
 	assert.Nil(t, innerFun.Signature.Name)
-	assert.Len(t, innerFun.List, 1)
+	assert.Len(t, innerFun.Body().List, 1)
 }
 
 func TestParser_FunType(t *testing.T) {
@@ -934,8 +1005,8 @@ func TestParser_Dot(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	dot := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	dot := fun.Body().List[0].List[0]
 
 	assert.Equal(t, ir.OpDot, dot.Op)
 	require.Len(t, dot.List, 2)
@@ -954,8 +1025,8 @@ func TestParser_DotInt(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	dot := fun.List[0].List[0]
+	require.Len(t, fun.Body().List, 1)
+	dot := fun.Body().List[0].List[0]
 
 	assert.Equal(t, ir.OpDot, dot.Op)
 	require.Len(t, dot.List, 2)
@@ -979,8 +1050,8 @@ func TestParser_Unit(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -998,8 +1069,8 @@ func TestParser_SingleElementTuple(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	tuple := ret.List[0]
@@ -1020,8 +1091,8 @@ func TestParser_Tuple(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	tuple := ret.List[0]
@@ -1069,8 +1140,8 @@ func TestParser_CallTrailingComma(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	call := ret.List[0]
@@ -1110,8 +1181,8 @@ func TestParser_FunctionTypeTrailingComma(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	decl := fun.Body().List[0]
 	assert.Equal(t, ir.OpDeclaration, decl.Op)
 
 	require.Len(t, decl.List, 3)
@@ -1129,8 +1200,8 @@ func TestParser_UnitType(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	decl := fun.Body().List[0]
 
 	require.Len(t, decl.List, 3)
 	varType := decl.List[1]
@@ -1147,8 +1218,8 @@ func TestParser_ParenthesizedType(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	decl := fun.Body().List[0]
 
 	require.Len(t, decl.List, 3)
 	varType := decl.List[1]
@@ -1166,8 +1237,8 @@ func TestParser_SingleElementTupleType(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	decl := fun.Body().List[0]
 
 	require.Len(t, decl.List, 3)
 	varType := decl.List[1]
@@ -1186,8 +1257,8 @@ func TestParser_TupleType(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	decl := fun.Body().List[0]
 
 	require.Len(t, decl.List, 3)
 	varType := decl.List[1]
@@ -1206,8 +1277,8 @@ func TestParser_NestedTupleType(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	decl := fun.Body().List[0]
 
 	require.Len(t, decl.List, 3)
 	varType := decl.List[1]
@@ -1226,8 +1297,8 @@ func TestParser_Nil(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	assert.Equal(t, ir.OpNil, ret.List[0].Op)
@@ -1242,8 +1313,8 @@ func TestParser_LetRec(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 2)
-	rec := fun.List[0]
+	require.Len(t, fun.Body().List, 2)
+	rec := fun.Body().List[0]
 
 	assert.True(t, rec.Attribute(ir.ARecursive))
 }
@@ -1268,8 +1339,8 @@ func TestParser_Bool(t *testing.T) {
 			require.Len(t, funcs, 1)
 			fun := funcs[0]
 
-			require.Len(t, fun.List, 1)
-			ret := fun.List[0]
+			require.Len(t, fun.Body().List, 1)
+			ret := fun.Body().List[0]
 
 			require.Len(t, ret.List, 1)
 			e := ret.List[0]
@@ -1288,8 +1359,8 @@ func TestParser_BoolType(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	decl := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	decl := fun.Body().List[0]
 
 	require.Len(t, decl.List, 3)
 	varType := decl.List[1]
@@ -1306,8 +1377,8 @@ func TestParser_Not(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -1327,8 +1398,8 @@ func TestParser_Not_Nested(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	outer := ret.List[0]
@@ -1352,8 +1423,8 @@ func TestParser_Not_ComparisonPrecedence(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -1374,8 +1445,8 @@ func TestParser_Not_CallPrecedence(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -1405,8 +1476,8 @@ func TestParser_LogicalOperators(t *testing.T) {
 			require.Len(t, funcs, 1)
 			fun := funcs[0]
 
-			require.Len(t, fun.List, 1)
-			ret := fun.List[0]
+			require.Len(t, fun.Body().List, 1)
+			ret := fun.Body().List[0]
 
 			require.Len(t, ret.List, 1)
 			e := ret.List[0]
@@ -1443,8 +1514,8 @@ func TestParser_ComparisonOperators(t *testing.T) {
 			require.Len(t, funcs, 1)
 			fun := funcs[0]
 
-			require.Len(t, fun.List, 1)
-			ret := fun.List[0]
+			require.Len(t, fun.Body().List, 1)
+			ret := fun.Body().List[0]
 
 			require.Len(t, ret.List, 1)
 			e := ret.List[0]
@@ -1467,8 +1538,8 @@ func TestParser_LogicalPrecedence(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -1489,8 +1560,8 @@ func TestParser_LogicalAssociativity(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -1511,8 +1582,8 @@ func TestParser_ComparisonPrecedence(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -1533,8 +1604,8 @@ func TestParser_Comparison_ArithmeticPrecedence(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -1555,8 +1626,8 @@ func TestParser_Comparison_AcrossLogical(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -1577,8 +1648,8 @@ func TestParser_Comparison_Parenthesized(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	ret := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
 
 	require.Len(t, ret.List, 1)
 	e := ret.List[0]
@@ -1617,14 +1688,16 @@ func TestParser_Loop(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	loop := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	loop := fun.Body().List[0]
 	assert.Equal(t, ir.OpLoop, loop.Op)
 
-	// the body's statements hang directly off the loop
-	require.Len(t, loop.List, 2)
-	assert.Equal(t, ir.OpCall, loop.List[0].Op)
-	assert.Equal(t, ir.OpCall, loop.List[1].Op)
+	// the body stays a block of its own
+	require.NotNil(t, loop.Body())
+	assert.Equal(t, ir.OpBlock, loop.Body().Op)
+	require.Len(t, loop.Body().List, 2)
+	assert.Equal(t, ir.OpCall, loop.Body().List[0].Op)
+	assert.Equal(t, ir.OpCall, loop.Body().List[1].Op)
 }
 
 func TestParser_Loop_Empty(t *testing.T) {
@@ -1636,10 +1709,10 @@ func TestParser_Loop_Empty(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	loop := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	loop := fun.Body().List[0]
 	assert.Equal(t, ir.OpLoop, loop.Op)
-	assert.Empty(t, loop.List)
+	assert.Empty(t, loop.Body().List)
 }
 
 func TestParser_Break(t *testing.T) {
@@ -1651,13 +1724,49 @@ func TestParser_Break(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	loop := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	loop := fun.Body().List[0]
 
-	require.Len(t, loop.List, 1)
-	brk := loop.List[0]
+	require.Len(t, loop.Body().List, 1)
+	brk := loop.Body().List[0]
 	assert.Equal(t, ir.OpBreak, brk.Op)
 	assert.Empty(t, brk.List)
+}
+
+func TestParser_Break_WithValue(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { loop { break 1; } }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.Body().List, 1)
+	loop := fun.Body().List[0]
+
+	require.Len(t, loop.Body().List, 1)
+	brk := loop.Body().List[0]
+	assert.Equal(t, ir.OpBreak, brk.Op)
+	require.Len(t, brk.List, 1)
+	assert.Equal(t, ir.OpInt, brk.List[0].Op)
+}
+
+func TestParser_Loop_AsExpr(t *testing.T) {
+	tokens := requireTokenize(t, `fun () -> int { return loop { break 1; }; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
+	assert.Equal(t, ir.OpReturn, ret.Op)
+
+	require.Len(t, ret.List, 1)
+	assert.Equal(t, ir.OpLoop, ret.List[0].Op)
 }
 
 func TestParser_Continue(t *testing.T) {
@@ -1669,11 +1778,11 @@ func TestParser_Continue(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	loop := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	loop := fun.Body().List[0]
 
-	require.Len(t, loop.List, 1)
-	cont := loop.List[0]
+	require.Len(t, loop.Body().List, 1)
+	cont := loop.Body().List[0]
 	assert.Equal(t, ir.OpContinue, cont.Op)
 	assert.Empty(t, cont.List)
 }
@@ -1687,7 +1796,8 @@ func TestParser_LoopErr(t *testing.T) {
 		{"loop unclosed block", `fun () { loop { f(); }`},
 		{"break missing semicolon", `fun () { loop { break } }`},
 		{"continue missing semicolon", `fun () { loop { continue } }`},
-		{"break with value", `fun () { loop { break 1; } }`},
+		{"break value missing semicolon", `fun () { loop { break 1 } }`},
+		{"loop statement missing semicolon", `fun () { loop { } f(); }`},
 	}
 
 	for _, tt := range tests {
@@ -1708,8 +1818,8 @@ func TestParser_Conditional(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	cond := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	cond := fun.Body().List[0]
 	assert.Equal(t, ir.OpConditional, cond.Op)
 
 	require.Len(t, cond.List, 3)
@@ -1734,8 +1844,8 @@ func TestParser_Conditional_Else(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	cond := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	cond := fun.Body().List[0]
 
 	require.Len(t, cond.List, 3)
 	alt := cond.List[2]
@@ -1755,8 +1865,8 @@ func TestParser_Conditional_Elif(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	cond := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	cond := fun.Body().List[0]
 
 	require.Len(t, cond.List, 3)
 	assert.Equal(t, "a", cond.List[0].Ident())
@@ -1780,8 +1890,8 @@ func TestParser_Conditional_ElifChain(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 1)
-	cond := fun.List[0]
+	require.Len(t, fun.Body().List, 1)
+	cond := fun.Body().List[0]
 
 	require.Len(t, cond.List, 3)
 	assert.Equal(t, "a", cond.List[0].Ident())
@@ -1804,8 +1914,8 @@ func TestParser_Conditional_ElifChain(t *testing.T) {
 }
 
 func TestParser_Conditional_FollowingStmt(t *testing.T) {
-	// a conditional has no terminator, so the next statement starts right after it
-	tokens := requireTokenize(t, `fun () { if a { } else { } f(); }`)
+	// a conditional statement ends in a semicolon like any other expression statement
+	tokens := requireTokenize(t, `fun () { if a { } else { }; f(); }`)
 
 	funcs, err := ParseProgram(tokens)
 	require.NoError(t, err)
@@ -1813,9 +1923,56 @@ func TestParser_Conditional_FollowingStmt(t *testing.T) {
 	require.Len(t, funcs, 1)
 	fun := funcs[0]
 
-	require.Len(t, fun.List, 2)
-	assert.Equal(t, ir.OpConditional, fun.List[0].Op)
-	assert.Equal(t, ir.OpCall, fun.List[1].Op)
+	require.Len(t, fun.Body().List, 2)
+	assert.Equal(t, ir.OpConditional, fun.Body().List[0].Op)
+	assert.Equal(t, ir.OpCall, fun.Body().List[1].Op)
+	assert.Nil(t, fun.Body().Value())
+}
+
+func TestParser_Conditional_AsExpr(t *testing.T) {
+	tokens := requireTokenize(t, `fun () { let x = if a { 1 } else { 2 }; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.Body().List, 1)
+	decl := fun.Body().List[0]
+	require.Len(t, decl.List, 3)
+
+	cond := decl.List[2]
+	assert.Equal(t, ir.OpConditional, cond.Op)
+	require.Len(t, cond.List, 3)
+
+	// each branch's trailing expression is that branch's value
+	for _, branch := range cond.List[1:] {
+		require.NotNil(t, branch)
+		require.NotNil(t, branch.Value())
+		assert.Equal(t, ir.OpInt, branch.Value().Op)
+	}
+}
+
+func TestParser_Conditional_AsOperand(t *testing.T) {
+	tokens := requireTokenize(t, `fun () -> int { return if a { 1 } else { 2 } + 1; }`)
+
+	funcs, err := ParseProgram(tokens)
+	require.NoError(t, err)
+
+	require.Len(t, funcs, 1)
+	fun := funcs[0]
+
+	require.Len(t, fun.Body().List, 1)
+	ret := fun.Body().List[0]
+
+	require.Len(t, ret.List, 1)
+	plus := ret.List[0]
+	assert.Equal(t, ir.OpPlus, plus.Op)
+
+	require.Len(t, plus.List, 2)
+	assert.Equal(t, ir.OpConditional, plus.List[0].Op)
+	assert.Equal(t, ir.OpInt, plus.List[1].Op)
 }
 
 func TestParser_ConditionalErr(t *testing.T) {
@@ -1833,6 +1990,7 @@ func TestParser_ConditionalErr(t *testing.T) {
 		{"double else", `fun () { if a { } else { } else { } }`},
 		{"else without if", `fun () { else { } }`},
 		{"elif without if", `fun () { elif a { } }`},
+		{"statement missing semicolon", `fun () { if a { } else { } f(); }`},
 	}
 
 	for _, tt := range tests {

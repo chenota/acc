@@ -73,6 +73,8 @@ type Attribute int
 
 const (
 	ARecursive Attribute = iota
+	// AHasValue marks a block with a trailing return value
+	AHasValue
 )
 
 type Node struct {
@@ -112,6 +114,30 @@ func (n *Node) Ident() string {
 
 	name, _ := n.Val.(string)
 	return name
+}
+
+// Body returns the block a function or loop runs
+func (n *Node) Body() *Node {
+	if n == nil || (n.Op != OpFunction && n.Op != OpLoop) || len(n.List) == 0 {
+		return nil
+	}
+	return n.List[0]
+}
+
+// Stmts returns a block's statements
+func (n *Node) Stmts() []*Node {
+	if n.Attribute(AHasValue) {
+		return n.List[:len(n.List)-1]
+	}
+	return n.List
+}
+
+// Value returns a block's trailing value
+func (n *Node) Value() *Node {
+	if !n.Attribute(AHasValue) {
+		return nil
+	}
+	return n.List[len(n.List)-1]
 }
 
 // Children yields every node hanging off n

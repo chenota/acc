@@ -70,6 +70,12 @@ func (p *parser) parseBlock() (*ir.Node, bool) {
 		}
 		stmts = append(stmts, s)
 	}
+
+	// a trailing expression with no semicolon is the block's value
+	if e, ok := p.parseExpr(); ok {
+		stmts = append(stmts, e)
+		n.SetAttribute(ir.AHasValue)
+	}
 	n.List = stmts
 
 	_, ok = p.t.Expect(lexer.KRBracket)
@@ -114,26 +120,6 @@ func (p *parser) parseStmt() (*ir.Node, bool) {
 		return n, true
 	}
 
-	if n, ok := p.parseExpr(); ok {
-		if n.Op != ir.OpCall {
-			p.markErr("only function calls are valid expression-statements")
-			p.t.Restore(loc)
-			return nil, false
-		}
-
-		if _, ok = p.t.Expect(lexer.KSemicolon); !ok {
-			p.markErr("expected semicolon")
-			p.t.Restore(loc)
-			return nil, false
-		}
-
-		return n, true
-	}
-
-	if n, ok := p.parseLoop(); ok {
-		return n, true
-	}
-
 	if n, ok := p.parseBreak(); ok {
 		return n, true
 	}
@@ -142,7 +128,13 @@ func (p *parser) parseStmt() (*ir.Node, bool) {
 		return n, true
 	}
 
-	if n, ok := p.parseConditional(lexer.KIfKw); ok {
+	if n, ok := p.parseExpr(); ok {
+		if _, ok = p.t.Expect(lexer.KSemicolon); !ok {
+			p.markErr("expected semicolon")
+			p.t.Restore(loc)
+			return nil, false
+		}
+
 		return n, true
 	}
 
@@ -203,9 +195,19 @@ func (p *parser) parseBreak() (*ir.Node, bool) {
 	loc := p.t.Mark()
 	pos := p.t.Pos()
 
+	n := &ir.Node{
+		Op:  ir.OpBreak,
+		Pos: pos,
+	}
+
 	if _, ok := p.t.Expect(lexer.KBreakKw); !ok {
 		p.t.Restore(loc)
 		return nil, false
+	}
+
+	// optional break-with value
+	if e, ok := p.parseExpr(); ok {
+		n.List = []*ir.Node{e}
 	}
 
 	if _, ok := p.t.Expect(lexer.KSemicolon); !ok {
@@ -214,10 +216,7 @@ func (p *parser) parseBreak() (*ir.Node, bool) {
 		return nil, false
 	}
 
-	return &ir.Node{
-		Op:  ir.OpBreak,
-		Pos: pos,
-	}, true
+	return n, true
 }
 
 func (p *parser) parseContinue() (*ir.Node, bool) {
@@ -254,14 +253,12 @@ func (p *parser) parseLoop() (*ir.Node, bool) {
 		return nil, false
 	}
 
-	bl, ok := p.parseBlock()
+	body, ok := p.parseBlock()
 	if !ok {
 		p.t.Restore(loc)
 		return nil, false
 	}
-
-	// flatten block's statement list into loop's statement list
-	n.List = bl.List
+	n.List = []*ir.Node{body}
 
 	return n, true
 }
@@ -514,9 +511,7 @@ func (p *parser) parseFunction() (*ir.Node, bool) {
 		p.t.Restore(loc)
 		return nil, false
 	}
-
-	// flatten the parsed block into the function body
-	n.List = body.List
+	n.List = []*ir.Node{body}
 
 	return n, true
 }
