@@ -116,6 +116,7 @@ func TestAnalyze_UnreachableAfterReturn_Err(t *testing.T) {
 		{"declaration after return", `fun main () -> int { return 1; let x = 2; }`},
 		{"assignment after return", `fun main () -> int { let x = 1; return x; x = 2; }`},
 		{"call after empty return", `fun f () { } fun g () { return; f(); } fun main () -> int { return 0; }`},
+		{"return after diverging conditional", `fun f (b bool) -> int { if b { return 1; } else { return 2; }; return 3; } fun main () -> int { return 0; }`},
 		{"trailing call after empty return", `fun f () { } fun g () { return; f() } fun main () -> int { return 0; }`},
 		{"inside lambda", `fun main () -> int { let f = fun () -> int { return 1; 2 }; return f(); }`},
 	}
@@ -1239,6 +1240,166 @@ func TestAnalyze_Bool_Err(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := analyzeSrc(t, tt.test)
 			assert.Error(t, err)
+		})
+	}
+}
+
+func TestAnalyze_Conditional(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let x = if true { 1 } else { 2 }; x }`)
+
+	cond := funcs[0].Body().Stmts()[0].List[2]
+	require.Equal(t, ir.OpConditional, cond.Op)
+	assert.True(t, types.Equal(types.Bool(), cond.List[0].Type))
+
+	// the untyped branches are materialized along with the conditional
+	assert.True(t, types.Equal(types.Int(), cond.Type))
+	assert.True(t, types.Equal(types.Int(), cond.List[1].Value().Type))
+	assert.True(t, types.Equal(types.Int(), cond.List[2].Value().Type))
+}
+
+func TestAnalyze_Conditional_SettlesBranches(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+		want *types.Type
+	}{
+		{"untyped against concrete sibling", `fun main () -> int { let y = 5; let x = if true { 1 } else { y }; 0 }`, types.Int()},
+		{"nil against pointer sibling", `fun main () -> int { let y = 5; let x = if true { nil } else { &y }; 0 }`, types.Pointer(types.Int())},
+		{"nil against annotation", `fun main () -> int { let y = 5; let x *int = if true { nil } else { &y }; 0 }`, types.Pointer(types.Int())},
+		{"tuple against annotation", `fun main () -> int { let x (int, int) = if true { (1, 2) } else { (3, 4) }; 0 }`, types.Tuple([]*types.Type{types.Int(), types.Int()})},
+		{"diverging branch", `fun main () -> int { let x = if true { 1 } else { return 0; }; 0 }`, types.Int()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			funcs := mustAnalyze(t, tt.test)
+
+			stmts := funcs[0].Body().Stmts()
+			cond := stmts[len(stmts)-1].List[2]
+			require.Equal(t, ir.OpConditional, cond.Op)
+			assert.True(t, types.Equal(tt.want, cond.Type), "got %v", cond.Type)
+		})
+	}
+}
+
+func TestAnalyze_Conditional_Elif(t *testing.T) {
+	funcs := mustAnalyze(t, `fun f (n int) -> int { if n < 0 { 0 } elif n == 0 { 1 } else { 2 } } fun main () -> int { f(1) }`)
+
+	cond := funcs[0].Body().Value()
+	require.Equal(t, ir.OpConditional, cond.Op)
+	assert.True(t, types.Equal(types.Int(), cond.Type))
+
+	// the elif chains on as the alternative
+	elif := cond.List[2]
+	require.Equal(t, ir.OpConditional, elif.Op)
+	assert.True(t, types.Equal(types.Int(), elif.Type))
+}
+
+func TestAnalyze_Conditional_Unit(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"no alternative as statement", `fun main () -> int { let x = 1; if x > 0 { x = 2; }; x }`},
+		{"no alternative as trailing value", `fun f (p *int) { if *p > 0 { *p = 0; } } fun main () -> int { 0 }`},
+		{"unit call as consequent value", `fun g () { } fun main () -> int { if true { g() }; 0 }`},
+		{"both branches unit", `fun g () { } fun main () -> int { if true { g(); } else { }; 0 }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mustAnalyze(t, tt.test)
+		})
+	}
+}
+
+func TestAnalyze_Conditional_Statement(t *testing.T) {
+	// a discarded value is still materialized
+	funcs := mustAnalyze(t, `fun main () -> int { if true { 1 } else { 2 }; 0 }`)
+
+	cond := funcs[0].Body().Stmts()[0]
+	require.Equal(t, ir.OpConditional, cond.Op)
+	assert.True(t, types.Equal(types.Int(), cond.Type))
+}
+
+func TestAnalyze_Conditional_Diverges(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"as trailing value", `fun f (b bool) -> int { if b { return 1; } else { return 2; } } fun main () -> int { 0 }`},
+		{"as last statement", `fun f (b bool) -> int { if b { return 1; } else { return 2; }; } fun main () -> int { 0 }`},
+		{"through elif", `fun f (n int) -> int { if n < 0 { return 0; } elif n == 0 { return 1; } else { return 2; }; } fun main () -> int { 0 }`},
+		{"nested in branch", `fun f (a bool, b bool) -> int { if a { if b { return 1; } else { return 2; } } else { 3 } } fun main () -> int { 0 }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mustAnalyze(t, tt.test)
+		})
+	}
+}
+
+func TestAnalyze_Conditional_Scope(t *testing.T) {
+	// a branch can shadow an outer variable without disturbing it
+	funcs := mustAnalyze(t, `fun main () -> int { let x = 1; if true { let x = false; }; x }`)
+
+	body := funcs[0].Body()
+	outer := body.Stmts()[0].Sym
+	inner := body.Stmts()[1].List[1].Stmts()[0].Sym
+	assert.NotSame(t, outer, inner)
+	assert.Same(t, outer, body.Value().Sym)
+}
+
+func TestAnalyze_Conditional_LambdaDeclaredOnce(t *testing.T) {
+	// materializing the untyped conditional must not analyze the branch's lambda a second time
+	funcs := mustAnalyze(t, `fun main () -> int { let x = if true { let g = fun () -> int { 1 }; 1 } else { 2 }; x }`)
+
+	require.Len(t, funcs, 2)
+	funcByLabel(t, funcs, "main.func0")
+}
+
+func TestAnalyze_Conditional_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"int condition", `fun main () -> int { if 1 { 1 } else { 2 } }`},
+		{"pointer condition", `fun main () -> int { let x = 1; if &x { 1 } else { 2 } }`},
+		{"mismatched branches", `fun main () -> int { let x = if true { 1 } else { true }; 0 }`},
+		{"value against unit branch", `fun main () -> int { let x = if true { 1 } else { }; 0 }`},
+		{"mismatched elif", `fun main () -> int { let x = if true { 1 } elif false { true } else { 2 }; 0 }`},
+		{"value without alternative", `fun main () -> int { if true { 1 }; 0 }`},
+		{"annotation mismatch", `fun main () -> int { let x bool = if true { 1 } else { 2 }; 0 }`},
+		{"nil in both branches", `fun main () -> int { let p = if true { nil } else { nil }; 0 }`},
+		{"wrong result type", `fun main () -> int { if true { true } else { false } }`},
+		{"branch local out of scope", `fun main () -> int { if true { let x = 1; }; x }`},
+		{"undeclared in condition", `fun main () -> int { if y { 1 } else { 2 } }`},
+		{"error inside branch", `fun main () -> int { if true { let x int = true; }; 0 }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestAnalyze_Conditional_MissingReturn(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"no alternative", `fun f (b bool) -> int { if b { return 1; }; } fun main () -> int { 0 }`},
+		{"one branch falls through", `fun f (b bool) -> int { let x = 1; if b { return 1; } else { x = 2; }; } fun main () -> int { 0 }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "missing return")
 		})
 	}
 }
