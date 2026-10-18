@@ -1,0 +1,8 @@
+fun pair () -> (int, int) {
+    (40, 2)
+}
+
+fun main () -> int {
+    let p = pair();
+    p.0 - p.1
+}

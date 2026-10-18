@@ -32,8 +32,16 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 	b.bindCaptures(n)
 	b.bindParams(n.Signature.Params)
 
-	for _, stmt := range n.Body().Stmts() {
+	body := n.Body()
+	for _, stmt := range body.Stmts() {
 		if err := b.genStatement(stmt); err != nil {
+			return err
+		}
+	}
+
+	// trailing value used as return value
+	if v := body.Value(); v != nil {
+		if err := b.genReturnValue(v); err != nil {
 			return err
 		}
 	}
@@ -169,19 +177,25 @@ func (b *builder) genAssignOp(n *ir.Node) error {
 }
 
 func (b *builder) genReturn(n *ir.Node) error {
-	b.currentBlock.Kind = BlockRet
-
 	if len(n.List) == 0 {
-		// no return value we're done
+		// no specified return value, we're done
+		b.currentBlock.Kind = BlockRet
 		return nil
 	}
 
-	vals, err := b.genArg(n.List[0])
+	return b.genReturnValue(n.List[0])
+}
+
+// genReturnValue sets the current block's return value
+func (b *builder) genReturnValue(e *ir.Node) error {
+	b.currentBlock.Kind = BlockRet
+
+	vals, err := b.genArg(e)
 	if err != nil {
 		return err
 	}
 
-	return b.genResults(n, vals)
+	return b.genResults(e, vals)
 }
 
 // genResults hands vals back to the caller, one result value per value returned.

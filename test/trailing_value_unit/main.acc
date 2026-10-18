@@ -1,0 +1,13 @@
+fun set (p *int) {
+    *p = 9;
+}
+
+fun forward (p *int) {
+    set(p)
+}
+
+fun main () -> int {
+    let x = 0;
+    forward(&x);
+    x
+}

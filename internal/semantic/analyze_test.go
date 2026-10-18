@@ -106,10 +106,55 @@ func TestAnalyze_NonCallExprStmt_Err(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestAnalyze_BlockValue_Unsupported(t *testing.T) {
-	_, err := analyzeSrc(t, `fun main () -> int { 0 }`)
+func TestAnalyze_TrailingValue(t *testing.T) {
+	// a trailing value stands in for the return, so there's no missing return error
+	funcs := mustAnalyze(t, `fun main () -> int { let x = 1; x + 1 }`)
 
-	assert.Error(t, err)
+	require.Len(t, funcs, 1)
+	body := funcs[0].Body()
+
+	value := body.Value()
+	require.NotNil(t, value)
+	assert.True(t, types.Equal(types.Int(), value.Type))
+
+	// the value resolves the local declared before it
+	require.Len(t, value.List, 2)
+	assert.Same(t, body.Stmts()[0].Sym, value.List[0].Sym)
+}
+
+func TestAnalyze_TrailingValue_Lambda(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let f = fun (y int) -> int { y * 2 }; return f(1); }`)
+
+	lambda := funcByLabel(t, funcs, "main.func0")
+	value := lambda.Body().Value()
+	require.NotNil(t, value)
+	assert.True(t, types.Equal(types.Int(), value.Type))
+}
+
+func TestAnalyze_TrailingValue_Unit(t *testing.T) {
+	// a unit function can hand back the result of a unit call
+	mustAnalyze(t, `fun f () { } fun g () { f() } fun main () -> int { g(); return 0; }`)
+}
+
+func TestAnalyze_TrailingValue_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"value in unit function", `fun f () { 1 } fun main () -> int { return 0; }`},
+		{"tuple for int", `fun main () -> int { (1, 2) }`},
+		{"int for tuple", `fun f () -> (int, int) { 1 } fun main () -> int { return 0; }`},
+		{"overflowing literal", `fun main () -> int { 2_147_483_648 }`},
+		{"undeclared variable", `fun main () -> int { x }`},
+		{"variable from another function", `fun f () -> int { let x = 1; return x; } fun main () -> int { x }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			assert.Error(t, err)
+		})
+	}
 }
 
 func TestAnalyze_DuplicateParam(t *testing.T) {

@@ -1,0 +1,8 @@
+fun adder (x int) -> fun (int) -> int {
+    fun (y int) -> int { x + y }
+}
+
+fun main () -> int {
+    let add10 = adder(10);
+    add10(3)
+}

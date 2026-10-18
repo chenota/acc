@@ -1,0 +1,7 @@
+fun sub (a int, b int) -> int {
+    a - b
+}
+
+fun main () -> int {
+    sub(20, 3)
+}

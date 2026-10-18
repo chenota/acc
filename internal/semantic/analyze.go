@@ -792,17 +792,17 @@ func (a *analyzer) analyzeFunctionBody(scope *ir.Table, f *ir.Node) error {
 
 	body := f.Body()
 
-	// TODO: type a block's trailing value and use it as the function's result
-	if v := body.Value(); v != nil {
-		return diagnostic.NewError(v.Pos, "block values are not supported yet")
-	}
-
 	// analyze types of body statements
 	stmts := body.Stmts()
 	for _, s := range stmts {
 		if err := a.analyzeStmt(funScope, s); err != nil {
 			return err
 		}
+	}
+
+	// a trailing value used as return value
+	if v := body.Value(); v != nil {
+		return a.checkResult(funScope, f, v)
 	}
 
 	// TODO: point this at the body's closing brace instead of the function's start once nodes carry an end position
@@ -851,24 +851,29 @@ func (a *analyzer) analyzeReturn(scope *ir.Table, r *ir.Node) error {
 	if currentFunc == nil {
 		return diagnostic.NewError(r.Pos, "return statement appears outside of a function definition")
 	}
-	expectedOut := currentFunc.Type.Result()
-
 	// determine type of sub-expression
 	if len(r.List) > 0 {
-		e := r.List[0]
+		return a.checkResult(scope, currentFunc, r.List[0])
+	}
 
-		// the signature's result type is what a return expression is checked against
-		if err := a.checkExpr(scope, e, expectedOut); err != nil {
-			return err
-		}
-		if !types.Equal(e.Type, expectedOut) {
-			return diagnostic.NewError(e.Pos, "return value type does not match type of function signature. expected %v, got %v", expectedOut, e.Type)
-		}
-	} else {
-		// returning nothing; expect function to return unit type
-		if !expectedOut.IsUnit() {
-			return diagnostic.NewError(r.Pos, "empty return for function that returns concrete value")
-		}
+	// returning nothing; expect function to return unit type
+	if !currentFunc.Type.Result().IsUnit() {
+		return diagnostic.NewError(r.Pos, "empty return for function that returns concrete value")
+	}
+
+	return nil
+}
+
+// checkResult types e against f's return type
+func (a *analyzer) checkResult(scope *ir.Table, f *ir.Node, e *ir.Node) error {
+	expectedOut := f.Type.Result()
+
+	if err := a.checkExpr(scope, e, expectedOut); err != nil {
+		return err
+	}
+
+	if !types.Equal(e.Type, expectedOut) {
+		return diagnostic.NewError(e.Pos, "return value type does not match type of function signature. expected %v, got %v", expectedOut, e.Type)
 	}
 
 	return nil
