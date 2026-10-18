@@ -1,0 +1,6 @@
+fun f (x int) -> int {
+    let x = x * 3;
+    x + 1
+}
+
+fun main () -> int { f(4) }

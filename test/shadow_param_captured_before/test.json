@@ -1,0 +1,5 @@
+{
+  "name": "Closure Keeps The Parameter It Captured Before A Shadow",
+  "tags": ["vs11"],
+  "status": 25
+}

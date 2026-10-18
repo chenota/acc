@@ -1,0 +1,10 @@
+fun main () -> int {
+    let x = 1;
+    let outer = fun () -> int {
+        let x = 10;
+        let inner = fun () -> int { x + 5 };
+        x = 20;
+        inner()
+    };
+    outer() + x
+}

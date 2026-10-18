@@ -1,0 +1,9 @@
+fun f (x int) -> int {
+    let bump = fun () { x += 1; };
+    bump();
+    let x = x * 10;
+    bump();
+    x
+}
+
+fun main () -> int { f(3) }

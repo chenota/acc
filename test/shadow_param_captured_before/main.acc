@@ -1,0 +1,7 @@
+fun f (x int) -> int {
+    let get = fun () -> int { x };
+    let x = 20;
+    get() + x
+}
+
+fun main () -> int { f(5) }

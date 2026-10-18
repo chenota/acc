@@ -1,0 +1,10 @@
+fun main () -> int {
+    let x = 4;
+    let f = fun (y int) -> int {
+        let x = 10;
+        x += y;
+        x
+    };
+    let g = fun (x int) -> int { x * 2 };
+    f(5) + g(30) + x
+}

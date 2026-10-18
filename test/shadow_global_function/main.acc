@@ -1,0 +1,9 @@
+fun g () -> int { 1 }
+
+fun h (g int) -> int { g * 2 }
+
+fun main () -> int {
+    let n = h(g() + 4);
+    let g = 30;
+    g + n
+}

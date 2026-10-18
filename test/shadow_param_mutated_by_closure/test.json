@@ -1,0 +1,5 @@
+{
+  "name": "Closure Mutates A Shadowed Parameter",
+  "tags": ["vs11"],
+  "status": 40
+}
