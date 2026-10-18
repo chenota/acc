@@ -106,6 +106,29 @@ func TestAnalyze_NonCallExprStmt_Err(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestAnalyze_UnreachableAfterReturn_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"return after return", `fun main () -> int { return 1; return 2; }`},
+		{"trailing value after return", `fun main () -> int { return 1; 2 }`},
+		{"declaration after return", `fun main () -> int { return 1; let x = 2; }`},
+		{"assignment after return", `fun main () -> int { let x = 1; return x; x = 2; }`},
+		{"call after empty return", `fun f () { } fun g () { return; f(); } fun main () -> int { return 0; }`},
+		{"trailing call after empty return", `fun f () { } fun g () { return; f() } fun main () -> int { return 0; }`},
+		{"inside lambda", `fun main () -> int { let f = fun () -> int { return 1; 2 }; return f(); }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "unreachable code after return")
+		})
+	}
+}
+
 func TestAnalyze_TrailingValue(t *testing.T) {
 	// a trailing value stands in for the return, so there's no missing return error
 	funcs := mustAnalyze(t, `fun main () -> int { let x = 1; x + 1 }`)

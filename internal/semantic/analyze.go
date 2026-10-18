@@ -794,9 +794,14 @@ func (a *analyzer) analyzeFunctionBody(scope *ir.Table, f *ir.Node) error {
 
 	// analyze types of body statements
 	stmts := body.Stmts()
-	for _, s := range stmts {
+	for i, s := range stmts {
 		if err := a.analyzeStmt(funScope, s); err != nil {
 			return err
+		}
+
+		// if this statement terminates and there's still more to go then error out
+		if terminates(s) && i < len(body.List)-1 {
+			return diagnostic.NewError(body.List[i+1].Pos, "unreachable code after return")
 		}
 	}
 

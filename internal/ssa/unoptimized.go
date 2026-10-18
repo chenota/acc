@@ -209,7 +209,6 @@ func (b *builder) genResults(n *ir.Node, vals []*Value) error {
 		results = append(results, res)
 	}
 
-	// a second return in the same block hands back its own values, not the earlier ones
 	b.currentBlock.Control = results
 
 	return nil
