@@ -13,7 +13,8 @@ func negSquash(f *Func) {
 		// replace the negate operand with the value it negates
 		value.Args[1] = negate.Args[0]
 
-		f.removeValue(negate)
+		// other users may still read the negate
+		f.removeIfDead(negate)
 	}
 }
 

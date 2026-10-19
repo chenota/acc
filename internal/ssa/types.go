@@ -453,6 +453,28 @@ func (f *Func) hasUses(v *Value) bool {
 	return false
 }
 
+// useCount is the number of operand and control slots that reference v
+func (f *Func) useCount(v *Value) int {
+	var n int
+	for _, block := range f.Blocks {
+		for _, value := range block.Values {
+			for _, arg := range value.Args {
+				if arg == v {
+					n += 1
+				}
+			}
+		}
+
+		for _, c := range block.Control {
+			if c == v {
+				n += 1
+			}
+		}
+	}
+
+	return n
+}
+
 // removeIfDead drops v from the instruction stream if nothing references it.
 func (f *Func) removeIfDead(v *Value) {
 	if f.hasUses(v) {

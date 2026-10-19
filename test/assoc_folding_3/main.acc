@@ -1,0 +1,8 @@
+fun f (x int, y int) -> int {
+    let a = x + 1 + y;
+    return a + 2 + a;
+}
+
+fun main () -> int {
+    return f(1, 2);
+}

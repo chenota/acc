@@ -4,7 +4,7 @@ import "slices"
 
 func associativeFold(f *Func) {
 	for _, root := range associativeRoots(f) {
-		chain := associativeChain(root)
+		chain := associativeChain(f, root)
 		consts, vars := leaves(chain)
 		if len(consts) < 2 {
 			continue
@@ -66,7 +66,7 @@ func associativeRoots(f *Func) []*Value {
 	roots := make([]*Value, 0)
 
 	for v := range f.OrderedValues() {
-		if v.IsAssociativeOp() && !isSubOperation(v) {
+		if v.IsAssociativeOp() && !isSubOperation(f, v) {
 			roots = append(roots, v)
 		}
 	}
@@ -74,14 +74,14 @@ func associativeRoots(f *Func) []*Value {
 	return roots
 }
 
-// isSubOperation checks if this operation lives under another operation of the same type
-func isSubOperation(v *Value) bool {
-	for _, val := range v.Block.Values {
-		if val == v || val.Op != v.Op {
-			continue
-		}
+// isSubOperation checks if this operation's only use is another operation of the same type
+func isSubOperation(f *Func, v *Value) bool {
+	if f.useCount(v) != 1 {
+		return false
+	}
 
-		if slices.Contains(val.Args, v) {
+	for val := range f.UnorderedValues() {
+		if val.Op == v.Op && slices.Contains(val.Args, v) {
 			return true
 		}
 	}
@@ -89,14 +89,15 @@ func isSubOperation(v *Value) bool {
 	return false
 }
 
-func associativeChain(root *Value) []*Value {
+func associativeChain(f *Func, root *Value) []*Value {
 	op := root.Op
 	chain := make([]*Value, 0)
 
 	for {
 		chain = append(chain, root)
 
-		if root.Op != op {
+		// a shared inner operation is a leaf
+		if root.Op != op || (len(chain) > 1 && f.useCount(root) > 1) {
 			break
 		}
 
@@ -140,8 +141,7 @@ func leaves(chain []*Value) ([]*Value, []*Value) {
 	return consts, vars
 }
 
-// foldConsts combines every constant leaf into one value, reporting false if the chain's type has no
-// rule to fold by. Without that report a type evaluateBop declines would fold to a valueless constant.
+// foldConsts combines every constant leaf into one value
 func foldConsts(vals []*Value, op Op) (any, bool) {
 	var acc any
 
