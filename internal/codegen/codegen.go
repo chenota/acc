@@ -119,7 +119,7 @@ func generateValue(v *ssa.Value) []Inst {
 
 	switch v.Op {
 	case ssa.OpLiteral:
-		insts = append(insts, generateConstInt(v))
+		insts = append(insts, generateLiteral(v))
 	case ssa.OpStaticLoad:
 		insts = append(insts, generateStaticLoad(v))
 	case ssa.OpStaticStore:
@@ -140,8 +140,22 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateBop(v, mulOp(v.Type.Size()))...)
 	case ssa.OpDivide:
 		insts = append(insts, generateDiv(v)...)
+	case ssa.OpEqual:
+		insts = append(insts, generateCompare(v, "sete")...)
+	case ssa.OpNotEqual:
+		insts = append(insts, generateCompare(v, "setne")...)
+	case ssa.OpLess:
+		insts = append(insts, generateCompare(v, "setl")...)
+	case ssa.OpLessEqual:
+		insts = append(insts, generateCompare(v, "setle")...)
+	case ssa.OpGreater:
+		insts = append(insts, generateCompare(v, "setg")...)
+	case ssa.OpGreaterEqual:
+		insts = append(insts, generateCompare(v, "setge")...)
 	case ssa.OpNegate:
 		insts = append(insts, generateNegate(v)...)
+	case ssa.OpNot:
+		insts = append(insts, generateNot(v)...)
 	case ssa.OpCopy:
 		insts = append(insts, generateCopy(v))
 	case ssa.OpSignExtend:
@@ -240,6 +254,38 @@ func generateNegate(v *ssa.Value) []Inst {
 	}
 }
 
+// generateNot flips the low bit
+func generateNot(v *ssa.Value) []Inst {
+	return []Inst{
+		{
+			Op:   movOp(v.Type.Size()),
+			Src1: toArg(v.Args[0]),
+			Dest: toArg(v),
+		},
+		{
+			Op:   xorOp(v.Type.Size()),
+			Src1: immediate(1),
+			Dest: toArg(v),
+		},
+	}
+}
+
+// generateCompare compares v's operands and writes the flag setOp reads
+func generateCompare(v *ssa.Value, setOp string) []Inst {
+	return []Inst{
+		{
+			// borrow the cmp op's width from operands
+			Op:   cmpOp(v.Args[0].Type.Size()),
+			Src1: toArg(v.Args[1]),
+			Dest: toArg(v.Args[0]),
+		},
+		{
+			Op:   setOp,
+			Dest: toArg(v),
+		},
+	}
+}
+
 func generateBop(v *ssa.Value, op string) []Inst {
 	return []Inst{
 		{
@@ -268,12 +314,23 @@ func generateSignExtend(v *ssa.Value) Inst {
 	return Inst{Op: cdqOp(v.Type.Size())}
 }
 
-func generateConstInt(v *ssa.Value) Inst {
+func generateLiteral(v *ssa.Value) Inst {
 	return Inst{
 		Op:   movOp(v.Type.Size()),
-		Src1: immediate(v.Value.(int32)),
+		Src1: literalImmediate(v),
 		Dest: toArg(v),
 	}
+}
+
+// literalImmediate is the immediate operand holding a literal's value
+func literalImmediate(v *ssa.Value) Arg {
+	if b, ok := v.Value.(bool); ok {
+		if b {
+			return immediate(1)
+		}
+		return immediate(0)
+	}
+	return immediate(v.Value.(int32))
 }
 
 func generateStaticLoad(v *ssa.Value) Inst {
@@ -386,6 +443,32 @@ func negOp(size int) string {
 		return "negl"
 	default:
 		return "negq"
+	}
+}
+
+func cmpOp(size int) string {
+	switch size {
+	case 1:
+		return "cmpb"
+	case 2:
+		return "cmpw"
+	case 4:
+		return "cmpl"
+	default:
+		return "cmpq"
+	}
+}
+
+func xorOp(size int) string {
+	switch size {
+	case 1:
+		return "xorb"
+	case 2:
+		return "xorw"
+	case 4:
+		return "xorl"
+	default:
+		return "xorq"
 	}
 }
 

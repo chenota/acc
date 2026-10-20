@@ -167,7 +167,7 @@ func (b *builder) genAssignOp(n *ir.Node) error {
 	}
 
 	// glue together with arithmetic bop
-	arithOp := b.targetFunc.appendValue(numericBopFrom(n), target.Type, b.currentBlock)
+	arithOp := b.targetFunc.appendValue(bopFrom(n), target.Type, b.currentBlock)
 	arithOp.Args = []*Value{loadOp, exprVal}
 
 	// write the result back where it came from
@@ -261,7 +261,9 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 	switch expr.Op {
 	case ir.OpInt:
 		return b.genInt(expr)
-	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv:
+	case ir.OpBool:
+		return b.genBool(expr)
+	case ir.OpPlus, ir.OpMinus, ir.OpTimes, ir.OpDiv, ir.OpEqual, ir.OpNotEqual, ir.OpLess, ir.OpLessEqual, ir.OpGreater, ir.OpGreaterEqual:
 		return b.genBop(expr)
 	case ir.OpIdent:
 		return b.genIdent(expr)
@@ -283,9 +285,37 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 		return b.genLoadFrom(place, expr.Type), nil
 	case ir.OpNil:
 		return b.genNil(expr)
+	case ir.OpNot:
+		return b.genNot(expr)
 	default:
 		return nil, diagnostic.NewError(expr.Pos, "unknown expression operation: %d", expr.Op)
 	}
+}
+
+func (b *builder) genNot(e *ir.Node) (*Value, error) {
+	// generate sub-expression
+	sub, err := b.genExpr(e.List[0])
+	if err != nil {
+		return nil, err
+	}
+
+	// generate not
+	notVal := b.targetFunc.appendValue(OpNot, e.Type, b.currentBlock)
+	notVal.Args = []*Value{sub}
+
+	return notVal, nil
+}
+
+func (b *builder) genBool(e *ir.Node) (*Value, error) {
+	v, ok := e.Val.(bool)
+	if !ok {
+		return nil, diagnostic.NewError(e.Pos, "unable to convert node value to boolean")
+	}
+
+	boolVal := b.targetFunc.appendValue(OpLiteral, types.Bool(), b.currentBlock)
+	boolVal.Value = v
+
+	return boolVal, nil
 }
 
 // closureEnvType is the layout of the environment lambda closes over
@@ -821,12 +851,12 @@ func (b *builder) genBop(expr *ir.Node) (*Value, error) {
 		return nil, err
 	}
 
-	v := b.targetFunc.appendValue(numericBopFrom(expr), expr.Type, b.currentBlock)
+	v := b.targetFunc.appendValue(bopFrom(expr), expr.Type, b.currentBlock)
 	v.Args = []*Value{leftVal, rightVal}
 	return v, nil
 }
 
-func numericBopFrom(n *ir.Node) Op {
+func bopFrom(n *ir.Node) Op {
 	switch n.Op {
 	case ir.OpPlus, ir.OpPlusEq:
 		return OpAdd
@@ -836,6 +866,18 @@ func numericBopFrom(n *ir.Node) Op {
 		return OpMultiply
 	case ir.OpDiv, ir.OpDivEq:
 		return OpDivide
+	case ir.OpEqual:
+		return OpEqual
+	case ir.OpNotEqual:
+		return OpNotEqual
+	case ir.OpLess:
+		return OpLess
+	case ir.OpLessEqual:
+		return OpLessEqual
+	case ir.OpGreater:
+		return OpGreater
+	case ir.OpGreaterEqual:
+		return OpGreaterEqual
 	default:
 		return OpUnknown
 	}

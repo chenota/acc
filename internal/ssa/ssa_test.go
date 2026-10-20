@@ -103,6 +103,133 @@ func TestGenSsa_FoldsToLiteral(t *testing.T) {
 	}
 }
 
+// TestGenSsa_BoolFoldsToLiteral covers comparisons and nots that collapse to a constant bool
+func TestGenSsa_BoolFoldsToLiteral(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want bool
+	}{
+		{
+			name: "literal",
+			src:  `fun f () -> bool { return true; }`,
+			want: true,
+		},
+		{
+			name: "less than",
+			src:  `fun f () -> bool { return 1 < 2; }`,
+			want: true,
+		},
+		{
+			name: "less equal on equal operands",
+			src:  `fun f () -> bool { return 2 <= 2; }`,
+			want: true,
+		},
+		{
+			name: "greater than",
+			src:  `fun f () -> bool { return 1 > 2; }`,
+			want: false,
+		},
+		{
+			name: "greater equal",
+			src:  `fun f () -> bool { return 1 >= 2; }`,
+			want: false,
+		},
+		{
+			name: "signed ordering",
+			src:  `fun f () -> bool { return -1 < 0; }`,
+			want: true,
+		},
+		{
+			name: "int equality",
+			src:  `fun f () -> bool { return 4 == 4; }`,
+			want: true,
+		},
+		{
+			name: "int inequality",
+			src:  `fun f () -> bool { return 4 != 4; }`,
+			want: false,
+		},
+		{
+			name: "bool equality",
+			src:  `fun f () -> bool { return true == false; }`,
+			want: false,
+		},
+		{
+			name: "bool inequality",
+			src:  `fun f () -> bool { return true != false; }`,
+			want: true,
+		},
+		{
+			name: "not",
+			src:  `fun f () -> bool { return !true; }`,
+			want: false,
+		},
+		{
+			// the add folds first, and the comparison then folds on the result
+			name: "operands fold before comparing",
+			src:  `fun f () -> bool { return (1 + 2) < 4; }`,
+			want: true,
+		},
+		{
+			name: "promoted variables fold",
+			src:  `fun f () -> bool { let x = 3; let y = 3; return x == y; }`,
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := requireFunc(t, requireBuildSSA(t, tt.src), "f")
+
+			ret := requireReturned(t, f.Entry)
+			assert.Equal(t, OpLiteral, ret.Op)
+			assert.Equal(t, types.Bool(), ret.Type)
+			assert.Equal(t, tt.want, ret.Value)
+		})
+	}
+}
+
+func TestGenSsa_Comparison_ProducesBoolFromOperands(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		op   Op
+	}{
+		{name: "equal", src: `fun f (a int, b int) -> bool { return a == b; }`, op: OpEqual},
+		{name: "not equal", src: `fun f (a int, b int) -> bool { return a != b; }`, op: OpNotEqual},
+		{name: "less", src: `fun f (a int, b int) -> bool { return a < b; }`, op: OpLess},
+		{name: "less equal", src: `fun f (a int, b int) -> bool { return a <= b; }`, op: OpLessEqual},
+		{name: "greater", src: `fun f (a int, b int) -> bool { return a > b; }`, op: OpGreater},
+		{name: "greater equal", src: `fun f (a int, b int) -> bool { return a >= b; }`, op: OpGreaterEqual},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := requireFunc(t, requireBuildSSA(t, tt.src), "f")
+
+			cmp := requireReturned(t, f.Entry)
+			assert.Equal(t, tt.op, cmp.Op)
+			assert.Equal(t, types.Bool(), cmp.Type)
+
+			// operands keep their order, since every comparison but equality is asymmetric
+			require.Len(t, cmp.Args, 2)
+			assert.Equal(t, 0, throughCopies(cmp.Args[0]).Value, "left operand is the first parameter")
+			assert.Equal(t, 1, throughCopies(cmp.Args[1]).Value, "right operand is the second parameter")
+		})
+	}
+}
+
+func TestGenSsa_Not_KeepsOperand(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `fun f (a bool) -> bool { return !a; }`), "f")
+
+	not := requireReturned(t, f.Entry)
+	assert.Equal(t, OpNot, not.Op)
+	assert.Equal(t, types.Bool(), not.Type)
+	require.Len(t, not.Args, 1)
+	assert.Equal(t, OpParam, throughCopies(not.Args[0]).Op)
+}
+
 func TestGenSsa_Variable(t *testing.T) {
 	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; return x; }`)
 

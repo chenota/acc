@@ -4,7 +4,7 @@ import "github.com/chenota/acc/internal/types"
 
 func quickFold(f *Func) {
 	for v := range f.OrderedValues() {
-		if !v.IsBinaryOp() {
+		if !v.IsBinaryOp() && !v.IsComparison() {
 			continue
 		}
 
@@ -15,7 +15,7 @@ func quickFold(f *Func) {
 			continue
 		}
 
-		foldedVal, ok := evaluateBop(v.Op, v.Type, left.Value, right.Value)
+		foldedVal, ok := evaluateBop(v.Op, left.Type, left.Value, right.Value)
 		if !ok {
 			continue
 		}
@@ -31,6 +31,7 @@ func quickFold(f *Func) {
 	}
 }
 
+// evaluateBop applies op to two constant operands of type t
 func evaluateBop(op Op, t *types.Type, left, right any) (any, bool) {
 	switch {
 	case types.Equal(t, types.Int()):
@@ -48,6 +49,28 @@ func evaluateBop(op Op, t *types.Type, left, right any) (any, bool) {
 			if rightVal != 0 {
 				return leftVal / rightVal, true
 			}
+		case OpEqual:
+			return leftVal == rightVal, true
+		case OpNotEqual:
+			return leftVal != rightVal, true
+		case OpLess:
+			return leftVal < rightVal, true
+		case OpLessEqual:
+			return leftVal <= rightVal, true
+		case OpGreater:
+			return leftVal > rightVal, true
+		case OpGreaterEqual:
+			return leftVal >= rightVal, true
+		}
+	case types.Equal(t, types.Bool()):
+		leftVal := left.(bool)
+		rightVal := right.(bool)
+
+		switch op {
+		case OpEqual:
+			return leftVal == rightVal, true
+		case OpNotEqual:
+			return leftVal != rightVal, true
 		}
 	}
 

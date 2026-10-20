@@ -23,7 +23,14 @@ const (
 	OpSubtract
 	OpMultiply
 	OpDivide
+	OpEqual
+	OpNotEqual
+	OpLess
+	OpLessEqual
+	OpGreater
+	OpGreaterEqual
 	OpNegate
+	OpNot
 	OpCopy
 	OpStaticCall  // direct call to the function in Value
 	OpSignExtend  // sign-extends the accumulator into the high register (cdq/cqo)
@@ -80,11 +87,20 @@ func (v *Value) CallArgs() []*Value {
 }
 
 func (v *Value) IsUnaryOp() bool {
-	return v.Op == OpNegate
+	return v.Op == OpNegate || v.Op == OpNot
 }
 
 func (v *Value) IsBinaryOp() bool {
 	return v.Op == OpAdd || v.Op == OpSubtract || v.Op == OpMultiply || v.Op == OpDivide
+}
+
+// IsComparison reports whether v compares its two operands into a bool
+func (v *Value) IsComparison() bool {
+	switch v.Op {
+	case OpEqual, OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual:
+		return true
+	}
+	return false
 }
 
 func (v *Value) IsConstant() bool {

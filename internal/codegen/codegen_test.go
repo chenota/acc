@@ -133,6 +133,84 @@ func TestCodegen_Nil_ZeroesFullWidth(t *testing.T) {
 	assert.Equal(t, KRegister, mov.Dest.Kind)
 }
 
+func TestCodegen_Comparison_ComparesAtOperandWidth(t *testing.T) {
+	tests := []struct {
+		name  string
+		src   string
+		cmpOp string
+		setOp string
+	}{
+		{name: "int", src: `fun f (a int, b int) -> bool { return a < b; }`, cmpOp: "cmpl", setOp: "setl"},
+		{name: "pointer", src: `fun f (p *int) -> bool { return p == nil; }`, cmpOp: "cmpq", setOp: "sete"},
+		{name: "bool", src: `fun f (a bool, b bool) -> bool { return a != b; }`, cmpOp: "cmpb", setOp: "setne"},
+		{name: "less equal", src: `fun f (a int, b int) -> bool { return a <= b; }`, cmpOp: "cmpl", setOp: "setle"},
+		{name: "greater", src: `fun f (a int, b int) -> bool { return a > b; }`, cmpOp: "cmpl", setOp: "setg"},
+		{name: "greater equal", src: `fun f (a int, b int) -> bool { return a >= b; }`, cmpOp: "cmpl", setOp: "setge"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			insts := requireGeneratesProgram(t, tt.src+` fun main () -> int { return 0; }`)
+
+			assertContainsSeq(t, insts, tt.cmpOp, tt.setOp)
+
+			// whatever the operands' width, the result is a single byte
+			set := requireOnlyOp(t, insts, tt.setOp)
+			assert.Equal(t, KRegister, set.Dest.Kind)
+			assert.Equal(t, 1, set.Dest.Value)
+		})
+	}
+}
+
+func TestCodegen_Comparison_LeftOperandIsDest(t *testing.T) {
+	insts := requireGeneratesProgram(t, `
+		fun f (a int, b int) -> bool { return a < b; }
+		fun main () -> int { return 0; }
+	`)
+
+	// AT&T cmp computes dest - src, so setl reads a < b only when a is the destination
+	cmp := requireOnlyOp(t, insts, "cmpl")
+	a := requireMovFrom(t, insts, register.RegDI)
+	b := requireMovFrom(t, insts, register.RegSI)
+	assert.Equal(t, a.Dest.Reg, cmp.Dest.Reg, "left operand is compared as the destination")
+	assert.Equal(t, b.Dest.Reg, cmp.Src1.Reg, "right operand is compared as the source")
+}
+
+func TestCodegen_BoolLiteral_MovesByteImmediate(t *testing.T) {
+	insts := requireGeneratesProgram(t, `
+		fun f () -> bool { return true; }
+		fun main () -> int { return 0; }
+	`)
+
+	mov := requireOnlyImmediateSrc(t, insts, "movb")
+	assert.Equal(t, int32(1), mov.Src1.Value)
+}
+
+func TestCodegen_Not_FlipsLowBit(t *testing.T) {
+	insts := requireGeneratesProgram(t, `
+		fun f (a bool) -> bool { return !a; }
+		fun main () -> int { return 0; }
+	`)
+
+	xor := requireOnlyOp(t, insts, "xorb")
+	assert.Equal(t, KImmediate, xor.Src1.Kind)
+	assert.Equal(t, int32(1), xor.Src1.Value)
+	assert.Equal(t, KRegister, xor.Dest.Kind)
+}
+
+// requireMovFrom returns the sole mov reading the given register.
+func requireMovFrom(t *testing.T, insts []Inst, reg register.Register) Inst {
+	t.Helper()
+	var found []Inst
+	for _, inst := range insts {
+		if strings.HasPrefix(inst.Op, "mov") && inst.Src1.Kind == KRegister && inst.Src1.Reg == reg {
+			found = append(found, inst)
+		}
+	}
+	require.Len(t, found, 1, "expected exactly one mov out of register %d", reg)
+	return found[0]
+}
+
 func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
 	t.Helper()
 

@@ -38,6 +38,13 @@ func evaluateUop(op Op, t *types.Type, sub any) (any, bool) {
 		case OpNegate:
 			return -val, true
 		}
+	case types.Equal(t, types.Bool()):
+		val := sub.(bool)
+
+		switch op {
+		case OpNot:
+			return !val, true
+		}
 	}
 
 	return nil, false
