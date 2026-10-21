@@ -134,7 +134,7 @@ func (n *Node) Stmts() []*Node {
 
 // Value returns a block's trailing value
 func (n *Node) Value() *Node {
-	if !n.Attribute(AHasValue) {
+	if n == nil || !n.Attribute(AHasValue) {
 		return nil
 	}
 	return n.List[len(n.List)-1]

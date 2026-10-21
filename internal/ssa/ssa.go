@@ -24,6 +24,11 @@ func BuildAndAllocate(program []*ir.Node) ([]*Func, error) {
 		}
 	}
 
+	// immediately prune unreachable blocks to prevent panics
+	for _, f := range m.Funcs {
+		pruneUnreachable(f)
+	}
+
 	// run memory/register optimizations on unoptimized function bodies
 	for _, f := range m.Funcs {
 		mem2reg(f)

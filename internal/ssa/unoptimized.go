@@ -141,6 +141,9 @@ func (b *builder) genStatement(stmt *ir.Node) error {
 		// ignore the call's return value
 		_, err := b.genCall(stmt)
 		return err
+	case ir.OpConditional:
+		// the value is discarded, but the branches still need somewhere to write it
+		return b.genConditional(addr{Slot: b.targetFunc.newSlot(nil, stmt.Type)}, stmt)
 	default:
 		return diagnostic.NewError(stmt.Pos, "unknown statement operation: %d", stmt.Op)
 	}
@@ -188,12 +191,12 @@ func (b *builder) genReturn(n *ir.Node) error {
 
 // genReturnValue sets the current block's return value
 func (b *builder) genReturnValue(e *ir.Node) error {
-	b.currentBlock.Kind = BlockRet
-
 	vals, err := b.genArg(e)
 	if err != nil {
 		return err
 	}
+
+	b.currentBlock.Kind = BlockRet
 
 	return b.genResults(e, vals)
 }
@@ -242,9 +245,9 @@ func (b *builder) genAssign(n *ir.Node) error {
 		return err
 	}
 
-	// build-tnen-copy tuples to get around self-assign issues
+	// build-then-copy tuples (and conditionals, whose branches may build tuples) to get around self-assign issues
 	rhs := n.List[1]
-	if rhs.Op == ir.OpTuple {
+	if rhs.Op == ir.OpTuple || rhs.Op == ir.OpConditional {
 		tmp := addr{Slot: b.targetFunc.newSlot(nil, rhs.Type)}
 		if err := b.genExprInto(tmp, rhs); err != nil {
 			return err
@@ -287,6 +290,13 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 		return b.genNil(expr)
 	case ir.OpNot:
 		return b.genNot(expr)
+	case ir.OpConditional:
+		// the branches write into a temporary that is read back after they merge
+		place, err := b.genPlace(expr)
+		if err != nil {
+			return nil, err
+		}
+		return b.genLoadFrom(place, expr.Type), nil
 	default:
 		return nil, diagnostic.NewError(expr.Pos, "unknown expression operation: %d", expr.Op)
 	}
@@ -475,6 +485,8 @@ func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
 			return err
 		}
 		b.implode(dest, expr.Type, vals)
+	case expr.Op == ir.OpConditional:
+		return b.genConditional(dest, expr)
 	case expr.Op == ir.OpFunction:
 		code := b.module.lookup(expr.Signature.Label)
 		if code == nil {
@@ -503,6 +515,87 @@ func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
 		}
 		b.genStoreTo(dest, v)
 	}
+
+	return nil
+}
+
+func (b *builder) genConditional(dest addr, expr *ir.Node) error {
+	if len(expr.List) != 3 {
+		return diagnostic.NewError(expr.Pos, "conditional without three arguments")
+	}
+
+	predicate := expr.List[0]
+	consequent := expr.List[1]
+	alternative := expr.List[2]
+
+	// generate condition
+	cond, err := b.genExpr(predicate)
+	if err != nil {
+		return err
+	}
+
+	// mark block as conditional controlled by condition
+	branchBlock := b.currentBlock
+	branchBlock.Kind = BlockIf
+	branchBlock.Control = []*Value{cond}
+
+	// block pointing shenanigans
+	consequentBlock := b.targetFunc.newBlock()
+	addEdge(branchBlock, consequentBlock)
+
+	alternativeBlock := b.targetFunc.newBlock()
+	addEdge(branchBlock, alternativeBlock)
+
+	mergeBlock := b.targetFunc.newBlock()
+
+	// generate consequent in new block
+	b.currentBlock = consequentBlock
+	for _, s := range consequent.Stmts() {
+		if err := b.genStatement(s); err != nil {
+			return err
+		}
+	}
+	if v := consequent.Value(); v != nil {
+		if err := b.genExprInto(dest, v); err != nil {
+			return err
+		}
+	}
+	if b.currentBlock.Kind != BlockRet {
+		addEdge(b.currentBlock, mergeBlock)
+		b.currentBlock.Kind = BlockPlain
+	}
+
+	// optionally generate alternative in new block
+	b.currentBlock = alternativeBlock
+	if alternative != nil {
+		switch alternative.Op {
+		case ir.OpConditional:
+			// elif
+			if err := b.genExprInto(dest, alternative); err != nil {
+				return err
+			}
+		case ir.OpBlock:
+			// else
+			for _, s := range alternative.Stmts() {
+				if err := b.genStatement(s); err != nil {
+					return err
+				}
+			}
+		default:
+			return diagnostic.NewError(alternative.Pos, "alternative node does not have required op")
+		}
+	}
+	if v := alternative.Value(); v != nil {
+		if err := b.genExprInto(dest, v); err != nil {
+			return err
+		}
+	}
+	if b.currentBlock.Kind != BlockRet {
+		addEdge(b.currentBlock, mergeBlock)
+		b.currentBlock.Kind = BlockPlain
+	}
+
+	b.currentBlock = mergeBlock
 
 	return nil
 }
@@ -881,4 +974,9 @@ func bopFrom(n *ir.Node) Op {
 	default:
 		return OpUnknown
 	}
+}
+
+func addEdge(from *Block, to *Block) {
+	from.Successors = append(from.Successors, to)
+	to.Predecessors = append(to.Predecessors, from)
 }

@@ -1420,3 +1420,41 @@ func TestSpill_RebuiltLiteralLeavesNoDeadOriginal(t *testing.T) {
 		assert.True(t, f.hasUses(v), "literal %v is defined but never read", v.Value)
 	}
 }
+
+// TestPruneUnreachable_EveryPathReturns covers conditionals that strand their merge block behind returns
+func TestPruneUnreachable_EveryPathReturns(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+	}{
+		{name: "as trailing value", src: `fun f (b bool) -> int { if b { return 1; } else { return 2; } }`},
+		{name: "as last statement", src: `fun f (b bool) -> int { if b { return 1; } else { return 2; }; }`},
+		{name: "through elif", src: `fun f (n int) -> int { if n < 0 { return 0; } elif n == 0 { return 1; } else { return 2; }; }`},
+		{
+			// the dead inner merge still jumps to the outer merge, so it would linger as a predecessor
+			name: "nested in branch",
+			src:  `fun f (a bool, b bool) -> int { if a { if b { return 1; } else { return 2; } } else { 3 } }`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := requireFunc(t, requireBuildSSA(t, tt.src+` fun main () -> int { return 0; }`), "f")
+
+			reachable := blockIds(slices.Collect(f.OrderedBlocks()))
+			assert.ElementsMatch(t, reachable, blockIds(f.Blocks), "every remaining block is reachable")
+
+			for _, b := range f.Blocks {
+				assert.Subset(t, reachable, blockIds(b.Predecessors), "block %d has an unreachable predecessor", b.Id)
+			}
+		})
+	}
+}
+
+func blockIds(blocks []*Block) []int {
+	ids := make([]int, len(blocks))
+	for i, b := range blocks {
+		ids[i] = b.Id
+	}
+	return ids
+}
