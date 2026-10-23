@@ -1,0 +1,13 @@
+fun classify (n int) -> int {
+    if n < 0 {
+        1
+    } elif n == 0 {
+        2
+    } else {
+        3
+    }
+}
+
+fun main () -> int {
+    classify(-5) * 100 + classify(0) * 10 + classify(7)
+}

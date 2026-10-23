@@ -1,0 +1,14 @@
+fun make (c bool) -> fun () -> int {
+    let n = 5;
+    if c {
+        fun () -> int { n * 2 }
+    } else {
+        fun () -> int { n * 3 }
+    }
+}
+
+fun main () -> int {
+    let a = make(true);
+    let b = make(false);
+    a() + b()
+}

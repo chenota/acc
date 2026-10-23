@@ -1,0 +1,8 @@
+fun deref_or_zero (p *int) -> int {
+    if p == nil { 0 } else { *p }
+}
+
+fun main () -> int {
+    let x = 42;
+    deref_or_zero(&x) + deref_or_zero(nil)
+}

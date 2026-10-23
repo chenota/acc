@@ -1,0 +1,9 @@
+fun f (c bool) -> int {
+    let n = 10;
+    let g = if c { fun () -> int { n + 1 } } else { fun () -> int { n + 2 } };
+    g()
+}
+
+fun main () -> int {
+    f(true) * 10 + f(false)
+}

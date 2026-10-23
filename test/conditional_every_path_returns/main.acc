@@ -1,0 +1,11 @@
+fun f (c bool) -> int {
+    if c {
+        return 7;
+    } else {
+        return 9;
+    }
+}
+
+fun main () -> int {
+    f(true) * 10 + f(false)
+}

@@ -1,0 +1,7 @@
+fun f (c bool) -> int {
+    1 + if c { 20 } else { 40 }
+}
+
+fun main () -> int {
+    f(true) + f(false)
+}

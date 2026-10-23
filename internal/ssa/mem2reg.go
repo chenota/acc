@@ -31,12 +31,25 @@ func mem2reg(f *Func) {
 func promotableSlots(f *Func) iter.Seq[*Slot] {
 	return func(yield func(*Slot) bool) {
 		pinned := make(map[*Slot]struct{})
+		home := make(map[*Slot]*Block)
 
 		for v := range f.UnorderedValues() {
+			s := v.Slot()
+			if s == nil {
+				continue
+			}
+
 			// anything other than a static load and store of a slot pins to memory
-			if s := v.Slot(); s != nil && v.Op != OpStaticLoad && v.Op != OpStaticStore {
+			if v.Op != OpStaticLoad && v.Op != OpStaticStore {
 				pinned[s] = struct{}{}
 			}
+
+			// slots used across more than one block must stay in memory for now
+			// TODO: promote these once mem2reg can handle phis
+			if b, ok := home[s]; ok && b != v.Block {
+				pinned[s] = struct{}{}
+			}
+			home[s] = v.Block
 		}
 
 		for _, s := range f.Slots {

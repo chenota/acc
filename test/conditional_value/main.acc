@@ -1,0 +1,7 @@
+fun pick (c bool) -> int {
+    if c { 1 } else { 2 }
+}
+
+fun main () -> int {
+    pick(true) * 10 + pick(false)
+}

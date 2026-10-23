@@ -1,0 +1,6 @@
+fun main () -> int {
+    let t = (1, 2);
+    let c = t.0 < t.1;
+    t = if c { (t.1, t.0) } else { t };
+    t.0 * 10 + t.1
+}

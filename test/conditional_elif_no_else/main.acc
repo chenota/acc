@@ -1,0 +1,13 @@
+fun f (n int) -> int {
+    let r = 0;
+    if n == 1 {
+        r = 10;
+    } elif n == 2 {
+        r = 20;
+    };
+    r
+}
+
+fun main () -> int {
+    f(1) + f(2) + f(3)
+}

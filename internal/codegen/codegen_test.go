@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -196,6 +197,76 @@ func TestCodegen_Not_FlipsLowBit(t *testing.T) {
 	assert.Equal(t, KImmediate, xor.Src1.Kind)
 	assert.Equal(t, int32(1), xor.Src1.Value)
 	assert.Equal(t, KRegister, xor.Dest.Kind)
+}
+
+func TestCodegen_Conditional_TestsConditionByte(t *testing.T) {
+	insts := requireGeneratesProgram(t, `
+		fun f (c bool) -> int { if c { 1 } else { 2 } }
+		fun main () -> int { return 0; }
+	`)
+
+	// a bool is a single byte, tested against itself to set the zero flag
+	test := requireOnlyOp(t, insts, "testb")
+	assert.Equal(t, KRegister, test.Dest.Kind)
+	assert.Equal(t, 1, test.Dest.Value)
+	assert.Equal(t, test.Src1, test.Dest)
+
+	i := slices.Index(insts, test)
+	require.Less(t, i+1, len(insts))
+	assert.Contains(t, []string{"je", "jne"}, insts[i+1].Op, "the test feeds a conditional jump")
+}
+
+func TestCodegen_Jumps_TargetLabelsDefinedOnce(t *testing.T) {
+	insts := requireGeneratesProgram(t, `
+		fun f (n int) -> int { if n < 0 { return 1; }; if n == 0 { 2 } elif n == 1 { 3 } else { 4 } }
+		fun g (c bool) -> int { if c { 4 } else { 5 } }
+		fun main () -> int { f(0) + g(true) }
+	`)
+
+	// block ids restart in every function, so this catches labels that aren't scoped to theirs
+	defined := make(map[string]int)
+	for _, inst := range insts {
+		if l, ok := strings.CutSuffix(inst.Op, ":"); ok {
+			defined[l] += 1
+		}
+	}
+	for l, n := range defined {
+		assert.Equal(t, 1, n, "label %s is defined more than once", l)
+	}
+
+	for i, inst := range insts {
+		if !strings.HasPrefix(inst.Op, "j") {
+			continue
+		}
+		target, ok := inst.Dest.Value.(string)
+		require.True(t, ok, "%s has no label to jump to", inst.Op)
+		assert.Contains(t, defined, target, "%s jumps to an undefined label", inst.Op)
+		if i+1 < len(insts) {
+			assert.NotEqual(t, target+":", insts[i+1].Op, "%s jumps to the very next instruction", inst.Op)
+		}
+	}
+}
+
+func TestCodegen_ReturnBlocks_ShareOneEpilogue(t *testing.T) {
+	insts := requireGeneratesProgram(t, `
+		fun f (c bool) -> int { if c { return 1; } else { return 2; } }
+		fun main () -> int { return 0; }
+	`)
+
+	var rets, jmps []Inst
+	for _, inst := range insts {
+		switch inst.Op {
+		case "ret":
+			rets = append(rets, inst)
+		case "jmp":
+			jmps = append(jmps, inst)
+		}
+	}
+
+	// one ret per function, which the return block laid out last falls into and the other jumps to
+	assert.Len(t, rets, 2)
+	require.Len(t, jmps, 1)
+	assert.Equal(t, localPrefix+"f.ret", jmps[0].Dest.Value)
 }
 
 // requireMovFrom returns the sole mov reading the given register.

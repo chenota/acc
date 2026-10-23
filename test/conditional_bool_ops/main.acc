@@ -1,0 +1,7 @@
+fun f (a bool, b bool) -> int {
+    if !a == b { 1 } else { 0 }
+}
+
+fun main () -> int {
+    f(true, false) * 10 + f(true, true)
+}

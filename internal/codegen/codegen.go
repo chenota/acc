@@ -2,6 +2,8 @@ package codegen
 
 import (
 	"errors"
+	"fmt"
+	"slices"
 
 	"github.com/chenota/acc/internal/iterutil"
 	"github.com/chenota/acc/internal/register"
@@ -77,9 +79,18 @@ func generateFunction(f *ssa.Func) []Inst {
 		})
 	}
 
-	for b := range f.OrderedBlocks() {
-		insts = append(insts, generateBlock(b)...)
+	blocks := slices.Collect(f.OrderedBlocks())
+	for i, b := range blocks {
+		// next is the block laid out right after b
+		var next *ssa.Block
+		if i+1 < len(blocks) {
+			next = blocks[i+1]
+		}
+		insts = append(insts, generateBlock(f, b, next)...)
 	}
+
+	// every return block ends up here
+	insts = append(insts, label(epilogueLabel(f)))
 
 	if stackAdjust > 0 {
 		insts = append(insts, Inst{
@@ -104,14 +115,50 @@ func generateFunction(f *ssa.Func) []Inst {
 	return insts
 }
 
-func generateBlock(b *ssa.Block) []Inst {
-	var insts []Inst
+func generateBlock(f *ssa.Func, b *ssa.Block, next *ssa.Block) []Inst {
+	insts := []Inst{label(blockLabel(f, b))}
 
 	for _, v := range b.Values {
 		insts = append(insts, generateValue(v)...)
 	}
 
-	return insts
+	return append(insts, generateTerminator(f, b, next)...)
+}
+
+// generateTerminator gives control to b's successors
+func generateTerminator(f *ssa.Func, b *ssa.Block, next *ssa.Block) []Inst {
+	switch b.Kind {
+	case ssa.BlockPlain:
+		return jumpUnlessNext(f, b.Successors[0], next)
+	case ssa.BlockIf:
+		cond := toArg(b.Control[0])
+		then, els := b.Successors[0], b.Successors[1]
+		insts := []Inst{{Op: "testb", Src1: cond, Dest: cond}}
+
+		// only branch away from whichever successor comes next
+		if then == next {
+			// if cond is zero (that's what je measures) then jump to else
+			return append(insts, Inst{Op: "je", Dest: text(blockLabel(f, els))})
+		}
+		// jump to then if cond is nonzero
+		insts = append(insts, Inst{Op: "jne", Dest: text(blockLabel(f, then))})
+		// otherwise, fall through and jump to else (unless it's directly next)
+		return append(insts, jumpUnlessNext(f, els, next)...)
+	case ssa.BlockRet:
+		// the last block falls straight into the epilogue
+		if next == nil {
+			return nil
+		}
+		return []Inst{{Op: "jmp", Dest: text(epilogueLabel(f))}}
+	}
+	return nil
+}
+
+func jumpUnlessNext(f *ssa.Func, target *ssa.Block, next *ssa.Block) []Inst {
+	if target == next {
+		return nil
+	}
+	return []Inst{{Op: "jmp", Dest: text(blockLabel(f, target))}}
 }
 
 func generateValue(v *ssa.Value) []Inst {
@@ -527,4 +574,13 @@ func symbol(name string) string {
 
 func funcLabel(f *ssa.Func) string {
 	return symbol(f.Name())
+}
+
+// blockLabel names a block, scoped to its function since block ids restart in each one
+func blockLabel(f *ssa.Func, b *ssa.Block) string {
+	return fmt.Sprintf("%s%s.%d", localPrefix, f.Name(), b.Id)
+}
+
+func epilogueLabel(f *ssa.Func) string {
+	return fmt.Sprintf("%s%s.ret", localPrefix, f.Name())
 }

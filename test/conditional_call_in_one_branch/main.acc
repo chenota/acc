@@ -1,0 +1,9 @@
+fun id (x int) -> int { x }
+
+fun f (c bool, x int) -> int {
+    x * 3 + if c { id(x) } else { 7 }
+}
+
+fun main () -> int {
+    f(true, 5) * 10 + f(false, 1)
+}

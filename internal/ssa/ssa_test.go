@@ -1451,6 +1451,48 @@ func TestPruneUnreachable_EveryPathReturns(t *testing.T) {
 	}
 }
 
+func TestGenSsa_Conditional_BuildsDiamond(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `fun f (c bool) -> int { if c { 1 } else { 2 } } fun main () -> int { 0 }`), "f")
+
+	branch := f.Entry
+	require.Equal(t, BlockIf, branch.Kind)
+	require.Len(t, branch.Control, 1)
+	assert.Equal(t, types.Bool(), branch.Control[0].Type)
+	require.Len(t, branch.Successors, 2)
+
+	// both sides fall into the same merge block, which returns
+	then, els := branch.Successors[0], branch.Successors[1]
+	for _, side := range []*Block{then, els} {
+		assert.Equal(t, BlockPlain, side.Kind)
+		assert.Equal(t, []int{branch.Id}, blockIds(side.Predecessors))
+		require.Len(t, side.Successors, 1)
+	}
+
+	merge := then.Successors[0]
+	assert.Same(t, merge, els.Successors[0])
+	assert.Equal(t, BlockRet, merge.Kind)
+	assert.ElementsMatch(t, []int{then.Id, els.Id}, blockIds(merge.Predecessors))
+}
+
+func TestMem2Reg_SlotSharedBetweenBlocksStaysInMemory(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `fun f (c bool) -> int { if c { 1 } else { 2 } } fun main () -> int { 0 }`), "f")
+
+	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
+	load := requireReturned(t, then.Successors[0])
+	require.Equal(t, OpStaticLoad, load.Op, "the merge block reads the value back out of the slot")
+
+	// the first successor is the one taken when the condition holds
+	for _, tt := range []struct {
+		side *Block
+		want int32
+	}{{then, 1}, {els, 2}} {
+		stores := findValues(tt.side.Values, OpStaticStore)
+		require.Len(t, stores, 1)
+		assert.Same(t, load.Slot(), stores[0].Slot())
+		assert.Equal(t, tt.want, stores[0].Args[0].Value)
+	}
+}
+
 func blockIds(blocks []*Block) []int {
 	ids := make([]int, len(blocks))
 	for i, b := range blocks {

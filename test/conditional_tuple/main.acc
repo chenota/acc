@@ -1,0 +1,9 @@
+fun f (c bool) -> (int, int) {
+    if c { (1, 2) } else { (3, 4) }
+}
+
+fun main () -> int {
+    let a = f(true);
+    let b = f(false);
+    a.0 * 100 + b.1 * 10 + a.1
+}

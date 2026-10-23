@@ -1,0 +1,10 @@
+fun f (x int) -> int {
+    if x < 2 {
+        x = 5;
+    };
+    x
+}
+
+fun main () -> int {
+    f(1) * 10 + f(3)
+}
