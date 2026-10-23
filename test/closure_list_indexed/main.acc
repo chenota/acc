@@ -1,0 +1,14 @@
+fun empty () -> fun (int) -> int {
+    fun (i int) -> int { 0 }
+}
+
+fun cons (x int, xs fun (int) -> int) -> fun (int) -> int {
+    fun (i int) -> int {
+        if i == 0 { x } else { xs(i - 1) }
+    }
+}
+
+fun main () -> int {
+    let xs = cons(1, cons(2, cons(3, empty())));
+    xs(0) * 100 + xs(1) * 10 + xs(2)
+}

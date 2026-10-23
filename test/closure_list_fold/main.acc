@@ -1,0 +1,15 @@
+fun empty () -> fun (fun (int, int) -> int, int) -> int {
+    fun (f fun (int, int) -> int, z int) -> int { z }
+}
+
+fun cons (x int, xs fun (fun (int, int) -> int, int) -> int) -> fun (fun (int, int) -> int, int) -> int {
+    fun (f fun (int, int) -> int, z int) -> int { f(x, xs(f, z)) }
+}
+
+fun main () -> int {
+    let xs = cons(1, cons(2, cons(3, cons(4, empty()))));
+    let total = xs(fun (x int, acc int) -> int { x + acc }, 0);
+    let len = xs(fun (x int, acc int) -> int { acc + 1 }, 0);
+    let most = xs(fun (x int, acc int) -> int { if x > acc { x } else { acc } }, 0);
+    total * 10 + len + most
+}
