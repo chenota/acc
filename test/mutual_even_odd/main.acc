@@ -1,0 +1,15 @@
+fun is_even (n int) -> bool {
+    if n == 0 { true } else { is_odd(n - 1) }
+}
+
+fun is_odd (n int) -> bool {
+    if n == 0 { false } else { is_even(n - 1) }
+}
+
+fun to_int (b bool) -> int {
+    if b { 1 } else { 0 }
+}
+
+fun main () -> int {
+    to_int(is_even(10)) * 100 + to_int(is_odd(7)) * 10 + to_int(is_even(3))
+}

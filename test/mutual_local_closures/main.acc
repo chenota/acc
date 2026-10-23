@@ -1,0 +1,13 @@
+fun main () -> int {
+    let odd = fun (n int) -> bool { false };
+    let even = fun (n int) -> bool {
+        if n == 0 { true } else { odd(n - 1) }
+    };
+    odd = fun (n int) -> bool {
+        if n == 0 { false } else { even(n - 1) }
+    };
+
+    let a = if even(10) { 1 } else { 0 };
+    let b = if odd(7) { 1 } else { 0 };
+    a * 10 + b
+}

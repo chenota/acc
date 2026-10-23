@@ -1,0 +1,23 @@
+fun make () -> (fun (int) -> bool, fun (int) -> bool) {
+    let odd = fun (n int) -> bool { false };
+    let even = fun (n int) -> bool { if n == 0 { true } else { odd(n - 1) } };
+    odd = fun (n int) -> bool { if n == 0 { false } else { even(n - 1) } };
+    (even, odd)
+}
+
+fun clobber (a int, b int, c int) -> int {
+    let p = (a, b, c, a, b, c, a, b, c, a, b, c);
+    let q = (p, p);
+    q.0.0 + q.1.11
+}
+
+fun main () -> int {
+    let p = make();
+    clobber(1, 2, 3);
+    let e = p.0;
+    let o = p.1;
+    let a = if e(10) { 1 } else { 0 };
+    let b = if o(7) { 1 } else { 0 };
+    let c = if o(4) { 1 } else { 0 };
+    a * 100 + b * 10 + c
+}

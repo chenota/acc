@@ -1,0 +1,15 @@
+fun a (n int) -> int {
+    if n == 0 { 1 } else { b(n - 1) }
+}
+
+fun b (n int) -> int {
+    if n == 0 { 2 } else { c(n - 1) }
+}
+
+fun c (n int) -> int {
+    if n == 0 { 3 } else { a(n - 1) }
+}
+
+fun main () -> int {
+    a(0) * 100 + a(4) * 10 + a(8)
+}

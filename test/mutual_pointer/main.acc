@@ -1,0 +1,19 @@
+fun ping (p *int, n int) {
+    if n > 0 {
+        *p += 1;
+        pong(p, n - 1);
+    };
+}
+
+fun pong (p *int, n int) {
+    if n > 0 {
+        *p += 2;
+        ping(p, n - 1);
+    };
+}
+
+fun main () -> int {
+    let x = 0;
+    ping(&x, 5);
+    x
+}

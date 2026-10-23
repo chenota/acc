@@ -1,0 +1,11 @@
+fun make (step int) -> fun (int) -> int {
+    let rec sum = fun (n int) -> int {
+        if n <= 0 { 0 } else { n * step + sum(n - 1) }
+    };
+    sum
+}
+
+fun main () -> int {
+    let s = make(2);
+    s(5)
+}

@@ -1,0 +1,9 @@
+fun main () -> int {
+    let calls = 0;
+    let rec fib = fun (n int) -> int {
+        calls += 1;
+        if n < 2 { n } else { fib(n - 1) + fib(n - 2) }
+    };
+    let r = fib(6);
+    r * 10 + calls
+}

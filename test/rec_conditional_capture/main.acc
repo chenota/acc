@@ -1,0 +1,7 @@
+fun main () -> int {
+    let base = 3;
+    let rec count = fun (n int) -> int {
+        if n == 0 { base } else { 1 + count(n - 1) }
+    };
+    count(4)
+}

@@ -1,0 +1,8 @@
+fun apply (f fun (int) -> int, n int) -> int {
+    if n <= 0 { 0 } else { f(n - 1) + 1 }
+}
+
+fun main () -> int {
+    let rec down = fun (n int) -> int { apply(down, n) };
+    down(9)
+}
