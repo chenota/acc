@@ -1,0 +1,12 @@
+fun f (n int) -> int {
+    if n < 0 { return 1; } else { n * 2 }
+}
+
+fun g (n int) -> int {
+    let x = if n == 0 { return 2; } elif n > 0 { 3 } else { 4 };
+    x
+}
+
+fun main () -> int {
+    f(-5) * 100 + f(4) * 10 + g(0) + g(1) + g(-1)
+}

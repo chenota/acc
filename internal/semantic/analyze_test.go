@@ -1268,6 +1268,9 @@ func TestAnalyze_Conditional_SettlesBranches(t *testing.T) {
 		{"nil against annotation", `fun main () -> int { let y = 5; let x *int = if true { nil } else { &y }; 0 }`, types.Pointer(types.Int())},
 		{"tuple against annotation", `fun main () -> int { let x (int, int) = if true { (1, 2) } else { (3, 4) }; 0 }`, types.Tuple([]*types.Type{types.Int(), types.Int()})},
 		{"diverging branch", `fun main () -> int { let x = if true { 1 } else { return 0; }; 0 }`, types.Int()},
+		{"diverging consequent", `fun main () -> int { let x = if true { return 0; } else { 1 }; 0 }`, types.Int()},
+		{"diverging consequent against pointer", `fun main () -> int { let y = 5; let x = if true { return 0; } else { &y }; 0 }`, types.Pointer(types.Int())},
+		{"diverging elif consequent", `fun main () -> int { let x = if true { 1 } elif false { return 0; } else { 2 }; 0 }`, types.Int()},
 	}
 
 	for _, tt := range tests {
@@ -1280,6 +1283,17 @@ func TestAnalyze_Conditional_SettlesBranches(t *testing.T) {
 			assert.True(t, types.Equal(tt.want, cond.Type), "got %v", cond.Type)
 		})
 	}
+}
+
+func TestAnalyze_Conditional_DivergingConsequentAsTrailingValue(t *testing.T) {
+	funcs := mustAnalyze(t, `fun f (n int) -> int { if n < 0 { return 1; } else { 3 } } fun main () -> int { f(1) }`)
+
+	cond := funcs[0].Body().Value()
+	require.Equal(t, ir.OpConditional, cond.Op)
+	assert.True(t, types.Equal(types.Int(), cond.Type), "got %v", cond.Type)
+
+	// the live branch's untyped value settles along with the conditional
+	assert.True(t, types.Equal(types.Int(), cond.List[2].Value().Type), "got %v", cond.List[2].Value().Type)
 }
 
 func TestAnalyze_Conditional_Elif(t *testing.T) {

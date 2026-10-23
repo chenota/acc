@@ -354,7 +354,8 @@ func (a *analyzer) settleConditional(scope *ir.Table, n *ir.Node, want *types.Ty
 		return diagnostic.NewError(n.Pos, "conditional branches with mismatched types: %v and %v", branchType(consequent), branchType(alternative))
 	}
 
-	n.Type = branchType(consequent)
+	// pull the type from one of the live branches since they actually give a value back
+	n.Type = branchType(live[0])
 
 	return nil
 }
