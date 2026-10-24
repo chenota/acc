@@ -1493,6 +1493,35 @@ func TestMem2Reg_SlotSharedBetweenBlocksStaysInMemory(t *testing.T) {
 	}
 }
 
+// TestSpill_ValueReadAcrossABranchKeepsItsRegister covers a value read before a branch and read again once it merges
+func TestSpill_ValueReadAcrossABranchKeepsItsRegister(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+	}{
+		{name: "both arms merge", src: `fun f (c bool, x int) -> int { (x - 1) + (x - if c { 1 } else { 2 }) }`},
+		{
+			// only the arm that reaches the merge decides whether x is still needed
+			name: "one arm returns",
+			src:  `fun f (c bool, x int) -> int { (x - 1) + (x - if c { return 0; } else { 2 }) }`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := requireFunc(t, requireBuildSSA(t, tt.src+` fun main () -> int { 0 }`), "f")
+
+			subs := findValues(slices.Collect(f.OrderedValues()), OpSubtract)
+			require.Len(t, subs, 2)
+			require.Same(t, f.Entry, subs[0].Block, "x - 1 is worked out before the branch")
+			require.NotSame(t, f.Entry, subs[1].Block, "the other subtract has to wait for the branch")
+
+			// x is still needed past the branch, so its register can't be handed back after the first read
+			assert.Same(t, subs[0].Args[0], subs[1].Args[0], "x should be read straight out of its register, not reloaded")
+		})
+	}
+}
+
 func blockIds(blocks []*Block) []int {
 	ids := make([]int, len(blocks))
 	for i, b := range blocks {
