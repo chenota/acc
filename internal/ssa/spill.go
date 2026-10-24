@@ -14,6 +14,9 @@ func spill(f *Func) {
 	// TODO: switch blockers to block-relative positions once regalloc builds per-block ranges too
 	tick := 0
 	for b := range f.OrderedBlocks() {
+		// start from what's in registers
+		s.holders = s.enter(b)
+
 		// evict and reload insert into b.Values, so walk and scan a copy taken before they do
 		s.vals = slices.Clone(b.Values)
 		for p, v := range s.vals {
@@ -49,6 +52,7 @@ func spill(f *Func) {
 			s.take(v, avail)
 		}
 
+		s.exits[b] = s.holders
 		tick += len(s.vals)
 	}
 
@@ -66,9 +70,10 @@ type spiller struct {
 	avail    map[*Value]register.Mask // the registers regalloc could house each value in
 
 	// what the walk has decided so far
-	holders map[register.Register]*Value // the value sitting in each occupied register
-	slots   map[*Value]*Slot             // where each evicted value was stored
-	dropped []*Value                     // rematerializable values evicted without a spill slot
+	holders map[register.Register]*Value            // the value sitting in each occupied register
+	exits   map[*Block]map[register.Register]*Value // what each block leaves in the register file
+	slots   map[*Value]*Slot                        // where each evicted value was stored
+	dropped []*Value                                // rematerializable values evicted without a spill slot
 
 	// the block being walked, as it was before spilling inserted anything
 	vals []*Value
@@ -76,11 +81,11 @@ type spiller struct {
 
 func newSpiller(f *Func, live liveness) *spiller {
 	s := &spiller{
-		f:       f,
-		live:    live,
-		avail:   make(map[*Value]register.Mask),
-		holders: make(map[register.Register]*Value),
-		slots:   make(map[*Value]*Slot),
+		f:     f,
+		live:  live,
+		avail: make(map[*Value]register.Mask),
+		exits: make(map[*Block]map[register.Register]*Value),
+		slots: make(map[*Value]*Slot),
 	}
 
 	intervals := computeLiveIntervals(f)
@@ -103,7 +108,34 @@ func newSpiller(f *Func, live liveness) *spiller {
 	return s
 }
 
-// spillable reports whether v is spill's to place: it needs a register, and the abi hasn't already given it a home.
+// enter is values that b's predecessors left in registers
+// TODO: loops need some special handling since the header is walked before the predecessor
+func (s *spiller) enter(b *Block) map[register.Register]*Value {
+	var exits []map[register.Register]*Value
+	for _, p := range b.Predecessors {
+		if exit, ok := s.exits[p]; ok {
+			exits = append(exits, exit)
+		}
+	}
+
+	regs := make(map[register.Register]*Value)
+	if len(exits) == 0 {
+		return regs
+	}
+
+	for r, v := range exits[0] {
+		// only capture values that are needed at the start of the block
+		_, needed := s.live[b].in[v]
+		// only capture a value if all b's predecesors put that value in the same register
+		everywhere := !slices.ContainsFunc(exits[1:], func(exit map[register.Register]*Value) bool { return exit[r] != v })
+		if needed && everywhere {
+			regs[r] = v
+		}
+	}
+
+	return regs
+}
+
 func spillable(v *Value) bool {
 	return v.NeedsRegister() && v.Loc.Kind == LocNone
 }
@@ -145,7 +177,7 @@ func (s *spiller) makeRoom(b *Block, cur *Value, p int, m register.Mask) {
 		if victim == nil {
 			return // nothing left to give up
 		}
-		s.evict(cur, victim)
+		s.evict(victim)
 	}
 }
 
@@ -203,13 +235,13 @@ func (s *spiller) release(v *Value) {
 }
 
 // evict frees victim's register for reuse
-func (s *spiller) evict(cur *Value, victim *Value) {
+func (s *spiller) evict(victim *Value) {
 	if victim.Rematerializable() {
 		// completely drop rematerializable victims
 		s.dropped = append(s.dropped, victim)
 	} else if s.slots[victim] == nil {
 		slot := s.f.newSlot(nil, victim.Type)
-		store := s.f.insertValueBefore(cur, OpStaticStore, victim.Type, cur.Block)
+		store := s.f.insertValueAfter(victim, OpStaticStore, victim.Type, victim.Block)
 		store.Args = []*Value{victim}
 		store.Value = slot
 		s.slots[victim] = slot

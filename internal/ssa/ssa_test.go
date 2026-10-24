@@ -1522,10 +1522,104 @@ func TestSpill_ValueReadAcrossABranchKeepsItsRegister(t *testing.T) {
 	}
 }
 
+func TestSpill_ValueEvictedInsideABranchIsStoredWhereItIsDefined(t *testing.T) {
+	// a through n wait out the branch, and the then arm needs more registers than they leave free
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (c bool, a int, b int, d int, e int, g int, h int, i int, j int, k int, l int, m int, n int) -> int {
+			a + (b + (d + (e + (g + (h + (i + (j + (k + (l + (m + (n + if c { a * b + (d * e + (g * h)) } else { 1 })))))))))))
+		}
+		fun main () -> int { 0 }`), "f")
+	require.Len(t, f.Entry.Successors, 2)
+	then := f.Entry.Successors[0]
+
+	// the then arm is where registers run out, but a store there would only run on one path to the merge
+	assert.Empty(t, findForeignStores(then))
+
+	// so what it gives up is stored where it was defined, which runs whichever way the branch goes
+	assert.NotEmpty(t, findSpillStores(f.Entry))
+}
+
+func TestSpill_BranchConditionIsNotCarriedIntoTheArms(t *testing.T) {
+	// a through n wait out the branch, and the then arm needs more registers than they leave free
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (c bool, a int, b int, d int, e int, g int, h int, i int, j int, k int, l int, m int, n int) -> int {
+			a + (b + (d + (e + (g + (h + (i + (j + (k + (l + (m + (n + if c { a * b + (d * e + (g * h)) } else { 1 })))))))))))
+		}
+		fun main () -> int { 0 }`), "f")
+	require.Equal(t, BlockIf, f.Entry.Kind)
+	require.Len(t, f.Entry.Control, 1)
+
+	// the condition is dead once the branch is taken, so the arms never hold it, let alone spill it
+	assert.Empty(t, findStoresOf(f, f.Entry.Control[0]))
+}
+
+func TestSpill_PressureBeforeABranchGivesUpTheValueReadLast(t *testing.T) {
+	// a through q wait out the branch alongside the condition, more than fit in registers;
+	// once the arms merge, q is read first and a last
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (c bool, a int, b int, d int, e int, g int, h int, i int, j int, k int, l int, m int, n int, o int, p int, q int) -> int {
+			a + (b + (d + (e + (g + (h + (i + (j + (k + (l + (m + (n + (o + (p + (q + if c { 1 } else { 2 }))))))))))))))
+		}
+		fun main () -> int { 0 }`), "f")
+
+	// counting through the branch, a's next read is the furthest away, so it's the one spilled
+	assert.Len(t, findStoresOf(f, requireParamCopy(t, f, 1)), 1)
+
+	// q is read first after the branch, so it keeps its register
+	assert.Empty(t, findStoresOf(f, requireParamCopy(t, f, 15)))
+}
+
 func blockIds(blocks []*Block) []int {
 	ids := make([]int, len(blocks))
 	for i, b := range blocks {
 		ids[i] = b.Id
 	}
 	return ids
+}
+
+// findStoresOf returns every store in f that writes v to a slot
+func findStoresOf(f *Func, v *Value) []*Value {
+	var result []*Value
+	for u := range f.UnorderedValues() {
+		if u.Op == OpStaticStore && u.Args[0] == v {
+			result = append(result, u)
+		}
+	}
+	return result
+}
+
+// findSpillStores returns the stores in b to slots without a variable of their own
+func findSpillStores(b *Block) []*Value {
+	var result []*Value
+	for _, v := range findValues(b.Values, OpStaticStore) {
+		if v.Slot().Sym == nil {
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
+// findForeignStores returns the stores in b of values defined in some other block
+func findForeignStores(b *Block) []*Value {
+	var result []*Value
+	for _, v := range findValues(b.Values, OpStaticStore) {
+		if v.Args[0].Block != b {
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
+// requireParamCopy returns the copy f's entry block makes of its ith incoming parameter
+func requireParamCopy(t *testing.T, f *Func, i int) *Value {
+	t.Helper()
+
+	var copies []*Value
+	for _, v := range findValues(f.Entry.Values, OpCopy) {
+		if v.Args[0].Op == OpParam && v.Args[0].Value == i {
+			copies = append(copies, v)
+		}
+	}
+	require.Len(t, copies, 1)
+	return copies[0]
 }

@@ -124,8 +124,12 @@ func computeLiveIntervals(f *Func) []*liveInterval {
 		intervals[v.Id] = &liveInterval{Value: v, Start: tick, End: tick}
 	}
 
+	// the tick each value is defined at
+	pos := make(map[int]int)
+
 	// every value is live at its definition and at each point it is used
 	for tick, v := range iterutil.Enumerate(f.OrderedValues()) {
+		pos[v.Id] = tick
 		touch(v, tick)
 		for _, arg := range v.Args {
 			touch(arg, tick)
@@ -154,7 +158,8 @@ func computeLiveIntervals(f *Func) []*liveInterval {
 		}
 		last := b.Values[len(b.Values)-1]
 		for _, c := range b.Control {
-			touch(c, intervals[last.Id].End+1)
+			// the terminator reads them right after the last instruction
+			touch(c, pos[last.Id]+1)
 		}
 	}
 
