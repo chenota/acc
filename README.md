@@ -379,10 +379,22 @@ Type     = "fun" "(" [ Typelist ] ")" [ "->" Type ]
 Typelist = Type { "," Type } [ "," ] ;
 ```
 
-### Vertical Slice 12: Strings and File Output [Not Started]
+### Vertical Slice 12: More Integer Sizes [Not Started]
+
+To support file reading `acc` is going to need some more integer sizes.
+
+### Vertical Slice 13: Strings and File Output [Not Started]
 
 First real step towards file I/O is going to be writing to files in a super primitive way.
 
-### Vertical Slice 13: File API and File Input [Not Started]
+### Vertical Slice 14: File API and File Input [Not Started]
 
 With a string base for working with files we can implement a useful file API.
+
+### Vertical Slice 15: Improved Garbage Collector [Not Started]
+
+The existing garbage collector is comically bad and limited to 1kb of memory allocated throughout a program's runtime, it needs improved.
+
+### Vertical Slice 16: Floating Points [Not Started]
+
+Add in floating points to improve `acc`'s math capabilities.
