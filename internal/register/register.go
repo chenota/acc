@@ -88,6 +88,21 @@ func (m Mask) Remove(r Register) Mask {
 	return m & ^r.Mask()
 }
 
+// Without removes every register in other from the mask
+func (m Mask) Without(other Mask) Mask {
+	return m &^ other
+}
+
+// Union returns the registers in either mask
+func (m Mask) Union(other Mask) Mask {
+	return m | other
+}
+
+// Intersect returns the registers in both masks
+func (m Mask) Intersect(other Mask) Mask {
+	return m & other
+}
+
 // Contains checks if a register is contained in the mask
 func (m Mask) Contains(r Register) bool {
 	return m&r.Mask() != 0

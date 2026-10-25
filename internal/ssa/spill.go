@@ -8,11 +8,8 @@ import (
 
 // spill lowers register pressure using MIN algorithm.
 func spill(f *Func) {
-	s := newSpiller(f, computeLiveness(f))
+	s := newSpiller(f)
 
-	// track instructions count across the whole function
-	// TODO: switch blockers to block-relative positions once regalloc builds per-block ranges too
-	tick := 0
 	for b := range f.OrderedBlocks() {
 		// start from what's in registers
 		s.holders = s.enter(b)
@@ -27,7 +24,7 @@ func spill(f *Func) {
 					continue
 				}
 
-				m := s.scratch(tick + p)
+				m := s.scratch(b, p)
 				s.makeRoom(b, v, p, m)
 
 				reload := s.reload(v, a)
@@ -53,7 +50,6 @@ func spill(f *Func) {
 		}
 
 		s.exits[b] = s.holders
-		tick += len(s.vals)
 	}
 
 	for _, v := range s.dropped {
@@ -65,9 +61,9 @@ type spiller struct {
 	f *Func
 
 	// fixed before the walk starts
-	live     liveness
-	blockers []*regInterval
-	avail    map[*Value]register.Mask // the registers regalloc could house each value in
+	live   liveness
+	ranges liveRanges
+	avail  map[*Value]register.Mask // the registers regalloc could house each value in
 
 	// what the walk has decided so far
 	holders map[register.Register]*Value            // the value sitting in each occupied register
@@ -79,30 +75,20 @@ type spiller struct {
 	vals []*Value
 }
 
-func newSpiller(f *Func, live liveness) *spiller {
+func newSpiller(f *Func) *spiller {
 	s := &spiller{
-		f:     f,
-		live:  live,
-		avail: make(map[*Value]register.Mask),
-		exits: make(map[*Block]map[register.Register]*Value),
-		slots: make(map[*Value]*Slot),
+		f:      f,
+		live:   computeLiveness(f),
+		ranges: computeLiveRanges(f),
+		avail:  make(map[*Value]register.Mask),
+		exits:  make(map[*Block]map[register.Register]*Value),
+		slots:  make(map[*Value]*Slot),
 	}
 
-	intervals := computeLiveIntervals(f)
-	s.blockers = computeRegIntervals(intervals)
-
-	for _, iv := range intervals {
-		if !spillable(iv.Value) {
-			continue
+	for v := range f.UnorderedValues() {
+		if spillable(v) {
+			s.avail[v] = register.Allocatable.Without(s.ranges.held(v))
 		}
-
-		free := register.Allocatable
-		for _, b := range s.blockers {
-			if overlap(b.Start, b.End, iv.Start, iv.End) {
-				free = free.Remove(b.Reg)
-			}
-		}
-		s.avail[iv.Value] = free
 	}
 
 	return s
@@ -159,20 +145,14 @@ func (s *spiller) used() register.Mask {
 	return m
 }
 
-// scratch is the set of registers nothing has been pinned to across tick p.
-func (s *spiller) scratch(p int) register.Mask {
-	free := register.Allocatable
-	for _, b := range s.blockers {
-		if overlap(b.Start, b.End, p, p+1) {
-			free = free.Remove(b.Reg)
-		}
-	}
-	return free
+// scratch is the set of registers nothing has been pinned to across position p of b.
+func (s *spiller) scratch(b *Block, p int) register.Mask {
+	return register.Allocatable.Without(s.ranges.heldAt(b, p))
 }
 
 // makeRoom evicts resident values until m has a register to spare.
 func (s *spiller) makeRoom(b *Block, cur *Value, p int, m register.Mask) {
-	for (m &^ s.used()).Count() == 0 {
+	for m.Without(s.used()).Count() == 0 {
 		victim := s.pickVictim(b, p, m, cur.Args)
 		if victim == nil {
 			return // nothing left to give up
@@ -184,7 +164,7 @@ func (s *spiller) makeRoom(b *Block, cur *Value, p int, m register.Mask) {
 func (s *spiller) pickVictim(b *Block, p int, m register.Mask, operands []*Value) *Value {
 	var victim *Value
 	var far int
-	for r := range (m & s.used()).All() {
+	for r := range m.Intersect(s.used()).All() {
 		cand := s.holders[r]
 		if slices.Contains(operands, cand) {
 			continue
@@ -213,8 +193,8 @@ func (s *spiller) pickVictim(b *Block, p int, m register.Mask, operands []*Value
 // take tentatively assigns v a register out of m
 func (s *spiller) take(v *Value, m register.Mask) {
 	// prefer caller-saved
-	free := m &^ s.used()
-	pick := free & register.CallerSaved
+	free := m.Without(s.used())
+	pick := free.Intersect(register.CallerSaved)
 	if pick.Count() == 0 {
 		pick = free
 	}

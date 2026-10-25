@@ -2,196 +2,155 @@ package ssa
 
 import (
 	"errors"
-	"maps"
-	"slices"
 
-	"github.com/chenota/acc/internal/iterutil"
 	"github.com/chenota/acc/internal/register"
 )
 
-type liveInterval struct {
-	Value *Value
-	Start int
-	End   int
-}
-
-type regInterval struct {
-	Reg   register.Register
-	Start int
-	End   int
-}
-
 // regalloc colors SSA values with physical registers
 func regalloc(f *Func) error {
-	liveIntervals := computeLiveIntervals(f)
-	regIntervals := computeRegIntervals(liveIntervals)
+	// spilling inserted stores and reloads, so the ranges are worked out fresh
+	ranges := computeLiveRanges(f)
 
-	c := newColorer(regIntervals)
-
-	for _, iv := range liveIntervals {
-		c.expire(iv.Start)
-
-		// skip values already given a home - a register, or a stack slot fixed by the ABI
-		if iv.Value.Loc.Kind != LocNone || !iv.Value.NeedsRegister() {
+	// in definition order, everything live alongside a value and defined before it already has its register
+	for v := range f.OrderedValues() {
+		// skip values already put somewhere
+		if v.Loc.Kind != LocNone || !v.NeedsRegister() {
 			continue
 		}
 
-		newReg, err := c.take(iv)
-		if err != nil {
-			return err
+		reg, ok := pick(v, register.Allocatable.Without(ranges.held(v)))
+		if !ok {
+			return errors.New("regalloc: out of registers something has gone very wrong :D")
 		}
-
-		iv.Value.Loc = NewReg(newReg)
-		c.hold(iv)
+		v.Loc = NewReg(reg)
 	}
 
 	return nil
 }
 
-type colorer struct {
-	free      register.Mask
-	active    []*liveInterval
-	preColors []*regInterval
-}
-
-func newColorer(regs []*regInterval) *colorer {
-	return &colorer{
-		free:      register.Allocatable,
-		preColors: regs,
-	}
-}
-
-// expire frees the registers of intervals ending at or before cutoff
-func (c *colorer) expire(cutoff int) {
-	var kept []*liveInterval
-	for _, iv := range c.active {
-		if iv.End <= cutoff {
-			c.free = c.free.Include(iv.Value.Loc.Reg)
-		} else {
-			kept = append(kept, iv)
-		}
-	}
-	c.active = kept
-}
-
-func (c *colorer) take(iv *liveInterval) (register.Register, error) {
-	free := c.free
-
-	// exclude pre-colored registers that overlap with iv
-	for _, rv := range c.preColors {
-		if overlap(rv.Start, rv.End, iv.Start, iv.End) {
-			free = free.Remove(rv.Reg)
-		}
-	}
-
+// pick chooses v's register out of free with priority logic
+func pick(v *Value, free register.Mask) (register.Register, bool) {
 	// first try to pick the hinted-at register
-	for h := range iv.Value.Hints() {
+	for h := range v.Hints() {
 		if free.Contains(h) {
-			c.free = c.free.Remove(h)
-			return h, nil
+			return h, true
 		}
 	}
 
 	// prefer caller-saved registers
-	pick := free & register.CallerSaved
-	if pick.Count() == 0 {
-		pick = free
+	if callerSaved := free.Intersect(register.CallerSaved); callerSaved.Count() > 0 {
+		return callerSaved.One()
 	}
 
-	// last resort pick a random available register
-	reg, ok := pick.One()
-	if !ok {
-		return 0, errors.New("regalloc: out of registers something has gone very wrong :D")
-	}
-	c.free = c.free.Remove(reg)
-	return reg, nil
+	// last resort pick an arbitrary available register
+	return free.One()
 }
 
-func (c *colorer) hold(iv *liveInterval) {
-	c.active = append(c.active, iv)
+type span struct {
+	Start int
+	End   int
 }
 
-func computeLiveIntervals(f *Func) []*liveInterval {
-	intervals := make(map[int]*liveInterval)
+func (s span) overlaps(o span) bool {
+	return s.Start < o.End && o.Start < s.End
+}
 
-	// touch records that v is live at a certain tick
-	touch := func(v *Value, tick int) {
-		if iv, ok := intervals[v.Id]; ok {
-			iv.Start = min(iv.Start, tick)
-			iv.End = max(iv.End, tick)
-			return
+// liveRanges records, block by block, the span each value has to hold onto its register for
+type liveRanges map[*Block]map[*Value]span
+
+// computeLiveRanges finds each value's span in every block it's live in.
+func computeLiveRanges(f *Func) liveRanges {
+	lv := computeLiveness(f)
+	ranges := make(liveRanges)
+
+	for b := range f.OrderedBlocks() {
+		spans := make(map[*Value]span)
+
+		// touch records that v is live at position p
+		touch := func(v *Value, p int) {
+			if s, ok := spans[v]; ok {
+				spans[v] = span{Start: min(s.Start, p), End: max(s.End, p)}
+				return
+			}
+			spans[v] = span{Start: p, End: p}
 		}
-		intervals[v.Id] = &liveInterval{Value: v, Start: tick, End: tick}
+
+		// anything live coming in already holds its register before the first instruction
+		for v := range lv[b].in {
+			touch(v, -1)
+		}
+
+		// every value is live at its definition and at each point it is used
+		for i, v := range b.Values {
+			touch(v, i)
+			for _, arg := range v.Args {
+				touch(arg, i)
+			}
+
+			// parameters and the closure environment occupy their registers before the function's first instruction
+			if v.Op == OpParam || v.Op == OpClosurePtr {
+				touch(v, -1)
+			}
+
+			// a call result is live from the call that left it in its register
+			if v.Op == OpCallResult {
+				touch(v, spans[v.Args[0]].Start)
+			}
+
+			// ensure the right operand of a bop is live alongside the result so they don't get mapped to the same place
+			if v.IsBinaryOp() {
+				touch(v.Args[1], i+1)
+			}
+		}
+
+		// the terminator reads control values right after the last instruction
+		for _, c := range b.Control {
+			touch(c, len(b.Values))
+		}
+
+		// anything still needed once b is finished
+		for v := range lv[b].out {
+			touch(v, len(b.Values)+1)
+		}
+
+		ranges[b] = spans
 	}
+	return ranges
+}
 
-	// the tick each value is defined at
-	pos := make(map[int]int)
-
-	// every value is live at its definition and at each point it is used
-	for tick, v := range iterutil.Enumerate(f.OrderedValues()) {
-		pos[v.Id] = tick
-		touch(v, tick)
-		for _, arg := range v.Args {
-			touch(arg, tick)
-		}
-
-		// parameters and the closure environment occupy their registers from the function's first instruction
-		if v.Op == OpParam || v.Op == OpClosurePtr {
-			touch(v, 0)
-		}
-
-		// a call result is live from the call that left it in its register
-		if v.Op == OpCallResult {
-			touch(v, intervals[v.Args[0].Id].Start)
-		}
-
-		// ensure the right operand of a bop is live alongside the result so they don't get mapped to the same place
-		if v.IsBinaryOp() {
-			touch(v.Args[1], tick+1)
+// held is every register held by another value while v is live
+func (r liveRanges) held(v *Value) register.Mask {
+	var m register.Mask
+	for _, spans := range r {
+		if s, ok := spans[v]; ok {
+			m = m.Union(heldWithin(spans, v, s))
 		}
 	}
+	return m
+}
 
-	// extend a block's control values to live though the block's entire lifecycle
-	for _, b := range f.Blocks {
-		if len(b.Values) == 0 {
+// heldAt is every register something holds across position p of b
+func (r liveRanges) heldAt(b *Block, p int) register.Mask {
+	return heldWithin(r[b], nil, span{Start: p, End: p + 1})
+}
+
+// heldWithin is every register something other than v holds during s
+func heldWithin(spans map[*Value]span, v *Value, s span) register.Mask {
+	var m register.Mask
+	for u, su := range spans {
+		if u == v {
 			continue
 		}
-		last := b.Values[len(b.Values)-1]
-		for _, c := range b.Control {
-			// the terminator reads them right after the last instruction
-			touch(c, pos[last.Id]+1)
+
+		// a value occupies its register for its whole span
+		if u.Loc.Kind == LocRegister && s.overlaps(su) {
+			m = m.Include(u.Loc.Reg)
+		}
+
+		// a call only clobbers registers at the instant it runs
+		if u.IsCall() && s.overlaps(span{Start: su.Start, End: su.Start + 1}) {
+			m = m.Union(u.Clobbers())
 		}
 	}
-
-	// order by start tick ascending
-	return slices.SortedFunc(maps.Values(intervals), func(a, b *liveInterval) int {
-		return a.Start - b.Start
-	})
-}
-
-func computeRegIntervals(timeline []*liveInterval) []*regInterval {
-	var intervals []*regInterval
-	for _, iv := range timeline {
-		// a precolored value occupies its register for its whole live range
-		if iv.Value.Loc.Kind == LocRegister {
-			intervals = append(intervals, &regInterval{
-				Reg:   iv.Value.Loc.Reg,
-				Start: iv.Start,
-				End:   iv.End,
-			})
-		}
-		// route live values around a clobber
-		for reg := range iv.Value.Clobbers().All() {
-			intervals = append(intervals, &regInterval{
-				Reg:   reg,
-				Start: iv.Start,
-				End:   iv.Start + 1,
-			})
-		}
-	}
-	return intervals
-}
-
-func overlap(start1 int, end1 int, start2 int, end2 int) bool {
-	return start1 < end2 && start2 < end1
+	return m
 }

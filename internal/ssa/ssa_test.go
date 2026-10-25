@@ -1569,6 +1569,24 @@ func TestSpill_PressureBeforeABranchGivesUpTheValueReadLast(t *testing.T) {
 	assert.Empty(t, findStoresOf(f, requireParamCopy(t, f, 15)))
 }
 
+func TestRegalloc_ValueOnlyOneArmNeedsIgnoresACallInTheOther(t *testing.T) {
+	// x escapes, so the entry block allocates it and only the then arm still needs the pointer
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun g () -> int { 0 }
+		fun f (c bool) -> *int { let x = 7; if c { return &x; } else { g(); return nil; } }
+		fun main () -> int { 0 }`), "f")
+	require.Len(t, f.Entry.Successors, 2)
+	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
+	require.NotEmpty(t, findValues(els.Values, OpStaticCall), "the else arm makes a call")
+
+	ptr := requireReturned(t, then)
+	require.Same(t, f.Entry, ptr.Block, "the pointer is made before the branch")
+
+	// the call clobbers caller-saved registers, but only on a path where the pointer is already dead
+	require.Equal(t, LocRegister, ptr.Loc.Kind)
+	assert.True(t, register.CallerSaved.Contains(ptr.Loc.Reg), "expected a caller-saved register, got %v", ptr.Loc.Reg)
+}
+
 func blockIds(blocks []*Block) []int {
 	ids := make([]int, len(blocks))
 	for i, b := range blocks {
