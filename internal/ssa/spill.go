@@ -1,8 +1,10 @@
 package ssa
 
 import (
+	"maps"
 	"slices"
 
+	"github.com/chenota/acc/internal/iterutil"
 	"github.com/chenota/acc/internal/register"
 )
 
@@ -30,14 +32,13 @@ func spill(f *Func) {
 				reload := s.reload(v, a)
 				v.Args[i] = reload
 				s.take(reload, m)
+
+				// the reload holds its register for exactly the read it was made for
+				s.ranges[b][reload] = span{Start: p, End: readEnd(v, i, p)}
 			}
 
-			// operands with no further use are ejected
-			for _, a := range v.Args {
-				if _, ok := s.nextUse(b, p, a); !ok {
-					s.release(a)
-				}
-			}
+			// values whose span is over by now hand their registers back
+			s.releaseEnded(b, p)
 
 			// values that need no register, or already have a home from the abi, aren't ours to place
 			if !spillable(v) {
@@ -61,9 +62,11 @@ type spiller struct {
 	f *Func
 
 	// fixed before the walk starts
-	live   liveness
+	uses  nextUses                 // how far past each block's end every value it leaves live is next read
+	avail map[*Value]register.Mask // the registers regalloc could house each value in
+
+	// where each value holds its register, the same spans regalloc goes by, kept current as reloads are added
 	ranges liveRanges
-	avail  map[*Value]register.Mask // the registers regalloc could house each value in
 
 	// what the walk has decided so far
 	holders map[register.Register]*Value            // the value sitting in each occupied register
@@ -78,7 +81,7 @@ type spiller struct {
 func newSpiller(f *Func) *spiller {
 	s := &spiller{
 		f:      f,
-		live:   computeLiveness(f),
+		uses:   computeNextUses(f),
 		ranges: computeLiveRanges(f),
 		avail:  make(map[*Value]register.Mask),
 		exits:  make(map[*Block]map[register.Register]*Value),
@@ -87,7 +90,7 @@ func newSpiller(f *Func) *spiller {
 
 	for v := range f.UnorderedValues() {
 		if spillable(v) {
-			s.avail[v] = register.Allocatable.Without(s.ranges.held(v))
+			s.avail[v] = register.Allocatable.Without(s.ranges.blockedFor(v))
 		}
 	}
 
@@ -111,7 +114,7 @@ func (s *spiller) enter(b *Block) map[register.Register]*Value {
 
 	for r, v := range exits[0] {
 		// only capture values that are needed at the start of the block
-		_, needed := s.live[b].in[v]
+		needed := s.ranges.liveOnEntry(b, v)
 		// only capture a value if all b's predecesors put that value in the same register
 		everywhere := !slices.ContainsFunc(exits[1:], func(exit map[register.Register]*Value) bool { return exit[r] != v })
 		if needed && everywhere {
@@ -147,7 +150,7 @@ func (s *spiller) used() register.Mask {
 
 // scratch is the set of registers nothing has been pinned to across position p of b.
 func (s *spiller) scratch(b *Block, p int) register.Mask {
-	return register.Allocatable.Without(s.ranges.heldAt(b, p))
+	return register.Allocatable.Without(s.ranges.blockedAt(b, p))
 }
 
 // makeRoom evicts resident values until m has a register to spare.
@@ -204,6 +207,15 @@ func (s *spiller) take(v *Value, m register.Mask) {
 	}
 }
 
+// releaseEnded hands back the register of every resident value whose span in b is over by position p
+func (s *spiller) releaseEnded(b *Block, p int) {
+	for r, h := range s.holders {
+		if s.ranges[b][h].End <= p {
+			delete(s.holders, r)
+		}
+	}
+}
+
 // release hands back whatever register v was holding.
 func (s *spiller) release(v *Value) {
 	for r, h := range s.holders {
@@ -247,22 +259,72 @@ func (s *spiller) reload(v *Value, a *Value) *Value {
 
 // nextUse is how many instructions past p the next read of v is, and whether it is read again at all.
 func (s *spiller) nextUse(b *Block, p int, v *Value) (int, bool) {
-	// try to find next use in the block itself
-	for i, u := range s.vals[p+1:] {
-		if slices.Contains(u.Args, v) {
-			return i + 1, true
+	// try to find next use in the block itself, terminator included
+	for q, u := range reads(s.vals, b.Control) {
+		if q > p && u == v {
+			return q - p, true
 		}
 	}
 
-	// check if it's a control value
-	if slices.Contains(b.Control, v) {
-		return len(s.vals) - p, true
-	}
-
 	// if theres' a shortest-out distance: rest of block left to go + shortest-out distance of v
-	if d, ok := s.live[b].out[v]; ok {
+	if d, ok := s.uses[b][v]; ok {
 		return (len(s.vals) - p) + d, true
 	}
 
 	return 0, false
+}
+
+// nextUses holds, for every block, how many instructions past its end each value it leaves live is next read.
+type nextUses map[*Block]map[*Value]int
+
+// computeNextUses finds the next-use distance at every block's end, along whichever path reaches a read soonest
+func computeNextUses(f *Func) nextUses {
+	// distances from a block's first instruction, which its predecessors build on
+	entry := make(map[*Block]map[*Value]int)
+	exit := make(nextUses)
+	for _, b := range f.Blocks {
+		entry[b] = make(map[*Value]int)
+		exit[b] = make(map[*Value]int)
+	}
+
+	// settle a block's successors before the block itself
+	order := iterutil.Reverse(f.OrderedBlocks())
+
+	// loop until a fixpoint
+	for changed := true; changed; {
+		changed = false
+		for b := range order {
+			// a value is as close at b's end as it is at the nearest successor's start
+			// TODO: weight edges that leave a loop so a use after the loop doesn't look close from inside it
+			out := make(map[*Value]int)
+			for _, s := range b.Successors {
+				for v, d := range entry[s] {
+					if cur, ok := out[v]; !ok || d < cur {
+						out[v] = d
+					}
+				}
+			}
+
+			// anything still needed after b has to, at most, survive all of b
+			in := make(map[*Value]int)
+			for v, d := range out {
+				in[v] = len(b.Values) + d
+			}
+			for p, v := range reads(b.Values, b.Control) {
+				if d, ok := in[v]; !ok || p < d {
+					in[v] = p
+				}
+			}
+			for _, v := range b.Values {
+				delete(in, v)
+			}
+
+			if !maps.Equal(entry[b], in) || !maps.Equal(exit[b], out) {
+				changed = true
+			}
+			entry[b], exit[b] = in, out
+		}
+	}
+
+	return exit
 }
