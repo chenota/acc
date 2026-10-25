@@ -65,7 +65,7 @@ func generateFunction(f *ssa.Func) []Inst {
 	)
 
 	// Save the callee-saved registers this function uses above the local frame.
-	saved := (f.UsedRegisters() & register.CalleeSaved).All()
+	saved := f.UsedRegisters().Intersect(register.CalleeSaved).All()
 	for reg := range saved {
 		insts = append(insts, Inst{Op: "pushq", Dest: register64(reg)})
 	}

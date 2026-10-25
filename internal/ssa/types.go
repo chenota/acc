@@ -526,7 +526,7 @@ func (f *Func) StackAdjustment() int {
 
 // savedRegBytes is the number of bytes the prologue pushes for callee-saved registers.
 func (f *Func) savedRegBytes() int {
-	return (f.UsedRegisters() & register.CalleeSaved).Count() * 8
+	return f.UsedRegisters().Intersect(register.CalleeSaved).Count() * 8
 }
 
 // localsSize is the size in bytes of the frame's slot area

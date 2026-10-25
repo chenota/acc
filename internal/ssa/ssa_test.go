@@ -408,7 +408,7 @@ func TestLayoutFrame_ReservesOutgoingArea(t *testing.T) {
 	assert.GreaterOrEqual(t, main.StackAdjustment(), 16)
 
 	// the whole frame stays 16-byte aligned so rsp is aligned at the call
-	pushBytes := (main.UsedRegisters() & register.CalleeSaved).Count() * 8
+	pushBytes := main.UsedRegisters().Intersect(register.CalleeSaved).Count() * 8
 	assert.Equal(t, 0, (pushBytes+main.StackAdjustment())%16)
 
 	// target makes no calls and has no locals, so it subtracts nothing
