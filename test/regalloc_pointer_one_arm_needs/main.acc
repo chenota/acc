@@ -1,0 +1,11 @@
+fun g () -> int { 0 }
+
+fun f (c bool) -> *int {
+    let x = 7;
+    let y = 8;
+    if c { return &x; } else { g(); return &y; }
+}
+
+fun main () -> int {
+    *f(true) * 10 + *f(false)
+}

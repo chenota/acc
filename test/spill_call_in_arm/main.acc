@@ -1,0 +1,9 @@
+fun id (x int) -> int { x }
+
+fun f (c bool, a int, b int, d int, e int, g int, h int, i int, j int, k int, l int, m int, n int) -> int {
+    a + (b + (d + (e + (g + (h + (i + (j + (k + (l + (m + (n + if c { id(a * b) } else { 1 })))))))))))
+}
+
+fun main () -> int {
+    f(true, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) + f(false, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+}
