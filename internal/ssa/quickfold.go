@@ -2,7 +2,7 @@ package ssa
 
 import "github.com/chenota/acc/internal/types"
 
-func quickFold(f *Func) {
+func quickFold(f *Func) error {
 	for v := range f.OrderedValues() {
 		if !v.IsBinaryOp() && !v.IsComparison() {
 			continue
@@ -29,6 +29,8 @@ func quickFold(f *Func) {
 		f.removeIfDead(left)
 		f.removeIfDead(right)
 	}
+
+	return nil
 }
 
 // evaluateBop applies op to two constant operands of type t

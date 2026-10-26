@@ -9,7 +9,7 @@ import (
 )
 
 // spill lowers register pressure using MIN algorithm.
-func spill(f *Func) {
+func spill(f *Func) error {
 	s := newSpiller(f)
 
 	for b := range f.OrderedBlocks() {
@@ -44,6 +44,8 @@ func spill(f *Func) {
 	for _, v := range s.dropped {
 		f.removeIfDead(v)
 	}
+
+	return nil
 }
 
 type spiller struct {

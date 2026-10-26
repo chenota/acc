@@ -3,7 +3,7 @@ package ssa
 import "slices"
 
 // pruneUnreachable drops the blocks control can never reach
-func pruneUnreachable(f *Func) {
+func pruneUnreachable(f *Func) error {
 	reachable := make(map[*Block]struct{})
 	for b := range f.OrderedBlocks() {
 		reachable[b] = struct{}{}
@@ -20,4 +20,6 @@ func pruneUnreachable(f *Func) {
 	for _, b := range f.Blocks {
 		b.Predecessors = slices.DeleteFunc(b.Predecessors, dead)
 	}
+
+	return nil
 }

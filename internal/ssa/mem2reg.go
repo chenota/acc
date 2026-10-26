@@ -5,7 +5,7 @@ import (
 )
 
 // mem2reg promotes never-addressed slots to SSA values, one leaf at a time
-func mem2reg(f *Func) {
+func mem2reg(f *Func) error {
 	for slot := range promotableSlots(f) {
 		// the most recent value stored to each leaf
 		currentDefs := make(map[int]*Value)
@@ -26,6 +26,8 @@ func mem2reg(f *Func) {
 			}
 		}
 	}
+
+	return nil
 }
 
 func promotableSlots(f *Func) iter.Seq[*Slot] {

@@ -1,6 +1,6 @@
 package ssa
 
-func negSquash(f *Func) {
+func negSquash(f *Func) error {
 	for _, value := range squashableValues(f) {
 		// transform value's op in-place
 		if value.Op == OpAdd {
@@ -16,6 +16,8 @@ func negSquash(f *Func) {
 		// other users may still read the negate
 		f.removeIfDead(negate)
 	}
+
+	return nil
 }
 
 func squashableValues(f *Func) []*Value {

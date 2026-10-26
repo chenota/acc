@@ -7,7 +7,7 @@ import (
 )
 
 // heapify moves escaping slots off the frame, handing each one to the runtime allocator.
-func heapify(f *Func) {
+func heapify(f *Func) error {
 	for _, slot := range f.slotEscapes() {
 		block, i := f.allocationPoint(slot)
 
@@ -49,4 +49,6 @@ func heapify(f *Func) {
 
 		f.Slots = slices.DeleteFunc(f.Slots, func(s *Slot) bool { return s == slot })
 	}
+
+	return nil
 }

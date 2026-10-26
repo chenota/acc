@@ -24,14 +24,10 @@ func BuildAndAllocate(program []*ir.Node) ([]*Func, error) {
 		}
 	}
 
-	// immediately prune unreachable blocks to prevent panics
 	for _, f := range m.Funcs {
-		pruneUnreachable(f)
-	}
-
-	// run memory/register optimizations on unoptimized function bodies
-	for _, f := range m.Funcs {
-		mem2reg(f)
+		if err := runStages(f, stagesBeforeEscape); err != nil {
+			return nil, err
+		}
 	}
 
 	for _, f := range m.Funcs {
@@ -39,10 +35,9 @@ func BuildAndAllocate(program []*ir.Node) ([]*Func, error) {
 		f.escapeSummary()
 	}
 
-	// heapify and optimize every function in the now-complete pool
+	// every function in the pool is summarized, so each one can be heapified and optimized
 	for _, f := range m.Funcs {
-		heapify(f)
-		if err := optimizeAndAllocate(f); err != nil {
+		if err := runStages(f, stagesAfterEscape); err != nil {
 			return nil, err
 		}
 	}
@@ -50,17 +45,40 @@ func BuildAndAllocate(program []*ir.Node) ([]*Func, error) {
 	return m.Funcs, nil
 }
 
-func optimizeAndAllocate(f *Func) error {
-	unaryFold(f)
-	quickFold(f)
-	associativeFold(f)
-	negSquash(f)
-	lowerConstraints(f)
-	spill(f)
-	if err := regalloc(f); err != nil {
-		return err
+// a stage is one step of the pipeline a function's body goes through
+type stage struct {
+	name string
+	run  func(*Func) error
+}
+
+// stagesBeforeEscape tidy up a freshly built body; escape analysis needs every function through them first
+var stagesBeforeEscape = []stage{
+	// immediately prune unreachable blocks to prevent panics
+	{"pruneUnreachable", pruneUnreachable},
+	// run memory/register optimizations on unoptimized function bodies
+	{"mem2reg", mem2reg},
+}
+
+// stagesAfterEscape place escaping slots on the heap, then optimize and allocate
+var stagesAfterEscape = []stage{
+	{"heapify", heapify},
+	{"unaryFold", unaryFold},
+	{"quickFold", quickFold},
+	{"associativeFold", associativeFold},
+	{"negSquash", negSquash},
+	{"lowerConstraints", lowerConstraints},
+	{"spill", spill},
+	{"regalloc", regalloc},
+	{"layoutFrame", layoutFrame},
+}
+
+// runStages puts f through each of stages in order
+func runStages(f *Func, stages []stage) error {
+	for _, s := range stages {
+		if err := runStage(f, s.name, s.run); err != nil {
+			return err
+		}
 	}
-	layoutFrame(f)
 
 	return nil
 }

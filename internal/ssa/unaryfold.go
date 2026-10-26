@@ -2,7 +2,7 @@ package ssa
 
 import "github.com/chenota/acc/internal/types"
 
-func unaryFold(f *Func) {
+func unaryFold(f *Func) error {
 	for v := range f.OrderedValues() {
 		if !v.IsUnaryOp() {
 			continue
@@ -27,6 +27,8 @@ func unaryFold(f *Func) {
 		// remove sub value
 		f.removeValue(sub)
 	}
+
+	return nil
 }
 
 func evaluateUop(op Op, t *types.Type, sub any) (any, bool) {

@@ -3,7 +3,7 @@ package ssa
 import "slices"
 
 // layoutFrame drops the slots no value names any more and gives the survivors a home in the stack frame.
-func layoutFrame(f *Func) {
+func layoutFrame(f *Func) error {
 	f.Slots = namedSlots(f)
 
 	// widest slots first
@@ -19,6 +19,8 @@ func layoutFrame(f *Func) {
 		offset = (offset + align - 1) &^ (align - 1)
 		s.Loc = NewFrame(-offset)
 	}
+
+	return nil
 }
 
 // namedSlots returns the slots some value still reads or writes

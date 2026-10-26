@@ -25,7 +25,7 @@ type testConfig struct {
 func TestProgram(t *testing.T) {
 	// compile the acc executable with go.
 	accPath := filepath.Join(t.TempDir(), "acc")
-	out, err := exec.CommandContext(t.Context(), "go", "build", "-o", accPath, "github.com/chenota/acc").CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), "go", "build", "-tags", "ssacheck", "-o", accPath, "github.com/chenota/acc").CombinedOutput()
 	require.NoError(t, err, "failed to build acc:\n%s", out)
 
 	entries, err := os.ReadDir(".")

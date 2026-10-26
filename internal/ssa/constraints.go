@@ -6,7 +6,7 @@ import (
 
 const stackSlotSize = 8
 
-func lowerConstraints(f *Func) {
+func lowerConstraints(f *Func) error {
 	lowerParams(f)
 	lowerClosurePtr(f)
 	lowerDivides(f)
@@ -14,6 +14,8 @@ func lowerConstraints(f *Func) {
 	lowerCallResults(f)
 	// important that lowerResults runs after lowerCallResults so the hint lands on the copy a call's result is read out of
 	lowerResults(f)
+
+	return nil
 }
 
 // lowerClosurePtr pins the incoming closure object to the register the caller left it in.

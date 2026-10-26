@@ -2,7 +2,7 @@ package ssa
 
 import "slices"
 
-func associativeFold(f *Func) {
+func associativeFold(f *Func) error {
 	for _, root := range associativeRoots(f) {
 		chain := associativeChain(f, root)
 		consts, vars := leaves(chain)
@@ -26,6 +26,8 @@ func associativeFold(f *Func) {
 			f.removeIfDead(c)
 		}
 	}
+
+	return nil
 }
 
 // foldConstantChain handles chains where every leaf is a constant.
