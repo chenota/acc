@@ -24,8 +24,7 @@ func unaryFold(f *Func) error {
 
 		// replace the top-level value with the new constant
 		f.replaceValue(v, constOp)
-		// remove sub value
-		f.removeValue(sub)
+		f.removeIfDead(sub)
 	}
 
 	return nil

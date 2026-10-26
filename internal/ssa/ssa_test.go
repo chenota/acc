@@ -230,6 +230,26 @@ func TestGenSsa_Not_KeepsOperand(t *testing.T) {
 	assert.Equal(t, OpParam, throughCopies(not.Args[0]).Op)
 }
 
+func TestUnaryFold_OperandReadElsewhereIsKept(t *testing.T) {
+	// x is read by the negate, which folds away, and by the multiply, which doesn't
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (a int) -> int { let x = 5; let y = -x; a * x + y }
+		fun main () -> int { 0 }`), "f")
+	vals := slices.Collect(f.OrderedValues())
+
+	adds := findValues(vals, OpAdd)
+	require.Len(t, adds, 1)
+	require.Len(t, adds[0].Args, 2)
+	assert.Equal(t, OpLiteral, adds[0].Args[1].Op, "the negate folds into a literal")
+	assert.Equal(t, int32(-5), adds[0].Args[1].Value)
+
+	muls := findValues(vals, OpMultiply)
+	require.Len(t, muls, 1)
+	require.Len(t, muls[0].Args, 2)
+	assert.Equal(t, OpLiteral, muls[0].Args[1].Op, "the multiply still reads x")
+	assert.Equal(t, int32(5), muls[0].Args[1].Value)
+}
+
 func TestGenSsa_Variable(t *testing.T) {
 	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; return x; }`)
 
