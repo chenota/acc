@@ -20,22 +20,7 @@ func spill(f *Func) {
 		s.vals = slices.Clone(b.Values)
 		for p, v := range s.vals {
 			// reload every spilled operand of this value
-			for i, a := range v.Args {
-				// if a isn't ours to move or already has a register we can skip
-				if !spillable(a) || s.resident(a) {
-					continue
-				}
-
-				m := s.scratch(b, p)
-				s.makeRoom(b, v, p, m)
-
-				reload := s.reload(v, a)
-				v.Args[i] = reload
-				s.take(reload, m)
-
-				// the reload holds its register for exactly the read it was made for
-				s.ranges[b][reload] = span{Start: p, End: readEnd(v, i, p)}
-			}
+			s.reloadReads(b, p, v, v.Args)
 
 			// values whose span is over by now hand their registers back
 			s.releaseEnded(b, p)
@@ -46,9 +31,12 @@ func spill(f *Func) {
 			}
 
 			avail := s.avail[v]
-			s.makeRoom(b, v, p, avail)
+			s.makeRoom(b, p, avail, v.Args)
 			s.take(v, avail)
 		}
+
+		// make sure the terminator has its control values available
+		s.reloadReads(b, len(s.vals), nil, b.Control)
 
 		s.exits[b] = s.holders
 	}
@@ -125,6 +113,30 @@ func (s *spiller) enter(b *Block) map[register.Register]*Value {
 	return regs
 }
 
+// reloadReads brings every spilled value in reads back into a register for the reader at position p of b
+func (s *spiller) reloadReads(b *Block, p int, at *Value, reads []*Value) {
+	for i, a := range reads {
+		// if a isn't ours to move or already has a register we can skip
+		if !spillable(a) || s.resident(a) {
+			continue
+		}
+
+		m := s.scratch(b, p)
+		s.makeRoom(b, p, m, reads)
+
+		reload := s.reload(b, at, a)
+		reads[i] = reload
+		s.take(reload, m)
+
+		// the reload holds its register only for the read it supports
+		end := p
+		if at != nil {
+			end = readEnd(at, i, p)
+		}
+		s.ranges[b][reload] = span{Start: p, End: end}
+	}
+}
+
 func spillable(v *Value) bool {
 	return v.NeedsRegister() && v.Loc.Kind == LocNone
 }
@@ -153,10 +165,10 @@ func (s *spiller) scratch(b *Block, p int) register.Mask {
 	return register.Allocatable.Without(s.ranges.blockedAt(b, p))
 }
 
-// makeRoom evicts resident values until m has a register to spare.
-func (s *spiller) makeRoom(b *Block, cur *Value, p int, m register.Mask) {
+// makeRoom evicts resident values until m has a register
+func (s *spiller) makeRoom(b *Block, p int, m register.Mask, operands []*Value) {
 	for m.Without(s.used()).Count() == 0 {
-		victim := s.pickVictim(b, p, m, cur.Args)
+		victim := s.pickVictim(b, p, m, operands)
 		if victim == nil {
 			return // nothing left to give up
 		}
@@ -242,17 +254,24 @@ func (s *spiller) evict(victim *Value) {
 	s.release(victim)
 }
 
-// reload brings evicted a back into a register just before v reads it.
-func (s *spiller) reload(v *Value, a *Value) *Value {
+// reload brings evicted a back into a register just before at reads it, or at the end of b when the terminator does.
+func (s *spiller) reload(b *Block, at *Value, a *Value) *Value {
+	insert := func(op Op) *Value {
+		if at == nil {
+			return s.f.appendValue(op, a.Type, b)
+		}
+		return s.f.insertValueBefore(at, op, a.Type, b)
+	}
+
 	if a.Rematerializable() {
 		// recomputing is cheaper than a round trip through memory
-		r := s.f.insertValueBefore(v, a.Op, a.Type, v.Block)
+		r := insert(a.Op)
 		r.Value = a.Value
 		r.Offset = a.Offset
 		return r
 	}
 
-	r := s.f.insertValueBefore(v, OpStaticLoad, a.Type, v.Block)
+	r := insert(OpStaticLoad)
 	r.Value = s.slots[a]
 	return r
 }

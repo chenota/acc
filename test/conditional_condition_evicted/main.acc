@@ -1,0 +1,8 @@
+fun f (c bool, a int, b int, d int, e int, g int, h int, i int, j int, k int, l int, m int, n int, o int, p int, q int) -> int {
+    let s = a * (b + (d * (e + (g * (h + (i * (j + (k * (l + (m * (n + (o * (p + q)))))))))))));
+    if c { s } else { 0 }
+}
+
+fun main () -> int {
+    f(true, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+}

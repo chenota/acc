@@ -1569,6 +1569,27 @@ func TestSpill_PressureBeforeABranchGivesUpTheValueReadLast(t *testing.T) {
 	assert.Empty(t, findStoresOf(f, requireParamCopy(t, f, 15)))
 }
 
+func TestSpill_EvictedConditionIsReloadedForTheBranch(t *testing.T) {
+	// c is defined first but only read by the branch, so it's the furthest read while s is worked out
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (c bool, a int, b int, d int, e int, g int, h int, i int, j int, k int, l int, m int, n int, o int, p int, q int) -> int {
+			let s = a * (b + (d * (e + (g * (h + (i * (j + (k * (l + (m * (n + (o * (p + q)))))))))))));
+			if c { s } else { 0 }
+		}
+		fun main () -> int { 0 }`), "f")
+	require.Equal(t, BlockIf, f.Entry.Kind)
+	require.Len(t, f.Entry.Control, 1)
+
+	stores := findStoresOf(f, requireParamCopy(t, f, 0))
+	require.Len(t, stores, 1, "c gives up its register while s is worked out")
+
+	// the branch reads c back out of the slot it was stored to, not the register it gave up
+	cond := f.Entry.Control[0]
+	assert.Equal(t, OpStaticLoad, cond.Op)
+	assert.Same(t, stores[0].Slot(), cond.Slot())
+	assert.Same(t, f.Entry, cond.Block)
+}
+
 func TestRegalloc_ValueOnlyOneArmNeedsIgnoresACallInTheOther(t *testing.T) {
 	// x escapes, so the entry block allocates it and only the then arm still needs the pointer
 	f := requireFunc(t, requireBuildSSA(t, `
