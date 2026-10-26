@@ -1,0 +1,5 @@
+fun main () -> int {
+    let debug = false;
+    let quiet = !debug;
+    (if debug { 10 } else { 20 }) + (if quiet { 1 } else { 2 })
+}

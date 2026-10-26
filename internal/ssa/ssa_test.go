@@ -230,24 +230,17 @@ func TestGenSsa_Not_KeepsOperand(t *testing.T) {
 	assert.Equal(t, OpParam, throughCopies(not.Args[0]).Op)
 }
 
-func TestUnaryFold_OperandReadElsewhereIsKept(t *testing.T) {
-	// x is read by the negate, which folds away, and by the multiply, which doesn't
+func TestUnaryFold_BranchConditionIsKept(t *testing.T) {
+	// debug is read by the not, which folds away, and by the branch, which doesn't
 	f := requireFunc(t, requireBuildSSA(t, `
-		fun f (a int) -> int { let x = 5; let y = -x; a * x + y }
+		fun f () -> int { let debug = false; let quiet = !debug; if debug { 1 } else { 2 } }
 		fun main () -> int { 0 }`), "f")
-	vals := slices.Collect(f.OrderedValues())
+	assert.Empty(t, findValues(f.Entry.Values, OpNot), "the not folds away")
 
-	adds := findValues(vals, OpAdd)
-	require.Len(t, adds, 1)
-	require.Len(t, adds[0].Args, 2)
-	assert.Equal(t, OpLiteral, adds[0].Args[1].Op, "the negate folds into a literal")
-	assert.Equal(t, int32(-5), adds[0].Args[1].Value)
-
-	muls := findValues(vals, OpMultiply)
-	require.Len(t, muls, 1)
-	require.Len(t, muls[0].Args, 2)
-	assert.Equal(t, OpLiteral, muls[0].Args[1].Op, "the multiply still reads x")
-	assert.Equal(t, int32(5), muls[0].Args[1].Value)
+	require.Equal(t, BlockIf, f.Entry.Kind)
+	require.Len(t, f.Entry.Control, 1, "the branch keeps its condition")
+	assert.Equal(t, OpLiteral, f.Entry.Control[0].Op)
+	assert.Equal(t, false, f.Entry.Control[0].Value)
 }
 
 func TestGenSsa_Variable(t *testing.T) {
