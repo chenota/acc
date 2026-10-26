@@ -19,7 +19,7 @@ func associativeFold(f *Func) error {
 		if len(vars) == 0 {
 			foldConstantChain(f, root, foldedValue, cores)
 		} else {
-			rewireMixedChain(f, root, foldedValue, cores, vars)
+			rebuildMixedChain(f, root, foldedValue, cores, vars)
 		}
 
 		for _, c := range consts {
@@ -40,26 +40,24 @@ func foldConstantChain(f *Func, root *Value, foldedValue any, cores []*Value) {
 	}
 }
 
-// rewireMixedChain handles chains with at least one variable leaf.
-func rewireMixedChain(f *Func, root *Value, foldedValue any, cores []*Value, vars []*Value) {
-	varCount := len(vars)
+// rebuildMixedChain handles chains with at least one variable leaf.
+func rebuildMixedChain(f *Func, root *Value, foldedValue any, cores []*Value, vars []*Value) {
+	// insert variables right before the root
+	acc := vars[len(vars)-1]
+	for _, v := range slices.Backward(vars[:len(vars)-1]) {
+		core := f.insertValueBefore(root, root.Op, root.Type, root.Block)
+		core.Args = []*Value{acc, v}
+		acc = core
+	}
 
 	newConst := f.insertValueBefore(root, OpLiteral, root.Type, root.Block)
 	newConst.Value = foldedValue
 
-	// the innermost kept core's left arg points to the first surplus core; redirect it to the first var
-	cores[varCount-1].Args[0] = vars[0]
+	// re-point the root
+	root.Args = []*Value{acc, newConst}
 
-	// outermost core gets newConst on the right; each inner core gets the next var
-	for i := range varCount {
-		if i == 0 {
-			cores[i].Args[1] = newConst
-		} else {
-			cores[i].Args[1] = vars[varCount-i]
-		}
-	}
-
-	for _, c := range cores[varCount:] {
+	// remove all old inner cores since they're unused
+	for _, c := range cores[1:] {
 		f.removeIfDead(c)
 	}
 }

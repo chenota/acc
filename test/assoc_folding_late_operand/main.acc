@@ -1,0 +1,7 @@
+fun f (a int, b int, c int) -> int {
+    return a + 1 + 2 + b * c;
+}
+
+fun main () -> int {
+    return f(1, 2, 3);
+}
