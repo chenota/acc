@@ -1,0 +1,16 @@
+fun pick (c bool) -> *int {
+    let x = 11;
+    let y = 22;
+    let p = &x;
+    if c { p = &y; };
+    p
+}
+
+fun clobber (a int, b int, c int, d int) -> int { a + b + c + d }
+
+fun main () -> int {
+    let p = pick(true);
+    let q = pick(false);
+    clobber(1, 2, 3, 4);
+    *p + *q
+}

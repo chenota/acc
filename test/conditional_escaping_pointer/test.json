@@ -1,0 +1,5 @@
+{
+  "name": "Conditional Pointer Reassigned In A Branch Escapes",
+  "tags": ["vs11"],
+  "status": 33
+}
