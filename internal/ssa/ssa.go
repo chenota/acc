@@ -51,7 +51,7 @@ type stage struct {
 	run  func(*Func) error
 }
 
-// stagesBeforeEscape tidy up a freshly built body; escape analysis needs every function through them first
+// stagesBeforeEscape tidy up a freshly built body; escape analysis needs these to run before it
 var stagesBeforeEscape = []stage{
 	// immediately prune unreachable blocks to prevent panics
 	{"pruneUnreachable", pruneUnreachable},

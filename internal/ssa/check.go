@@ -9,14 +9,19 @@ import (
 	"github.com/chenota/acc/internal/types"
 )
 
-// runStage runs the stage called name over f, then sanity-checks its result. Used for testing only.
-func runStage(f *Func, name string, run func(*Func) error) error {
-	if err := run(f); err != nil {
+// sanity-check every stage's result in builds with the ssacheck tag
+func init() {
+	stageHooks = append(stageHooks, checkStage)
+}
+
+// checkStage runs a stage, then sanity-checks its result
+func checkStage(f *Func, stage string, next func() error) error {
+	if err := next(); err != nil {
 		return err
 	}
 
 	if err := verify(f); err != nil {
-		return fmt.Errorf("%s: invalid ssa after %s: %w", f.Name(), name, err)
+		return fmt.Errorf("%s: invalid ssa after %s: %w", f.Name(), stage, err)
 	}
 
 	return nil
