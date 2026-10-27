@@ -1,0 +1,12 @@
+fun f (c bool, a int, b int) -> int {
+    let x = if c { a } else { b };
+    let q = (a + b) / x;
+    let r = a / b;
+    x * 100 + q * 10 + r
+}
+
+fun main () -> int {
+    if f(true, 6, 3) != 612 { return 1; };
+    if f(false, 8, 2) != 254 { return 2; };
+    0
+}

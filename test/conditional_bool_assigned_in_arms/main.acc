@@ -1,0 +1,14 @@
+fun f (a bool, b bool) -> int {
+    let flag = a;
+    if b { flag = !flag; };
+    let both = if a { b } else { false };
+    (if a { 100 } else { 0 }) + (if flag { 10 } else { 20 }) + (if both { 1 } else { 2 })
+}
+
+fun main () -> int {
+    if f(true, true) != 121 { return 1; };
+    if f(true, false) != 112 { return 2; };
+    if f(false, true) != 12 { return 3; };
+    if f(false, false) != 22 { return 4; };
+    0
+}

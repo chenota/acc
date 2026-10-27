@@ -1,0 +1,19 @@
+fun make (c bool) -> fun () -> int {
+    let x = 4;
+    let y = 5;
+    let p = if c { &x } else { &y };
+    fun () -> int { *p * 10 }
+}
+
+fun clobber (a int, b int, c int) -> int {
+    let p = (a, b, c, a, b, c, a, b, c, a, b, c);
+    let q = (p, p);
+    q.0.0 + q.1.11
+}
+
+fun main () -> int {
+    let a = make(true);
+    let b = make(false);
+    clobber(1, 2, 3);
+    a() + b()
+}

@@ -1,0 +1,11 @@
+fun f (c bool, n int) -> int {
+    let t = (n, n + 1, n + 2);
+    if c { t.1 = 9; } else { t.2 = t.0; };
+    t.0 * 100 + t.1 * 10 + t.2
+}
+
+fun main () -> int {
+    if f(true, 1) != 193 { return 1; };
+    if f(false, 1) != 121 { return 2; };
+    0
+}

@@ -1,0 +1,5 @@
+{
+  "name": "Pointer Chosen By A Conditional Is Captured By An Escaping Closure",
+  "tags": ["vs11"],
+  "status": 90
+}

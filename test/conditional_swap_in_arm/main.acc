@@ -1,0 +1,12 @@
+fun f (c bool, a int, b int) -> int {
+    if c {
+        let t = a;
+        a = b;
+        b = t;
+    };
+    a * 10 + b
+}
+
+fun main () -> int {
+    f(true, 1, 2) * 10 + f(false, 3, 4)
+}

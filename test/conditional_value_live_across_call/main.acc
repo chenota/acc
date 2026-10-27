@@ -1,0 +1,19 @@
+fun id (x int) -> int { x }
+
+fun f (c bool, a int, b int) -> int {
+    let x = if c { a + 1 } else { b * 2 };
+    let y = a;
+    if c {
+        y = b + 1;
+        id(0);
+    } else {
+        id(1);
+    };
+    id(100) + x * 10 + y
+}
+
+fun main () -> int {
+    if f(true, 3, 4) != 145 { return 1; };
+    if f(false, 3, 4) != 183 { return 2; };
+    0
+}

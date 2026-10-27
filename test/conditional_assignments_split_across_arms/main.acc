@@ -1,0 +1,24 @@
+fun f (c bool, n int) -> int {
+    let only_then = n;
+    let only_else = n;
+    let both = n;
+    let neither = n;
+    let shared = n + 2;
+    let same = 0;
+    if c {
+        only_then = 1;
+        both = 2;
+        same = shared;
+    } else {
+        only_else = 3;
+        both = 4;
+        same = shared;
+    };
+    only_then * 10000 + only_else * 1000 + both * 100 + neither * 10 + same
+}
+
+fun main () -> int {
+    if f(true, 5) != 15257 { return 1; };
+    if f(false, 5) != 53457 { return 2; };
+    0
+}

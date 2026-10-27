@@ -1,0 +1,52 @@
+fun f (c bool, n int) -> int {
+    let a = n + 1;
+    let b = n + 2;
+    let d = n + 3;
+    let e = n + 4;
+    let g = n + 5;
+    let h = n + 6;
+    let i = n + 7;
+    let j = n + 8;
+    let k = n + 9;
+    let l = n + 10;
+    let m = n + 11;
+    let o = n + 12;
+    let p = n + 13;
+    let q = n + 14;
+    let r = n + 15;
+    let s = n + 16;
+    if c {
+        a = a * 2;
+        b = b * 2;
+        d = d * 2;
+        e = e * 2;
+        g = g * 2;
+        h = h * 2;
+        i = i * 2;
+        j = j * 2;
+        k = k * 2;
+        l = l * 2;
+        m = m * 2;
+        o = o * 2;
+        p = p * 2;
+        q = q * 2;
+        r = r * 2;
+        s = s * 2;
+    } else {
+        a = a + 100;
+        b = b + 100;
+        d = d + 100;
+        e = e + 100;
+        g = g + 100;
+        h = h + 100;
+        i = i + 100;
+        j = j + 100;
+    };
+    ((((((((((((((a * 2 + b) * 2 + d) * 2 + e) * 2 + g) * 2 + h) * 2 + i) * 2 + j) * 2 + k) * 2 + l) * 2 + m) * 2 + o) * 2 + p) * 2 + q) * 2 + r) * 2 + s
+}
+
+fun main () -> int {
+    if f(true, 1) != 393178 { return 1; };
+    if f(false, 1) != 6724589 { return 2; };
+    0
+}

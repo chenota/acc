@@ -1,0 +1,12 @@
+fun f (c bool, n int) -> int {
+    let x = n * 3;
+    let old = x;
+    if c { x = x + 1; };
+    x * 10 + old
+}
+
+fun main () -> int {
+    if f(true, 1) != 43 { return 1; };
+    if f(false, 2) != 66 { return 2; };
+    0
+}

@@ -1,0 +1,25 @@
+fun pick (c bool) -> *int {
+    let x = 11;
+    let y = 22;
+    if c { &x } else { &y }
+}
+
+fun maybe (c bool) -> *int {
+    let z = 33;
+    if c { &z } else { nil }
+}
+
+fun clobber (a int, b int, c int) -> int {
+    let p = (a, b, c, a, b, c, a, b, c, a, b, c);
+    let q = (p, p);
+    q.0.0 + q.1.11
+}
+
+fun main () -> int {
+    let p = pick(true);
+    let q = pick(false);
+    let r = maybe(true);
+    if maybe(false) != nil { return 1; };
+    clobber(1, 2, 3);
+    *p + *q + *r
+}
