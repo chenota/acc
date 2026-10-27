@@ -583,7 +583,8 @@ func (f *Func) allocationPoint(slot *Slot) (*Block, int) {
 
 // dominatingBlock returns the block that dominates every use of slot.
 func (f *Func) dominatingBlock(_ *Slot) *Block {
-	// with one block per function the entry dominates everything
+	// the entry dominates every block, so it's always safe
+	// TODO: use the nearest block dominating every use
 	return f.Entry
 }
 

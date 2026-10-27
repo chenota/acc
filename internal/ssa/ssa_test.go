@@ -1506,6 +1506,50 @@ func TestMem2Reg_SlotSharedBetweenBlocksStaysInMemory(t *testing.T) {
 	}
 }
 
+func TestMem2Reg_VariableReadAcrossABranchIsPromoted(t *testing.T) {
+	// neither arm assigns y, so every path reaching the read agrees on its value
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (c bool, x int) -> int { let y = x * 3; if c { 1 } else { 2 }; y }
+		fun main () -> int { 0 }`), "f")
+
+	assert.Nil(t, slotNamed(f, "y"), "y should be promoted out of the frame")
+	assert.Empty(t, findValues(slices.Collect(f.OrderedValues()), OpStaticLoad), "nothing is read back out of memory")
+
+	merge := f.Entry.Successors[0].Successors[0]
+	ret := requireReturned(t, merge)
+	assert.Equal(t, OpMultiply, ret.Op)
+	assert.Same(t, f.Entry, ret.Block, "the merge reads the value worked out before the branch")
+}
+
+func TestMem2Reg_VariableReassignedInsideOneArmIsPromoted(t *testing.T) {
+	// y changes in the then arm, but only that arm reads the new value
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (c bool, x int) -> int { let y = x * 3; if c { y = y + 1; return y; }; 0 }
+		fun main () -> int { 0 }`), "f")
+
+	assert.Nil(t, slotNamed(f, "y"), "y should be promoted out of the frame")
+
+	then := f.Entry.Successors[0]
+	ret := requireReturned(t, then)
+	require.Equal(t, OpAdd, ret.Op)
+	require.Len(t, ret.Args, 2)
+	assert.Equal(t, OpMultiply, ret.Args[0].Op, "the arm reads the value stored before the branch")
+}
+
+func TestMem2Reg_ArmThatReturnsLeavesNothingToMerge(t *testing.T) {
+	// only the else arm reaches the merge, so the conditional's value comes from it alone
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (c bool) -> int { let x = if c { return 0; } else { 2 }; x }
+		fun main () -> int { 0 }`), "f")
+
+	assert.Empty(t, f.Slots, "the conditional's value and x should both be promoted")
+
+	merge := f.Entry.Successors[1].Successors[0]
+	ret := requireReturned(t, merge)
+	assert.Equal(t, OpLiteral, ret.Op)
+	assert.Equal(t, int32(2), ret.Value)
+}
+
 // TestSpill_ValueReadAcrossABranchKeepsItsRegister covers a value read before a branch and read again once it merges
 func TestSpill_ValueReadAcrossABranchKeepsItsRegister(t *testing.T) {
 	tests := []struct {
