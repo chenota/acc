@@ -1,0 +1,10 @@
+fun main () -> int {
+    let i = 0;
+    let total = 0;
+    loop {
+        if i == 5 { break; };
+        total = total + i;
+        i = i + 1;
+    };
+    total
+}
