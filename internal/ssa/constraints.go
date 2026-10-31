@@ -53,7 +53,7 @@ func lowerResults(f *Func) {
 		v.Loc = seq.loc(v.Value.(int))
 
 		// move the returned value into the place it names
-		v.Args[0] = copyTo(f, v, v.Args[0], v.Loc)
+		v.setArg(0, copyTo(f, v, v.Args[0], v.Loc))
 	}
 }
 
@@ -77,10 +77,10 @@ func lowerDivides(f *Func) {
 		lo := copyTo(f, v, dividend, NewReg(register.RegA))
 
 		hi := f.insertValueBefore(v, OpSignExtend, dividend.Type, v.Block)
-		hi.Args = []*Value{lo}
+		hi.setArgs(lo)
 		hi.Loc = NewReg(register.RegD)
 
-		v.Args = []*Value{lo, divisor, hi}
+		v.setArgs(lo, divisor, hi)
 		v.Loc = NewReg(register.RegA)
 
 		copyOut(f, v)
@@ -98,12 +98,12 @@ func lowerCalls(f *Func) {
 
 		// arguments past the registers are written to the outgoing area at the bottom of this function's frame
 		for i, arg := range callArgs {
-			v.Args[base+i] = copyTo(f, v, arg, outgoingArgs.loc(i))
+			v.setArg(base+i, copyTo(f, v, arg, outgoingArgs.loc(i)))
 		}
 
 		// the context register only has a meaning at the call itself, so pin it last.
 		if v.Op == OpClosureCall {
-			v.Args[1] = copyTo(f, v, v.Args[1], NewReg(register.ClosureContext))
+			v.setArg(1, copyTo(f, v, v.Args[1], NewReg(register.ClosureContext)))
 		}
 	}
 }
@@ -181,7 +181,7 @@ func incomingArgOffset(n int) int {
 // copyTo inserts a copy of arg pinned to loc just before v.
 func copyTo(f *Func, v *Value, arg *Value, loc Location) *Value {
 	in := f.insertValueBefore(v, OpCopy, arg.Type, v.Block)
-	in.Args = []*Value{arg}
+	in.setArgs(arg)
 	in.Loc = loc
 	if loc.Kind == LocRegister {
 		arg.RecordHint(loc.Reg) // try to put arg where v is to make this copy redundant
@@ -194,7 +194,7 @@ func copyOut(f *Func, v *Value) *Value {
 	out := f.insertValueAfter(v, OpCopy, v.Type, v.Block)
 	// redirect before wiring up the arg so the copy does not point at itself
 	f.redirectUses(v, out)
-	out.Args = []*Value{v}
+	out.setArgs(v)
 	if v.Loc.Kind == LocRegister {
 		out.RecordHint(v.Loc.Reg) // try to put out where v is to make this copy redundant
 	}

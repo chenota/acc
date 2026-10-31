@@ -27,7 +27,7 @@ func spill(f *Func) error {
 				continue
 			}
 
-			s.reloadReads(b, p, v, v.Args)
+			v.setArgs(s.reloadReads(b, p, v, v.Args)...)
 
 			s.releaseEnded(b, p)
 
@@ -43,7 +43,7 @@ func spill(f *Func) error {
 		s.storeMemoryPhiArgs(b)
 		s.reloadPhiArgs(b)
 
-		s.reloadReads(b, len(s.vals), nil, b.Control)
+		b.setControl(s.reloadReads(b, len(s.vals), nil, b.Control)...)
 
 		s.exits[b] = s.holders
 	}
@@ -170,8 +170,10 @@ func (s *spiller) enter(b *Block) map[register.Register]*Value {
 	return regs
 }
 
-// reloadReads brings every spilled value in reads back into a register for the reader at position p of b
-func (s *spiller) reloadReads(b *Block, p int, at *Value, reads []*Value) {
+// reloadReads brings every spilled value in reads back into a register for the reader at position p of b,
+// and returns reads with each reload in place of the value it stands in for
+func (s *spiller) reloadReads(b *Block, p int, at *Value, reads []*Value) []*Value {
+	reads = slices.Clone(reads)
 	for i, a := range reads {
 		if !spillable(a) || s.resident(a) {
 			continue
@@ -191,6 +193,7 @@ func (s *spiller) reloadReads(b *Block, p int, at *Value, reads []*Value) {
 		}
 		s.ranges[b][reload] = span{Start: p, End: end}
 	}
+	return reads
 }
 
 // takePhi gives phi its register as b starts, unless it waits in memory
@@ -215,10 +218,10 @@ func (s *spiller) storeMemoryPhiArgs(b *Block) {
 			}
 
 			store := s.f.appendValue(OpStaticStore, phi.Type, b)
-			store.Args = []*Value{arg}
+			store.setArgs(arg)
 			store.Value = slot
 
-			s.reloadReads(b, len(s.vals), store, store.Args)
+			store.setArgs(s.reloadReads(b, len(s.vals), store, store.Args)...)
 			// a reload made just for the store gives its register straight back
 			if store.Args[0] != arg {
 				s.release(store.Args[0])
@@ -238,11 +241,11 @@ func (s *spiller) reloadPhiArgs(b *Block) {
 				args = append(args, arg)
 			}
 		}
-		s.reloadReads(b, len(s.vals), nil, args)
+		args = s.reloadReads(b, len(s.vals), nil, args)
 
 		i := slices.Index(succ.Predecessors, b)
 		for k, phi := range phis {
-			phi.Args[i] = args[k]
+			phi.setArg(i, args[k])
 		}
 	}
 }
@@ -358,7 +361,7 @@ func (s *spiller) evict(victim *Value) {
 		} else {
 			store = s.f.insertValueAfter(victim, OpStaticStore, victim.Type, victim.Block)
 		}
-		store.Args = []*Value{victim}
+		store.setArgs(victim)
 		store.Value = slot
 		s.slots[victim] = slot
 	}

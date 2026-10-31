@@ -139,7 +139,7 @@ func (p *promoter) addPhiOperands(b *Block, offset int, phi *Value) (*Value, err
 		if err != nil {
 			return nil, err
 		}
-		phi.Args = append(phi.Args, v)
+		phi.addArg(v)
 		p.users[v] = append(p.users[v], phi)
 	}
 	return p.tryRemoveTrivialPhi(phi)
@@ -171,7 +171,7 @@ func (p *promoter) tryRemoveTrivialPhi(phi *Value) (*Value, error) {
 	for _, u := range users {
 		for i := range u.Args {
 			if u.Args[i] == phi {
-				u.Args[i] = same
+				u.setArg(i, same)
 			}
 		}
 		p.users[same] = append(p.users[same], u)

@@ -115,7 +115,8 @@ func requireEdge(t *testing.T, phis ...phiFrom) *Block {
 		// the other edge's operand already sits where the phi does, so any move comes from pred
 		fromOther := &Value{Id: 2 * i, Op: OpCopy, Type: types.Int(), Block: other, Loc: p.phi}
 		fromPred := &Value{Id: 2*i + 1, Op: OpCopy, Type: types.Int(), Block: pred, Loc: p.operand}
-		phi := &Value{Id: 2*len(phis) + i, Op: OpPhi, Type: types.Int(), Block: merge, Args: []*Value{fromOther, fromPred}, Loc: p.phi}
+		phi := &Value{Id: 2*len(phis) + i, Op: OpPhi, Type: types.Int(), Block: merge, Loc: p.phi}
+		phi.setArgs(fromOther, fromPred)
 		merge.Values = append(merge.Values, phi)
 	}
 

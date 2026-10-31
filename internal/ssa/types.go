@@ -52,7 +52,9 @@ type Value struct {
 	Type  *types.Type
 	Block *Block
 
-	Args []*Value
+	Args  []*Value
+	users []*Value
+	ctrl  []*Block // the blocks whose Control reads this value
 
 	Value any
 
@@ -449,90 +451,6 @@ func (f *Func) IsMain() bool {
 // Name returns the function's source-level name.
 func (f *Func) Name() string {
 	return f.name
-}
-
-// redirectUses points every reference to old at new - does not touch the instruction stream itself.
-func (f *Func) redirectUses(old, new *Value) {
-	for _, block := range f.Blocks {
-		for _, value := range block.Values {
-			for i := range value.Args {
-				if value.Args[i] == old {
-					value.Args[i] = new
-				}
-			}
-		}
-
-		for i := range block.Control {
-			if block.Control[i] == old {
-				block.Control[i] = new
-			}
-		}
-	}
-}
-
-// replaceValue old with new in the instruction stream and redirects uses of old to new.
-// TODO: This is wrong since it only replaces the first use of the value and ignores control
-func (f *Func) replaceValue(old, new *Value) {
-	for _, block := range f.Blocks {
-		if i := block.indexOf(old); i >= 0 {
-			block.Values[i] = new
-		}
-	}
-
-	f.redirectUses(old, new)
-}
-
-// hasUses reports whether anything still references v
-func (f *Func) hasUses(v *Value) bool {
-	for _, block := range f.Blocks {
-		for _, value := range block.Values {
-			if value != v && slices.Contains(value.Args, v) {
-				return true
-			}
-		}
-
-		if slices.Contains(block.Control, v) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// useCount is the number of operand and control slots that reference v
-func (f *Func) useCount(v *Value) int {
-	var n int
-	for _, block := range f.Blocks {
-		for _, value := range block.Values {
-			for _, arg := range value.Args {
-				if arg == v {
-					n += 1
-				}
-			}
-		}
-
-		for _, c := range block.Control {
-			if c == v {
-				n += 1
-			}
-		}
-	}
-
-	return n
-}
-
-// removeIfDead drops v from the instruction stream if nothing references it.
-func (f *Func) removeIfDead(v *Value) {
-	if f.hasUses(v) {
-		return
-	}
-
-	f.removeValue(v)
-}
-
-// removeValue drops v from its block's instruction stream; nothing may still use it.
-func (f *Func) removeValue(v *Value) {
-	v.Block.Values = slices.DeleteFunc(v.Block.Values, func(u *Value) bool { return u == v })
 }
 
 // StackAdjustment is the number of bytes the function prologue must subtract from rsp.

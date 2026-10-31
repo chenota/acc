@@ -16,12 +16,12 @@ func heapify(f *Func) error {
 
 		alloc := f.insertValueAt(i+1, OpStaticCall, types.Pointer(slot.Type), block)
 		alloc.Value = Alloc
-		alloc.Args = []*Value{size}
+		alloc.setArgs(size)
 
 		// the call is the instruction, the pointer is the value it hands back
 		heapPtr := f.insertValueAt(i+2, OpCallResult, types.Pointer(slot.Type), block)
 		heapPtr.Value = 0
-		heapPtr.Args = []*Value{alloc}
+		heapPtr.setArgs(alloc)
 
 		for v := range f.SlotValues(slot) {
 			switch v.Op {
@@ -29,7 +29,7 @@ func heapify(f *Func) error {
 				// a field address keeps its offset, just from the new base
 				if v.Offset != 0 {
 					v.Op = OpFieldAddr
-					v.Args = []*Value{heapPtr}
+					v.setArgs(heapPtr)
 					v.Value = nil
 					continue
 				}
@@ -38,11 +38,11 @@ func heapify(f *Func) error {
 				f.removeValue(v)
 			case OpStaticLoad:
 				v.Op = OpLoad
-				v.Args = []*Value{heapPtr}
+				v.setArgs(heapPtr)
 				v.Value = nil
 			case OpStaticStore:
 				v.Op = OpStore
-				v.Args = []*Value{v.Args[0], heapPtr}
+				v.setArgs(v.Args[0], heapPtr)
 				v.Value = nil
 			}
 		}

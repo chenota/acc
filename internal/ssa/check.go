@@ -4,6 +4,7 @@ package ssa
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/chenota/acc/internal/types"
@@ -32,7 +33,10 @@ func verify(f *Func) error {
 	if err := verifyBlocks(f); err != nil {
 		return err
 	}
-	return verifyValues(f)
+	if err := verifyValues(f); err != nil {
+		return err
+	}
+	return verifyUses(f)
 }
 
 // verifyBlocks checks the shape of f's control flow graph
@@ -202,6 +206,60 @@ func verifyValues(f *Func) error {
 	}
 
 	return nil
+}
+
+// verifyUses checks that each value's users and ctrl list exactly what reads it
+func verifyUses(f *Func) error {
+	users := make(map[*Value][]*Value)
+	ctrl := make(map[*Value][]*Block)
+	for _, b := range f.Blocks {
+		for _, v := range b.Values {
+			for _, a := range v.Args {
+				users[a] = append(users[a], v)
+			}
+		}
+		for _, c := range b.Control {
+			ctrl[c] = append(ctrl[c], b)
+		}
+	}
+
+	for _, b := range f.Blocks {
+		for _, v := range b.Values {
+			if !maps.Equal(tally(v.users), tally(users[v])) {
+				return fmt.Errorf("v%d records users %v but is read by %v", v.Id, idsOfValues(v.users), idsOfValues(users[v]))
+			}
+			if !maps.Equal(tally(v.ctrl), tally(ctrl[v])) {
+				return fmt.Errorf("v%d records control of %v but controls %v", v.Id, idsOfBlocks(v.ctrl), idsOfBlocks(ctrl[v]))
+			}
+		}
+	}
+
+	return nil
+}
+
+// tally is how many times each element appears in xs
+func tally[T comparable](xs []T) map[T]int {
+	n := make(map[T]int)
+	for _, x := range xs {
+		n[x] += 1
+	}
+	return n
+}
+
+func idsOfValues(vs []*Value) []int {
+	var ids []int
+	for _, v := range vs {
+		ids = append(ids, v.Id)
+	}
+	return ids
+}
+
+func idsOfBlocks(bs []*Block) []int {
+	var ids []int
+	for _, b := range bs {
+		ids = append(ids, b.Id)
+	}
+	return ids
 }
 
 // count is the number of times b appears in blocks

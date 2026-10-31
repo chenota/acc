@@ -106,7 +106,7 @@ func (b *builder) bindParams(params []*ir.Node) {
 	copies := make([]*Value, len(incomingValues))
 	for i, v := range incomingValues {
 		c := b.targetFunc.appendValue(OpCopy, v.Type, b.currentBlock)
-		c.Args = []*Value{v}
+		c.setArgs(v)
 		copies[i] = c
 	}
 
@@ -171,7 +171,7 @@ func (b *builder) genAssignOp(n *ir.Node) error {
 
 	// glue together with arithmetic bop
 	arithOp := b.targetFunc.appendValue(bopFrom(n), target.Type, b.currentBlock)
-	arithOp.Args = []*Value{loadOp, exprVal}
+	arithOp.setArgs(loadOp, exprVal)
 
 	// write the result back where it came from
 	b.genStoreTo(dest, arithOp)
@@ -208,11 +208,11 @@ func (b *builder) genResults(n *ir.Node, vals []*Value) error {
 		// results store their index in the value slot, the same way parameters do
 		res := b.targetFunc.appendValue(OpResult, val.Type, b.currentBlock)
 		res.Value = i
-		res.Args = []*Value{val}
+		res.setArgs(val)
 		results = append(results, res)
 	}
 
-	b.currentBlock.Control = results
+	b.currentBlock.setControl(results...)
 
 	return nil
 }
@@ -311,7 +311,7 @@ func (b *builder) genNot(e *ir.Node) (*Value, error) {
 
 	// generate not
 	notVal := b.targetFunc.appendValue(OpNot, e.Type, b.currentBlock)
-	notVal.Args = []*Value{sub}
+	notVal.setArgs(sub)
 
 	return notVal, nil
 }
@@ -537,7 +537,7 @@ func (b *builder) genConditional(dest addr, expr *ir.Node) error {
 	// mark block as conditional controlled by condition
 	branchBlock := b.currentBlock
 	branchBlock.Kind = BlockIf
-	branchBlock.Control = []*Value{cond}
+	branchBlock.setControl(cond)
 
 	// block pointing shenanigans
 	consequentBlock := b.targetFunc.newBlock()
@@ -640,7 +640,7 @@ func (b *builder) genRef(expr *ir.Node) (*Value, error) {
 		}
 
 		v := b.targetFunc.appendValue(OpFieldAddr, expr.Type, b.currentBlock)
-		v.Args = []*Value{dest.Ptr}
+		v.setArgs(dest.Ptr)
 		v.Offset = dest.Offset
 
 		return v, nil
@@ -732,7 +732,7 @@ func (b *builder) genLoadFrom(dest addr, t *types.Type) *Value {
 	}
 
 	v := b.targetFunc.appendValue(OpLoad, t, b.currentBlock)
-	v.Args = []*Value{dest.Ptr}
+	v.setArgs(dest.Ptr)
 	v.Offset = dest.Offset
 	return v
 }
@@ -745,14 +745,14 @@ func (b *builder) genStoreTo(dest addr, val *Value) {
 
 	if dest.Slot != nil {
 		v := b.targetFunc.appendValue(OpStaticStore, val.Type, b.currentBlock)
-		v.Args = []*Value{val}
+		v.setArgs(val)
 		v.Value = dest.Slot
 		v.Offset = dest.Offset
 		return
 	}
 
 	v := b.targetFunc.appendValue(OpStore, val.Type, b.currentBlock)
-	v.Args = []*Value{val, dest.Ptr}
+	v.setArgs(val, dest.Ptr)
 	v.Offset = dest.Offset
 }
 
@@ -812,7 +812,7 @@ func (b *builder) genStaticCall(expr *ir.Node, callee *ir.Node) (*Value, error) 
 
 	v := b.targetFunc.appendValue(OpStaticCall, expr.Type, b.currentBlock)
 	v.Value = target
-	v.Args = argVals
+	v.setArgs(argVals...)
 
 	return v, nil
 }
@@ -831,10 +831,11 @@ func (b *builder) genClosureCall(expr *ir.Node, callee *ir.Node) (*Value, error)
 	}
 
 	v := b.targetFunc.appendValue(OpClosureCall, expr.Type, b.currentBlock)
-	v.Args = make([]*Value, 2+len(argVals))
-	v.Args[0] = closure[0]    // code pointer
-	v.Args[1] = closure[1]    // environment pointer
-	copy(v.Args[2:], argVals) // ordinary call args
+	args := make([]*Value, 2+len(argVals))
+	args[0] = closure[0]    // code pointer
+	args[1] = closure[1]    // environment pointer
+	copy(args[2:], argVals) // ordinary call args
+	v.setArgs(args...)
 
 	return v, nil
 }
@@ -865,7 +866,7 @@ func (b *builder) genCallResults(expr *ir.Node) ([]*Value, error) {
 		// results store their index in the value slot
 		res := b.targetFunc.appendValue(OpCallResult, leaf, b.currentBlock)
 		res.Value = i
-		res.Args = []*Value{call}
+		res.setArgs(call)
 		vals = append(vals, res)
 	}
 
@@ -901,7 +902,7 @@ func (b *builder) genNegate(expr *ir.Node) (*Value, error) {
 	}
 
 	negateOp := b.targetFunc.appendValue(OpNegate, expr.Type, b.currentBlock)
-	negateOp.Args = []*Value{e}
+	negateOp.setArgs(e)
 
 	return negateOp, nil
 }
@@ -945,7 +946,7 @@ func (b *builder) genBop(expr *ir.Node) (*Value, error) {
 	}
 
 	v := b.targetFunc.appendValue(bopFrom(expr), expr.Type, b.currentBlock)
-	v.Args = []*Value{leftVal, rightVal}
+	v.setArgs(leftVal, rightVal)
 	return v, nil
 }
 

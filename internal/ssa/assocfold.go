@@ -46,7 +46,7 @@ func rebuildMixedChain(f *Func, root *Value, foldedValue any, cores []*Value, va
 	acc := vars[len(vars)-1]
 	for _, v := range slices.Backward(vars[:len(vars)-1]) {
 		core := f.insertValueBefore(root, root.Op, root.Type, root.Block)
-		core.Args = []*Value{acc, v}
+		core.setArgs(acc, v)
 		acc = core
 	}
 
@@ -54,7 +54,7 @@ func rebuildMixedChain(f *Func, root *Value, foldedValue any, cores []*Value, va
 	newConst.Value = foldedValue
 
 	// re-point the root
-	root.Args = []*Value{acc, newConst}
+	root.setArgs(acc, newConst)
 
 	// remove all old inner cores since they're unused
 	for _, c := range cores[1:] {

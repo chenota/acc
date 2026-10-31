@@ -14,6 +14,17 @@ func pruneUnreachable(f *Func) error {
 		return !ok
 	}
 
+	// a dead block's values and terminator stop reading the values they name
+	for _, b := range f.Blocks {
+		if !dead(b) {
+			continue
+		}
+		for _, v := range b.Values {
+			v.setArgs()
+		}
+		b.setControl()
+	}
+
 	f.Blocks = slices.DeleteFunc(f.Blocks, dead)
 
 	// only predecessors can still name a dead block

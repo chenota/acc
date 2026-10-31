@@ -11,7 +11,7 @@ func negSquash(f *Func) error {
 
 		negate := value.Args[1]
 		// replace the negate operand with the value it negates
-		value.Args[1] = negate.Args[0]
+		value.setArg(1, negate.Args[0])
 
 		// other users may still read the negate
 		f.removeIfDead(negate)
