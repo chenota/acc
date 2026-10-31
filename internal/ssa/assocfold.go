@@ -42,7 +42,6 @@ func foldConstantChain(f *Func, root *Value, foldedValue any, cores []*Value) {
 
 // rebuildMixedChain handles chains with at least one variable leaf.
 func rebuildMixedChain(f *Func, root *Value, foldedValue any, cores []*Value, vars []*Value) {
-	// insert variables right before the root
 	acc := vars[len(vars)-1]
 	for _, v := range slices.Backward(vars[:len(vars)-1]) {
 		core := f.insertValueBefore(root, root.Op, root.Type, root.Block)
@@ -53,10 +52,8 @@ func rebuildMixedChain(f *Func, root *Value, foldedValue any, cores []*Value, va
 	newConst := f.insertValueBefore(root, OpLiteral, root.Type, root.Block)
 	newConst.Value = foldedValue
 
-	// re-point the root
 	root.setArgs(acc, newConst)
 
-	// remove all old inner cores since they're unused
 	for _, c := range cores[1:] {
 		f.removeIfDead(c)
 	}
@@ -76,17 +73,12 @@ func associativeRoots(f *Func) []*Value {
 
 // isSubOperation checks if this operation's only use is another operation of the same type
 func isSubOperation(f *Func, v *Value) bool {
-	if f.useCount(v) != 1 {
+	// a lone use by a terminator leaves users empty
+	if f.useCount(v) != 1 || len(v.users) != 1 {
 		return false
 	}
 
-	for val := range f.UnorderedValues() {
-		if val.Op == v.Op && slices.Contains(val.Args, v) {
-			return true
-		}
-	}
-
-	return false
+	return v.users[0].Op == v.Op
 }
 
 func associativeChain(f *Func, root *Value) []*Value {
@@ -141,7 +133,6 @@ func leaves(chain []*Value) ([]*Value, []*Value) {
 	return consts, vars
 }
 
-// foldConsts combines every constant leaf into one value
 func foldConsts(vals []*Value, op Op) (any, bool) {
 	var acc any
 
