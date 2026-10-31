@@ -49,7 +49,7 @@ func computeLiveRanges(f *Func) liveRanges {
 				}
 			}
 
-			// parameters and the closure environment occupy their registers before the function's first instruction
+			// parameters, the closure environment, and phis occupy their registers before the block's first instruction
 			if v.Op == OpParam || v.Op == OpClosurePtr || v.Op == OpPhi {
 				touch(v, -1)
 			}

@@ -21,18 +21,15 @@ type Move struct {
 	Type *types.Type
 }
 
-// EdgeMoves returns what b has to move as it leaves for its successors, so each successor's phis find their operand
-// from b in their own location. The moves are ordered to run one at a time.
+// EdgeMoves returns moves b has to make to transition to any of its successors
 func (b *Block) EdgeMoves() []Move {
 	var pending []Move
 	for _, s := range b.Successors {
-		i := slices.Index(s.Predecessors, b)
-		for _, phi := range s.Values[:s.phiIndex()] {
-			src := phi.Args[i].Loc
-			if phi.Loc.Kind == LocNone || phi.Loc == src {
+		for phi, arg := range s.phiArgsFrom(b) {
+			if phi.Loc.Kind == LocNone || phi.Loc == arg.Loc {
 				continue
 			}
-			pending = append(pending, Move{Kind: MoveCopy, Dst: phi.Loc, Src: src, Type: phi.Type})
+			pending = append(pending, Move{Kind: MoveCopy, Dst: phi.Loc, Src: arg.Loc, Type: phi.Type})
 		}
 	}
 
@@ -40,7 +37,6 @@ func (b *Block) EdgeMoves() []Move {
 }
 
 // sequentialize orders moves meant to happen all at once so they can run one at a time.
-// No two moves may share a destination.
 func sequentialize(pending []Move) []Move {
 	var moves []Move
 	for len(pending) > 0 {

@@ -3,7 +3,6 @@ package ssa
 import (
 	"iter"
 	"maps"
-	"slices"
 
 	"github.com/chenota/acc/internal/iterutil"
 )
@@ -39,25 +38,18 @@ func computeLiveness(f *Func) liveness {
 
 // update recomputes b's boundaries from its successors and reports whether either one moved.
 func (lv liveness) update(b *Block) bool {
-	// anything a successor needs is needed once b is done
+	// anything a successor needs is needed once b is done, including the operands its phis take from b
 	out := make(map[*Value]struct{})
 	for _, s := range b.Successors {
 		maps.Copy(out, lv[s].in)
-
-		// copy each predecessor's phis that this block outputs to its out set
-		for _, p := range b.Successors {
-			i := slices.Index(p.Predecessors, b)
-			for _, v := range p.Values[:p.phiIndex()] {
-				out[v.Args[i]] = struct{}{}
-			}
+		for _, a := range s.phiArgsFrom(b) {
+			out[a] = struct{}{}
 		}
 	}
 
 	// so is anything b reads, unless b defines it first
 	in := maps.Clone(out)
-	// want to skip phi args in reads to prevent erraneous values getting copied into successors out sets
-	// NOTE: this omits phi args from the in set of this block which may cause issues in the future but works for now
-	for _, v := range reads(b.Values[b.phiIndex():], b.Control) {
+	for _, v := range reads(b.Values, b.Control) {
 		in[v] = struct{}{}
 	}
 	for _, v := range b.Values {
@@ -70,9 +62,13 @@ func (lv liveness) update(b *Block) bool {
 }
 
 // reads yields each value a block's instructions read, with the position it's read at.
+// A phi reads its operands at the end of its predecessors, so they aren't reads of this block.
 func reads(vals []*Value, control []*Value) iter.Seq2[int, *Value] {
 	return func(yield func(int, *Value) bool) {
 		for p, v := range vals {
+			if v.Op == OpPhi {
+				continue
+			}
 			for _, a := range v.Args {
 				if !yield(p, a) {
 					return

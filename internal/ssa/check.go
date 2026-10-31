@@ -183,7 +183,7 @@ func verifyValues(f *Func) error {
 		// non-phi values
 		for i, v := range b.Values[n:] {
 			if v.Op == OpPhi {
-				return fmt.Errorf("phi value v%d in outside of contiguous phi section at beginning of block.", v.Id)
+				return fmt.Errorf("phi v%d comes after a non-phi value in block %d", v.Id, b.Id)
 			}
 			for _, a := range v.Args {
 				// i counts from the first non-phi, but defined wants a position in all of b.Values

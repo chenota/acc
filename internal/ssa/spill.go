@@ -118,41 +118,30 @@ func (s *spiller) pickMemoryPhis() {
 				live = append(live, v)
 			}
 		}
+		dist := func(v *Value) int {
+			if d, ok := s.nextUse(b, b.Values, -1, v); ok {
+				return d
+			}
+			return math.MaxInt
+		}
 		slices.SortFunc(live, func(u, v *Value) int {
-			return cmp.Or(cmp.Compare(s.entryUse(b, u), s.entryUse(b, v)), cmp.Compare(u.Id, v.Id))
+			return cmp.Or(cmp.Compare(dist(u), dist(v)), cmp.Compare(u.Id, v.Id))
 		})
 
-		// hand out registers the way take would
+		// hand out registers the way the walk will, and a phi left without one waits in memory
+		s.holders = make(map[register.Register]*Value)
 		free := s.scratch(b, -1)
 		for _, v := range live {
-			if r, ok := preferCallerSaved(s.avail[v].Intersect(free)).One(); ok {
-				free = free.Remove(r)
+			if s.take(v, s.avail[v].Intersect(free)) || v.Op != OpPhi || v.Block != b {
 				continue
 			}
 
-			if v.Op == OpPhi && v.Block == b {
-				slot := s.f.newSlot(nil, v.Type)
-				s.memPhis[v] = slot
-				// a memory phi is never in a register, so every read of it reloads from the slot like any spilled value
-				s.slots[v] = slot
-			}
+			slot := s.f.newSlot(nil, v.Type)
+			s.memPhis[v] = slot
+			// a memory phi is never in a register, so every read of it reloads from the slot like any spilled value
+			s.slots[v] = slot
 		}
 	}
-}
-
-// entryUse is how far past the start of b v is next read, or math.MaxInt if it never is
-func (s *spiller) entryUse(b *Block, v *Value) int {
-	// b's phis read their operands in the predecessors, so reads start past them
-	n := b.phiIndex()
-	for p, u := range reads(b.Values[n:], b.Control) {
-		if u == v {
-			return n + p
-		}
-	}
-	if d, ok := s.uses[b][v]; ok {
-		return len(b.Values) + d
-	}
-	return math.MaxInt
 }
 
 // enter is values that b's predecessors left in registers
@@ -219,20 +208,19 @@ func (s *spiller) takePhi(b *Block, p int, phi *Value, phis []*Value) {
 // storeMemoryPhiArgs writes each operand b hands a successor's memory phi into that phi's slot as b ends
 func (s *spiller) storeMemoryPhiArgs(b *Block) {
 	for _, succ := range b.Successors {
-		i := slices.Index(succ.Predecessors, b)
-		for _, phi := range succ.Values[:succ.phiIndex()] {
+		for phi, arg := range succ.phiArgsFrom(b) {
 			slot, ok := s.memPhis[phi]
 			if !ok {
 				continue
 			}
 
 			store := s.f.appendValue(OpStaticStore, phi.Type, b)
-			store.Args = []*Value{phi.Args[i]}
+			store.Args = []*Value{arg}
 			store.Value = slot
 
 			s.reloadReads(b, len(s.vals), store, store.Args)
 			// a reload made just for the store gives its register straight back
-			if store.Args[0] != phi.Args[i] {
+			if store.Args[0] != arg {
 				s.release(store.Args[0])
 			}
 		}
@@ -242,19 +230,17 @@ func (s *spiller) storeMemoryPhiArgs(b *Block) {
 // reloadPhiArgs brings back every spilled operand b hands to its successors' register phis, which read them as b ends
 func (s *spiller) reloadPhiArgs(b *Block) {
 	for _, succ := range b.Successors {
-		i := slices.Index(succ.Predecessors, b)
-		phis := slices.DeleteFunc(slices.Clone(succ.Values[:succ.phiIndex()]), func(phi *Value) bool {
-			_, ok := s.memPhis[phi]
-			return ok
-		})
-
 		// collect all phi args to be allocated at once
-		args := make([]*Value, len(phis))
-		for k, phi := range phis {
-			args[k] = phi.Args[i]
+		var phis, args []*Value
+		for phi, arg := range succ.phiArgsFrom(b) {
+			if _, ok := s.memPhis[phi]; !ok {
+				phis = append(phis, phi)
+				args = append(args, arg)
+			}
 		}
 		s.reloadReads(b, len(s.vals), nil, args)
 
+		i := slices.Index(succ.Predecessors, b)
 		for k, phi := range phis {
 			phi.Args[i] = args[k]
 		}
@@ -307,7 +293,7 @@ func (s *spiller) pickVictim(b *Block, p int, m register.Mask, operands []*Value
 			continue
 		}
 
-		d, ok := s.nextUse(b, p, cand)
+		d, ok := s.nextUse(b, s.vals, p, cand)
 		if !ok {
 			return cand // never read again, so nothing is cheaper to give up
 		}
@@ -326,10 +312,13 @@ func (s *spiller) pickVictim(b *Block, p int, m register.Mask, operands []*Value
 	return victim
 }
 
-func (s *spiller) take(v *Value, m register.Mask) {
-	if r, ok := preferCallerSaved(m.Without(s.used())).One(); ok {
+// take gives v a free register out of m, and reports whether there was one
+func (s *spiller) take(v *Value, m register.Mask) bool {
+	r, ok := preferCallerSaved(m.Without(s.used())).One()
+	if ok {
 		s.holders[r] = v
 	}
+	return ok
 }
 
 func preferCallerSaved(m register.Mask) register.Mask {
@@ -399,17 +388,16 @@ func (s *spiller) reload(b *Block, at *Value, a *Value) *Value {
 }
 
 // nextUse is how many instructions past p the next read of v is, and whether it is read again at all.
-func (s *spiller) nextUse(b *Block, p int, v *Value) (int, bool) {
-	// b's phis read their operands in the predecessors, so reads start past them
-	n := b.phiIndex()
-	for q, u := range reads(s.vals[n:], b.Control) {
-		if n+q > p && u == v {
-			return n + q - p, true
+// Positions index vals, which is b's values as they stood before spilling inserted anything.
+func (s *spiller) nextUse(b *Block, vals []*Value, p int, v *Value) (int, bool) {
+	for q, u := range reads(vals, b.Control) {
+		if q > p && u == v {
+			return q - p, true
 		}
 	}
 
 	if d, ok := s.uses[b][v]; ok {
-		return (len(s.vals) - p) + d, true
+		return (len(vals) - p) + d, true
 	}
 
 	return 0, false
@@ -445,9 +433,8 @@ func computeNextUses(f *Func) nextUses {
 				}
 
 				// s's phis read the operand for the edge from b as b ends
-				i := slices.Index(s.Predecessors, b)
-				for _, phi := range s.Values[:s.phiIndex()] {
-					out[phi.Args[i]] = 0
+				for _, a := range s.phiArgsFrom(b) {
+					out[a] = 0
 				}
 			}
 
@@ -456,11 +443,9 @@ func computeNextUses(f *Func) nextUses {
 			for v, d := range out {
 				in[v] = len(b.Values) + d
 			}
-			// b's phis read their args in the predecessor blocks, so read past them
-			n := b.phiIndex()
-			for p, v := range reads(b.Values[n:], b.Control) {
-				if d, ok := in[v]; !ok || n+p < d {
-					in[v] = n + p
+			for p, v := range reads(b.Values, b.Control) {
+				if d, ok := in[v]; !ok || p < d {
+					in[v] = p
 				}
 			}
 			for _, v := range b.Values {
