@@ -12,7 +12,6 @@ func lowerConstraints(f *Func) error {
 	lowerDivides(f)
 	lowerCalls(f)
 	lowerCallResults(f)
-	// important that lowerResults runs after lowerCallResults so the hint lands on the copy a call's result is read out of
 	lowerResults(f)
 
 	return nil
@@ -183,9 +182,6 @@ func copyTo(f *Func, v *Value, arg *Value, loc Location) *Value {
 	in := f.insertValueBefore(v, OpCopy, arg.Type, v.Block)
 	in.setArgs(arg)
 	in.Loc = loc
-	if loc.Kind == LocRegister {
-		arg.RecordHint(loc.Reg) // try to put arg where v is to make this copy redundant
-	}
 	return in
 }
 
@@ -195,8 +191,5 @@ func copyOut(f *Func, v *Value) *Value {
 	// redirect before wiring up the arg so the copy does not point at itself
 	f.redirectUses(v, out)
 	out.setArgs(v)
-	if v.Loc.Kind == LocRegister {
-		out.RecordHint(v.Loc.Reg) // try to put out where v is to make this copy redundant
-	}
 	return out
 }

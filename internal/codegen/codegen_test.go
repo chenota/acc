@@ -169,12 +169,11 @@ func TestCodegen_Comparison_LeftOperandIsDest(t *testing.T) {
 		fun main () -> int { return 0; }
 	`)
 
-	// AT&T cmp computes dest - src, so setl reads a < b only when a is the destination
+	// AT&T cmp computes dest - src, so setl reads a < b only when a is the destination; with nothing else live, each
+	// parameter is compared right where it arrived
 	cmp := requireOnlyOp(t, insts, "cmpl")
-	a := requireMovFrom(t, insts, register.RegDI)
-	b := requireMovFrom(t, insts, register.RegSI)
-	assert.Equal(t, a.Dest.Reg, cmp.Dest.Reg, "left operand is compared as the destination")
-	assert.Equal(t, b.Dest.Reg, cmp.Src1.Reg, "right operand is compared as the source")
+	assert.Equal(t, register.RegDI, cmp.Dest.Reg, "left operand is compared as the destination")
+	assert.Equal(t, register.RegSI, cmp.Src1.Reg, "right operand is compared as the source")
 }
 
 func TestCodegen_BoolLiteral_MovesByteImmediate(t *testing.T) {
@@ -267,19 +266,6 @@ func TestCodegen_ReturnBlocks_ShareOneEpilogue(t *testing.T) {
 	assert.Len(t, rets, 2)
 	require.Len(t, jmps, 1)
 	assert.Equal(t, localPrefix+"f.ret", jmps[0].Dest.Value)
-}
-
-// requireMovFrom returns the sole mov reading the given register.
-func requireMovFrom(t *testing.T, insts []Inst, reg register.Register) Inst {
-	t.Helper()
-	var found []Inst
-	for _, inst := range insts {
-		if strings.HasPrefix(inst.Op, "mov") && inst.Src1.Kind == KRegister && inst.Src1.Reg == reg {
-			found = append(found, inst)
-		}
-	}
-	require.Len(t, found, 1, "expected exactly one mov out of register %d", reg)
-	return found[0]
 }
 
 func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {

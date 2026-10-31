@@ -61,8 +61,6 @@ type Value struct {
 	Offset int // byte offset from the slot or pointer this value addresses.
 
 	Loc Location
-
-	hints map[register.Register]int // hints stores the number of hints this value has per register
 }
 
 // Clobbers reports the registers this value destroys when it executes.
@@ -142,43 +140,6 @@ func (v *Value) Slot() *Slot {
 func (v *Value) Callee() *Func {
 	f, _ := v.Value.(*Func)
 	return f
-}
-
-// RecordHint records that this value was hinted for a register
-func (v *Value) RecordHint(r register.Register) {
-	if v.hints == nil {
-		v.hints = make(map[register.Register]int)
-	}
-
-	v.hints[r] += 1
-}
-
-// Hints returns a sequence of all hints this value has recorded in order of frequency, descending
-func (v *Value) Hints() iter.Seq[register.Register] {
-	type kv struct {
-		key   register.Register
-		value int
-	}
-
-	var hints []kv
-	for k, v := range v.hints {
-		hints = append(hints, kv{k, v})
-	}
-
-	slices.SortFunc(hints, func(a, b kv) int {
-		if c := b.value - a.value; c != 0 {
-			return c
-		}
-		// tie break on register number for determinism
-		return int(a.key) - int(b.key)
-	})
-
-	var result []register.Register
-	for _, hint := range hints {
-		result = append(result, hint.key)
-	}
-
-	return slices.Values(result)
 }
 
 type BlockKind int

@@ -1,6 +1,7 @@
 package ssa
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"math"
@@ -19,7 +20,6 @@ func allocate(f *Func) error {
 		// evict and reload insert into b.Values, so walk and scan a copy taken before they do
 		s.vals = slices.Clone(b.Values)
 
-		// phis take their places on the way into b, and then each predecessor hands them their operands as it ends
 		phis := s.vals[:b.phiIndex()]
 		if err := s.placePhis(b, phis); err != nil {
 			return err
@@ -33,7 +33,7 @@ func allocate(f *Func) error {
 		for p := len(phis); p < len(s.vals); p++ {
 			v := s.vals[p]
 
-			reads, err := s.reloadReads(b, p, v, v.Args)
+			reads, err := s.reloadReads(b, p, v, v.Args, nil)
 			if err != nil {
 				return err
 			}
@@ -52,7 +52,7 @@ func allocate(f *Func) error {
 			}
 		}
 
-		control, err := s.reloadReads(b, len(s.vals), nil, b.Control)
+		control, err := s.reloadReads(b, len(s.vals), nil, b.Control, nil)
 		if err != nil {
 			return err
 		}
@@ -81,14 +81,12 @@ func allocate(f *Func) error {
 type spiller struct {
 	f *Func
 
-	// fixed before the walk starts
 	uses  nextUses // what's live at each block boundary, and how far away its next read is
 	avail map[*Value]register.Mask
 
 	// where each value holds its register, kept current as reloads are added
 	ranges liveRanges
 
-	// what the walk has decided so far
 	holders map[register.Register]*Value
 	exits   map[*Block]blockExit
 	regs    map[*Value]register.Register // the register each value lives in whenever it isn't spilled
@@ -99,7 +97,6 @@ type spiller struct {
 	vals []*Value
 }
 
-// blockExit is where the walk left off at the end of a block
 type blockExit struct {
 	holders map[register.Register]*Value
 	vals    []*Value // the block as the walk saw it, before spilling inserted anything
@@ -155,8 +152,9 @@ func (s *spiller) enter(b *Block) map[register.Register]*Value {
 	return regs
 }
 
-// reloadReads brings every spilled value in reads back into a register, without giving up any of reads or keep for room
-func (s *spiller) reloadReads(b *Block, p int, at *Value, reads []*Value, keep ...*Value) ([]*Value, error) {
+// reloadReads brings every spilled value in reads back into a register, without giving up any of reads or keep for room.
+// readers[i] is whatever reads reads[i], or at when readers is nil.
+func (s *spiller) reloadReads(b *Block, p int, at *Value, reads, readers []*Value, keep ...*Value) ([]*Value, error) {
 	reads = slices.Clone(reads)
 	for i, a := range reads {
 		if !spillable(a) || s.resident(a) {
@@ -166,9 +164,15 @@ func (s *spiller) reloadReads(b *Block, p int, at *Value, reads []*Value, keep .
 		m := s.scratch(b, p)
 		s.makeRoom(b, p, m, slices.Concat(reads, keep))
 
+		// the reload isn't wired into its reader until the caller does it, so the reader is named for it
+		reader := at
+		if readers != nil {
+			reader = readers[i]
+		}
+
 		reload := s.reload(b, at, a)
 		reads[i] = reload
-		if err := s.assign(reload, m); err != nil {
+		if err := s.assign(reload, m, reader); err != nil {
 			return nil, err
 		}
 
@@ -190,16 +194,6 @@ func (s *spiller) placePhis(b *Block, phis []*Value) error {
 	for _, phi := range order {
 		if !spillable(phi) {
 			continue
-		}
-
-		// sharing a register with an operand makes the move on that operand's edge redundant
-		// TODO: a back-edge operand is walked after its phi, so it should lean toward the phi's register instead
-		for _, a := range phi.Args {
-			if r, ok := s.regs[a]; ok {
-				phi.RecordHint(r)
-			} else if a.Loc.Kind == LocRegister {
-				phi.RecordHint(a.Loc.Reg)
-			}
 		}
 
 		// give up whatever is read furthest away, which is phi itself if nothing resident is read later
@@ -230,7 +224,7 @@ func (s *spiller) placePhis(b *Block, phis []*Value) error {
 	return nil
 }
 
-// keepInSlot has phi wait in a slot of its own instead of a register, which its predecessors store to as they end
+// keepInSlot has phi wait in a slot instead of a register; its predecessors store their operands there.
 func (s *spiller) keepInSlot(phi *Value) {
 	s.release(phi)
 	delete(s.regs, phi)
@@ -282,7 +276,7 @@ func (s *spiller) finishEdge(p, b *Block, phis []*Value) error {
 		}
 
 		arg := phi.Args[i]
-		in, err := s.reloadReads(p, end, nil, []*Value{arg}, keep...)
+		in, err := s.reloadReads(p, end, nil, []*Value{arg}, nil, keep...)
 		if err != nil {
 			return err
 		}
@@ -303,7 +297,7 @@ func (s *spiller) finishEdge(p, b *Block, phis []*Value) error {
 			args = append(args, phi.Args[i])
 		}
 	}
-	args, err := s.reloadReads(p, end, nil, args, keep...)
+	args, err := s.reloadReads(p, end, nil, args, inRegs, keep...)
 	if err != nil {
 		return err
 	}
@@ -318,7 +312,6 @@ func spillable(v *Value) bool {
 	return v.NeedsRegister() && v.Loc.Kind == LocNone
 }
 
-// waitsInSlot reports whether v is a phi that was given a slot to wait in instead of a register
 func waitsInSlot(v *Value) bool {
 	return v.Op == OpPhi && v.Slot() != nil
 }
@@ -380,14 +373,15 @@ func (s *spiller) pickVictim(b *Block, p int, m register.Mask, operands []*Value
 	return victim
 }
 
-// assign gives v a free register out of m for good, preferring one v was hinted toward
-func (s *spiller) assign(v *Value, m register.Mask) error {
+// assign gives v a free register out of m for good, preferring one that saves a move. readers names anything about to
+// read v that isn't wired up to it yet.
+func (s *spiller) assign(v *Value, m register.Mask, readers ...*Value) error {
 	free := m.Without(s.used())
 
 	r, ok := preferCallerSaved(free).One()
-	for h := range v.Hints() {
-		if free.Contains(h) {
-			r, ok = h, true
+	for _, p := range s.preferences(v, readers) {
+		if free.Contains(p) {
+			r, ok = p, true
 			break
 		}
 	}
@@ -398,6 +392,34 @@ func (s *spiller) assign(v *Value, m register.Mask) error {
 	s.holders[r] = v
 	s.regs[v] = r
 	return nil
+}
+
+// preferences ranks the registers v would rather live in, most wanted first
+func (s *spiller) preferences(v *Value, readers []*Value) []register.Register {
+	votes := make(map[register.Register]int)
+	vote := func(u *Value) {
+		if r, ok := s.regs[u]; ok {
+			votes[r] += 1
+		} else if u.Loc.Kind == LocRegister {
+			votes[u.Loc.Reg] += 1
+		}
+	}
+
+	for _, u := range slices.Concat(v.users, readers) {
+		if u != nil && (u.Op == OpCopy || u.Op == OpPhi) {
+			vote(u)
+		}
+	}
+	if v.Op == OpCopy || v.Op == OpPhi {
+		for _, a := range v.Args {
+			vote(a)
+		}
+	}
+
+	// the register more of them share comes first, breaking ties by register number
+	prefs := slices.Collect(maps.Keys(votes))
+	slices.SortFunc(prefs, func(a, b register.Register) int { return cmp.Or(votes[b]-votes[a], int(a)-int(b)) })
+	return prefs
 }
 
 func preferCallerSaved(m register.Mask) register.Mask {
