@@ -33,11 +33,9 @@ func allocate(f *Func) error {
 		for p := len(phis); p < len(s.vals); p++ {
 			v := s.vals[p]
 
-			reads, err := s.reloadReads(b, p, v, v.Args, nil)
-			if err != nil {
+			if err := s.reloadOperands(b, p, v); err != nil {
 				return err
 			}
-			v.setArgs(reads...)
 
 			s.releaseEnded(b, p)
 
@@ -52,11 +50,9 @@ func allocate(f *Func) error {
 			}
 		}
 
-		control, err := s.reloadReads(b, len(s.vals), nil, b.Control, nil)
-		if err != nil {
+		if err := s.reloadControl(b); err != nil {
 			return err
 		}
-		b.setControl(control...)
 
 		// TODO: when b ends a loop body, the loop header was walked first, so finish the edge back to it here instead,
 		// restoring each value the header holds on entry but b doesn't from its slot into its own register
@@ -152,38 +148,47 @@ func (s *spiller) enter(b *Block) map[register.Register]*Value {
 	return regs
 }
 
-// reloadReads brings every spilled value in reads back into a register, without giving up any of reads or keep for room.
-// readers[i] is whatever reads reads[i], or at when readers is nil.
-func (s *spiller) reloadReads(b *Block, p int, at *Value, reads, readers []*Value, keep ...*Value) ([]*Value, error) {
-	reads = slices.Clone(reads)
-	for i, a := range reads {
+// reloadOperands brings v's spilled operands back into registers just before v reads them at position p of b
+func (s *spiller) reloadOperands(b *Block, p int, v *Value, keep ...*Value) error {
+	for i, a := range v.Args {
 		if !spillable(a) || s.resident(a) {
 			continue
 		}
 
-		m := s.scratch(b, p)
-		s.makeRoom(b, p, m, slices.Concat(reads, keep))
-
-		// the reload isn't wired into its reader until the caller does it, so the reader is named for it
-		reader := at
-		if readers != nil {
-			reader = readers[i]
-		}
-
-		reload := s.reload(b, at, a)
-		reads[i] = reload
-		if err := s.assign(reload, m, reader); err != nil {
-			return nil, err
+		reload := s.reload(b, b.indexOf(v), a)
+		v.setArg(i, reload)
+		if err := s.assignAt(b, p, reload, slices.Concat(v.Args, keep)); err != nil {
+			return err
 		}
 
 		// the reload holds its register only for the read it supports
-		end := p
-		if at != nil {
-			end = readEnd(at, i, p)
-		}
-		s.ranges[b][reload] = span{Start: p, End: end}
+		s.ranges[b][reload] = span{Start: p, End: readEnd(v, i, p)}
 	}
-	return reads, nil
+	return nil
+}
+
+// reloadControl brings b's spilled control values back into registers for its terminator, which reads them as b ends
+func (s *spiller) reloadControl(b *Block) error {
+	control := slices.Clone(b.Control)
+	for i, c := range control {
+		if !spillable(c) || s.resident(c) {
+			continue
+		}
+
+		control[i] = s.reload(b, len(b.Values), c)
+		b.setControl(control...)
+		if err := s.assignAt(b, len(s.vals), control[i], control); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// assignAt gives v, already wired into whatever reads it, a register free at position p of b
+func (s *spiller) assignAt(b *Block, p int, v *Value, keep []*Value) error {
+	m := s.scratch(b, p)
+	s.makeRoom(b, p, m, keep)
+	return s.assign(v, m)
 }
 
 // placePhis gives b's phis their registers as b starts, or a slot to wait in for those that don't fit
@@ -269,40 +274,45 @@ func (s *spiller) finishEdge(p, b *Block, phis []*Value) error {
 
 	i := slices.Index(b.Predecessors, p)
 
-	// a phi waiting in a slot has its operand stored there, which only needs a register while the store reads it
+	// a phi in a slot has its operand stored there, which only needs a register for the store to read it
 	for _, phi := range phis {
 		if !waitsInSlot(phi) {
 			continue
 		}
 
 		arg := phi.Args[i]
-		in, err := s.reloadReads(p, end, nil, []*Value{arg}, nil, keep...)
-		if err != nil {
+		store := s.f.appendValue(OpStaticStore, phi.Type, p)
+		store.setArgs(arg)
+		store.Value = phi.Slot()
+		if err := s.reloadOperands(p, end, store, keep...); err != nil {
 			return err
 		}
-		store := s.f.appendValue(OpStaticStore, phi.Type, p)
-		store.setArgs(in[0])
-		store.Value = phi.Slot()
-		phi.setArg(i, in[0])
-		if in[0] != arg {
-			s.release(in[0])
+		phi.setArg(i, store.Args[0])
+		if store.Args[0] != arg {
+			s.release(store.Args[0])
 		}
 	}
 
-	// the rest read their operands as the edge's parallel copy runs, so those all have to be in registers at once
-	var inRegs, args []*Value
+	// make sure values not waiting in slots are safe
 	for _, phi := range phis {
 		if !waitsInSlot(phi) {
-			inRegs = append(inRegs, phi)
-			args = append(args, phi.Args[i])
+			keep = append(keep, phi.Args[i])
 		}
 	}
-	args, err := s.reloadReads(p, end, nil, args, inRegs, keep...)
-	if err != nil {
-		return err
-	}
-	for k, phi := range inRegs {
-		phi.setArg(i, args[k])
+
+	// everything else is fully reloaded
+	for _, phi := range phis {
+		a := phi.Args[i]
+		if waitsInSlot(phi) || !spillable(a) || s.resident(a) {
+			continue
+		}
+
+		reload := s.reload(p, len(p.Values), a)
+		phi.setArg(i, reload)
+		if err := s.assignAt(p, end, reload, keep); err != nil {
+			return err
+		}
+		keep = append(keep, reload)
 	}
 
 	return nil
@@ -373,13 +383,12 @@ func (s *spiller) pickVictim(b *Block, p int, m register.Mask, operands []*Value
 	return victim
 }
 
-// assign gives v a free register out of m for good, preferring one that saves a move. readers names anything about to
-// read v that isn't wired up to it yet.
-func (s *spiller) assign(v *Value, m register.Mask, readers ...*Value) error {
+// assign gives v a free register out of m for good, preferring one that saves a move
+func (s *spiller) assign(v *Value, m register.Mask) error {
 	free := m.Without(s.used())
 
 	r, ok := preferCallerSaved(free).One()
-	for _, p := range s.preferences(v, readers) {
+	for _, p := range s.preferences(v) {
 		if free.Contains(p) {
 			r, ok = p, true
 			break
@@ -395,7 +404,7 @@ func (s *spiller) assign(v *Value, m register.Mask, readers ...*Value) error {
 }
 
 // preferences ranks the registers v would rather live in, most wanted first
-func (s *spiller) preferences(v *Value, readers []*Value) []register.Register {
+func (s *spiller) preferences(v *Value) []register.Register {
 	votes := make(map[register.Register]int)
 	vote := func(u *Value) {
 		if r, ok := s.regs[u]; ok {
@@ -405,8 +414,8 @@ func (s *spiller) preferences(v *Value, readers []*Value) []register.Register {
 		}
 	}
 
-	for _, u := range slices.Concat(v.users, readers) {
-		if u != nil && (u.Op == OpCopy || u.Op == OpPhi) {
+	for _, u := range v.users {
+		if u.Op == OpCopy || u.Op == OpPhi {
 			vote(u)
 		}
 	}
@@ -464,23 +473,16 @@ func (s *spiller) evict(victim *Value) {
 	s.release(victim)
 }
 
-// reload brings evicted a back into a register just before at reads it, or at the end of b when the terminator does.
-func (s *spiller) reload(b *Block, at *Value, a *Value) *Value {
-	insert := func(op Op) *Value {
-		if at == nil {
-			return s.f.appendValue(op, a.Type, b)
-		}
-		return s.f.insertValueBefore(at, op, a.Type, b)
-	}
-
+// reload brings evicted a back at index i of b, rebuilding it from scratch if it can be and loading it from its slot if not
+func (s *spiller) reload(b *Block, i int, a *Value) *Value {
 	if a.Rematerializable() {
-		r := insert(a.Op)
+		r := s.f.insertValueAt(i, a.Op, a.Type, b)
 		r.Value = a.Value
 		r.Offset = a.Offset
 		return r
 	}
 
-	r := insert(OpStaticLoad)
+	r := s.f.insertValueAt(i, OpStaticLoad, a.Type, b)
 	r.Value = s.slots[a]
 	return r
 }
