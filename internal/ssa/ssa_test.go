@@ -1742,6 +1742,30 @@ func TestSpill_PhisBeyondTheRegistersWaitInMemory(t *testing.T) {
 	assert.Equal(t, int32(32), elseStores[0].Args[0].Value)
 }
 
+func TestSpill_LiteralRebuiltForAMemoryPhiLeavesNoDeadOriginal(t *testing.T) {
+	// every arm's literals outnumber the registers, so some are given up and rebuilt to be stored for a memory phi
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (c bool) -> int {
+			let a = 0; let b = 0; let d = 0; let e = 0; let g = 0; let h = 0; let i = 0; let j = 0;
+			let k = 0; let l = 0; let m = 0; let n = 0; let o = 0; let p = 0; let q = 0; let r = 0;
+			if c {
+				a = 1; b = 2; d = 3; e = 4; g = 5; h = 6; i = 7; j = 8;
+				k = 9; l = 10; m = 11; n = 12; o = 13; p = 14; q = 15; r = 16;
+			} else {
+				a = 17; b = 18; d = 19; e = 20; g = 21; h = 22; i = 23; j = 24;
+				k = 25; l = 26; m = 27; n = 28; o = 29; p = 30; q = 31; r = 32;
+			};
+			a + b + d + e + g + h + i + j + k + l + m + n + o + p + q + r
+		}
+		fun main () -> int { 0 }`), "f")
+	require.Len(t, f.Entry.Successors, 2)
+	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
+
+	// once the memory phi is gone, nothing reads the literal it was handed, so that literal goes too
+	assert.Empty(t, slices.DeleteFunc(findValues(then.Values, OpLiteral), f.hasUses))
+	assert.Empty(t, slices.DeleteFunc(findValues(els.Values, OpLiteral), f.hasUses))
+}
+
 func TestRegalloc_PhiTakesTheRegisterItsOperandsShare(t *testing.T) {
 	// x outlives a call in each arm, so both arms keep it in the same callee-saved register,
 	// away from the result register the phi would otherwise be drawn to
