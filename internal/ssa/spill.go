@@ -47,6 +47,13 @@ func spill(f *Func) error {
 		s.exits[b] = s.holders
 	}
 
+	// drop operands on all memory phis to prevent references from other memory phis from making them appear alive
+	for _, v := range s.dropped {
+		if s.memPhis[v] {
+			v.setArgs()
+		}
+	}
+
 	for _, v := range s.dropped {
 		f.removeIfDead(v)
 	}

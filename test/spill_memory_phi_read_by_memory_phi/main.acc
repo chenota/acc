@@ -1,0 +1,23 @@
+fun id (x int) -> int { x }
+
+fun f (c bool, n int) -> int {
+    let x = 1;
+    let a = id(n);
+    let b = id(n);
+    let d = id(n);
+    let e = id(n);
+    let g = id(n);
+    if c { x = 2; };
+    let s = id(a + b + d + e + g);
+    if s > 0 { x = id(x) * 10; };
+    id(0);
+    a + b + d + e + g + x + s
+}
+
+fun main () -> int {
+    if f(true, 1) != 30 { return 1; };
+    if f(false, 1) != 20 { return 2; };
+    if f(true, -1) != -8 { return 3; };
+    if f(false, -1) != -9 { return 4; };
+    0
+}
