@@ -1,0 +1,13 @@
+fun f (n int) -> int {
+    let x = 7;
+    let i = 0;
+    loop {
+        if i < 2 { i = i + 1; } else { i = i + 2; };
+        if i >= n { break; };
+    };
+    x + i
+}
+
+fun main () -> int {
+    f(5)
+}
