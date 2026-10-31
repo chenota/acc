@@ -113,19 +113,19 @@ func (s *spiller) pickMemoryPhis() {
 
 		// everything that wants a register as b starts, the nearest read first
 		var live []*Value
+		dist := make(map[*Value]int)
 		for v, sp := range s.ranges[b] {
-			if sp.Start < 0 && spillable(v) {
-				live = append(live, v)
+			if sp.Start >= 0 || !spillable(v) {
+				continue
 			}
-		}
-		dist := func(v *Value) int {
+			live = append(live, v)
+			dist[v] = math.MaxInt
 			if d, ok := s.nextUse(b, b.Values, -1, v); ok {
-				return d
+				dist[v] = d
 			}
-			return math.MaxInt
 		}
 		slices.SortFunc(live, func(u, v *Value) int {
-			return cmp.Or(cmp.Compare(dist(u), dist(v)), cmp.Compare(u.Id, v.Id))
+			return cmp.Or(cmp.Compare(dist[u], dist[v]), cmp.Compare(u.Id, v.Id))
 		})
 
 		// hand out registers the way the walk will, and a phi left without one waits in memory
