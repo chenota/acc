@@ -1,0 +1,15 @@
+fun w8 (a int, b int, c int, d int, e int, f int, g int, h int) -> int {
+    a + b * 2 + c * 3 + d * 4 + e * 5 + f * 6 + g * 7 + h * 8
+}
+
+fun f (a int, b int, c int, d int, e int, g int, h int, i int) -> int {
+    let r = w8(1, 1, a, 1, a - 1, e - g - 1, 1 - h, if b < g { g } else { 1 });
+    let s = (c + d - i) / 7;
+    r + g + s
+}
+
+fun main () -> int {
+    if f(1, 1, 18, 1, 1, 11, 15, 8) != -54 { return 1; };
+    if f(1, 20, 18, 1, 1, 11, 15, 8) != -134 { return 2; };
+    0
+}

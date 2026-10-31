@@ -2,6 +2,7 @@ package ssa
 
 import (
 	"cmp"
+	"fmt"
 	"maps"
 	"math"
 	"slices"
@@ -10,8 +11,8 @@ import (
 	"github.com/chenota/acc/internal/register"
 )
 
-// spill lowers register pressure using MIN algorithm.
-func spill(f *Func) error {
+// allocate gives every value a register, spilling with the MIN algorithm wherever there aren't enough to go around.
+func allocate(f *Func) error {
 	s := newSpiller(f)
 
 	for b := range f.OrderedBlocks() {
@@ -19,15 +20,21 @@ func spill(f *Func) error {
 
 		// evict and reload insert into b.Values, so walk and scan a copy taken before they do
 		s.vals = slices.Clone(b.Values)
-		phis := s.vals[:b.phiIndex()]
-		for p, v := range s.vals {
-			// phis take their registers on the way into b, and their operands are read at the end of each predecessor
-			if p < len(phis) {
-				s.takePhi(b, p, v, phis)
-				continue
-			}
 
-			v.setArgs(s.reloadReads(b, p, v, v.Args)...)
+		// phis take their registers on the way into b, and their operands are read at the end of each predecessor
+		phis := s.vals[:b.phiIndex()]
+		if err := s.placePhis(b, phis); err != nil {
+			return err
+		}
+
+		for p := len(phis); p < len(s.vals); p++ {
+			v := s.vals[p]
+
+			reads, err := s.reloadReads(b, p, v, v.Args)
+			if err != nil {
+				return err
+			}
+			v.setArgs(reads...)
 
 			s.releaseEnded(b, p)
 
@@ -37,13 +44,23 @@ func spill(f *Func) error {
 
 			avail := s.avail[v]
 			s.makeRoom(b, p, avail, v.Args)
-			s.take(v, avail)
+			if err := s.assign(v, avail); err != nil {
+				return err
+			}
 		}
 
-		s.reloadPhiArgs(b)
+		if err := s.reloadPhiArgs(b); err != nil {
+			return err
+		}
 
-		b.setControl(s.reloadReads(b, len(s.vals), nil, b.Control)...)
+		control, err := s.reloadReads(b, len(s.vals), nil, b.Control)
+		if err != nil {
+			return err
+		}
+		b.setControl(control...)
 
+		// TODO: when b ends a loop body, restore each value the loop header holds on entry but b doesn't, from its slot
+		// into its own register, as part of the edge's parallel copy
 		s.exits[b] = s.holders
 	}
 
@@ -58,6 +75,13 @@ func spill(f *Func) error {
 		f.removeIfDead(v)
 	}
 
+	// spillable and the pinned registers go by Loc, so the walk's choices only go into it once the walk is done
+	for v := range f.UnorderedValues() {
+		if r, ok := s.regs[v]; ok {
+			v.Loc = NewReg(r)
+		}
+	}
+
 	return nil
 }
 
@@ -65,15 +89,16 @@ type spiller struct {
 	f *Func
 
 	// fixed before the walk starts
-	uses  nextUses                 // how far past each block's end every value it leaves live is next read
-	avail map[*Value]register.Mask // the registers regalloc could house each value in
+	uses  nextUses // how far past each block's end every value it leaves live is next read
+	avail map[*Value]register.Mask
 
-	// where each value holds its register, the same spans regalloc goes by, kept current as reloads are added
+	// where each value holds its register, kept current as reloads are added
 	ranges liveRanges
 
 	// what the walk has decided so far
 	holders map[register.Register]*Value
 	exits   map[*Block]map[register.Register]*Value
+	regs    map[*Value]register.Register // the register each value lives in whenever it isn't spilled
 	slots   map[*Value]*Slot
 	dropped []*Value
 	memPhis map[*Value]bool
@@ -89,10 +114,12 @@ func newSpiller(f *Func) *spiller {
 		ranges:  computeLiveRanges(f),
 		avail:   make(map[*Value]register.Mask),
 		exits:   make(map[*Block]map[register.Register]*Value),
+		regs:    make(map[*Value]register.Register),
 		slots:   make(map[*Value]*Slot),
 		memPhis: make(map[*Value]bool),
 	}
 
+	// TODO: recompute these as spilling shortens ranges, since the ranges from before the walk rule out more than they need to
 	for v := range f.UnorderedValues() {
 		if spillable(v) {
 			s.avail[v] = register.Allocatable.Without(s.ranges.blockedFor(v))
@@ -102,9 +129,8 @@ func newSpiller(f *Func) *spiller {
 	// need to pick which phis go in memory beforehand so predecessors know where to put phi args
 	s.pickMemoryPhis()
 
-	// immediately write store operations for memory phi args
 	if s.storeMemoryPhiArgs() {
-		// if any new instructions were added we need to recompute this stuff
+		// the new stores shift positions, leaving ranges and uses stale
 		s.ranges = computeLiveRanges(f)
 		s.uses = computeNextUses(f)
 	}
@@ -140,12 +166,10 @@ func (s *spiller) pickMemoryPhis() {
 		s.holders = make(map[register.Register]*Value)
 		free := s.scratch(b, -1)
 		for _, v := range live {
-			if s.take(v, s.avail[v].Intersect(free)) || v.Op != OpPhi || v.Block != b {
-				// able to allocate a register for this phi, so move on
+			if _, ok := s.take(v, s.avail[v].Intersect(free)); ok || v.Op != OpPhi || v.Block != b {
 				continue
 			}
 
-			// unable to allocate a register for this phi, so give it a slot and mark as a mem phi
 			s.memPhis[v] = true
 			s.slots[v] = s.f.newSlot(nil, v.Type)
 			s.dropped = append(s.dropped, v)
@@ -154,7 +178,8 @@ func (s *spiller) pickMemoryPhis() {
 }
 
 // enter is values that b's predecessors left in registers
-// TODO: loops need some special handling since the header is walked before the predecessor
+// TODO: a loop header is walked before its back edges, so choose its entry set up front instead
+// Braun & Hack, "Register Spilling and Live-Range Splitting for SSA-Form Programs"
 func (s *spiller) enter(b *Block) map[register.Register]*Value {
 	var exits []map[register.Register]*Value
 	for _, p := range b.Predecessors {
@@ -180,7 +205,7 @@ func (s *spiller) enter(b *Block) map[register.Register]*Value {
 }
 
 // reloadReads brings every spilled value in reads back into a register
-func (s *spiller) reloadReads(b *Block, p int, at *Value, reads []*Value) []*Value {
+func (s *spiller) reloadReads(b *Block, p int, at *Value, reads []*Value) ([]*Value, error) {
 	reads = slices.Clone(reads)
 	for i, a := range reads {
 		if !spillable(a) || s.resident(a) {
@@ -192,7 +217,9 @@ func (s *spiller) reloadReads(b *Block, p int, at *Value, reads []*Value) []*Val
 
 		reload := s.reload(b, at, a)
 		reads[i] = reload
-		s.take(reload, m)
+		if err := s.assign(reload, m); err != nil {
+			return nil, err
+		}
 
 		// the reload holds its register only for the read it supports
 		end := p
@@ -201,22 +228,43 @@ func (s *spiller) reloadReads(b *Block, p int, at *Value, reads []*Value) []*Val
 		}
 		s.ranges[b][reload] = span{Start: p, End: end}
 	}
-	return reads
+	return reads, nil
 }
 
-// takePhi gives phi its register as b starts, unless it waits in memory
-func (s *spiller) takePhi(b *Block, p int, phi *Value, phis []*Value) {
-	if s.memPhis[phi] || !spillable(phi) {
-		return
+// placePhis gives b's phis their registers as b starts
+func (s *spiller) placePhis(b *Block, phis []*Value) error {
+	order := slices.Clone(phis)
+	slices.SortStableFunc(order, func(u, w *Value) int { return s.avail[u].Count() - s.avail[w].Count() })
+
+	for _, phi := range order {
+		if s.memPhis[phi] || !spillable(phi) {
+			continue
+		}
+
+		// sharing a register with an operand makes the move on that operand's edge redundant
+		// TODO: a back-edge operand is walked after its phi, so it should lean toward the phi's register instead
+		for _, a := range phi.Args {
+			if r, ok := s.regs[a]; ok {
+				phi.RecordHint(r)
+			} else if a.Loc.Kind == LocRegister {
+				phi.RecordHint(a.Loc.Reg)
+			}
+		}
+
+		// every phi takes its register on the way in, so giving one up wouldn't make room for another
+		avail := s.avail[phi]
+		s.makeRoom(b, slices.Index(phis, phi), avail, phis)
+		if err := s.assign(phi, avail); err != nil {
+			return err
+		}
 	}
 
-	// every phi takes its register on the way in, so giving one up wouldn't make room for another
-	avail := s.avail[phi]
-	s.makeRoom(b, p, avail, phis)
-	s.take(phi, avail)
+	return nil
 }
 
 // storeMemoryPhiArgs writes a block's outgoing phi args to whatever slot it goes to
+// TODO: across a back edge a phi can take another phi of the same block as an operand, so these stores have to join the
+// edge's parallel copy, reading every operand before writing any slot
 func (s *spiller) storeMemoryPhiArgs() bool {
 	var stored bool
 	for _, b := range s.f.Blocks {
@@ -237,9 +285,8 @@ func (s *spiller) storeMemoryPhiArgs() bool {
 }
 
 // reloadPhiArgs brings back every spilled operand b hands to its successors' register phis, which read them as b ends
-func (s *spiller) reloadPhiArgs(b *Block) {
+func (s *spiller) reloadPhiArgs(b *Block) error {
 	for _, succ := range b.Successors {
-		// collect all phi args to be allocated at once
 		var phis, args []*Value
 		for phi, arg := range succ.PhiArgsFrom(b) {
 			if !s.memPhis[phi] {
@@ -247,13 +294,18 @@ func (s *spiller) reloadPhiArgs(b *Block) {
 				args = append(args, arg)
 			}
 		}
-		args = s.reloadReads(b, len(s.vals), nil, args)
+		args, err := s.reloadReads(b, len(s.vals), nil, args)
+		if err != nil {
+			return err
+		}
 
 		i := slices.Index(succ.Predecessors, b)
 		for k, phi := range phis {
 			phi.setArg(i, args[k])
 		}
 	}
+
+	return nil
 }
 
 func spillable(v *Value) bool {
@@ -321,13 +373,33 @@ func (s *spiller) pickVictim(b *Block, p int, m register.Mask, operands []*Value
 	return victim
 }
 
-// take gives v a free register out of m, and reports whether there was one
-func (s *spiller) take(v *Value, m register.Mask) bool {
-	r, ok := preferCallerSaved(m.Without(s.used())).One()
+// take gives v a free register out of m, preferring one v was hinted toward, and reports which one
+func (s *spiller) take(v *Value, m register.Mask) (register.Register, bool) {
+	free := m.Without(s.used())
+
+	r, ok := preferCallerSaved(free).One()
+	for h := range v.Hints() {
+		if free.Contains(h) {
+			r, ok = h, true
+			break
+		}
+	}
+
 	if ok {
 		s.holders[r] = v
 	}
-	return ok
+	return r, ok
+}
+
+// assign takes v's register out of m for good
+func (s *spiller) assign(v *Value, m register.Mask) error {
+	r, ok := s.take(v, m)
+	if !ok {
+		return fmt.Errorf("allocate: no register for v%d in block %d of %s", v.Id, v.Block.Id, s.f.Name())
+	}
+
+	s.regs[v] = r
+	return nil
 }
 
 func preferCallerSaved(m register.Mask) register.Mask {
@@ -397,7 +469,6 @@ func (s *spiller) reload(b *Block, at *Value, a *Value) *Value {
 }
 
 // nextUse is how many instructions past p the next read of v is, and whether it is read again at all.
-// Positions index vals, which is b's values as they stood before spilling inserted anything.
 func (s *spiller) nextUse(b *Block, vals []*Value, p int, v *Value) (int, bool) {
 	for q, u := range reads(vals, b.Control) {
 		if q > p && u == v {

@@ -51,6 +51,9 @@ type stage struct {
 	run  func(*Func) error
 }
 
+// allocateStage is the stage that hands out registers
+const allocateStage = "allocate"
+
 // stagesBeforeEscape tidy up a freshly built body; escape analysis needs these to run before it
 var stagesBeforeEscape = []stage{
 	// immediately prune unreachable blocks to prevent panics
@@ -67,8 +70,7 @@ var stagesAfterEscape = []stage{
 	{"associativeFold", associativeFold},
 	{"negSquash", negSquash},
 	{"lowerConstraints", lowerConstraints},
-	{"spill", spill},
-	{"regalloc", regalloc},
+	{allocateStage, allocate},
 	{"layoutFrame", layoutFrame},
 }
 

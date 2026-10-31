@@ -73,6 +73,11 @@ func (v *Value) Clobbers() register.Mask {
 		return register.CallerSaved
 	}
 
+	// idiv leaves its remainder in rdx
+	if v.Op == OpDivide {
+		return register.NewMask(register.RegD)
+	}
+
 	return register.NewMask()
 }
 

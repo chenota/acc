@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/types"
 )
 
@@ -23,6 +24,13 @@ func checkStage(f *Func, stage string, next func() error) error {
 
 	if err := verify(f); err != nil {
 		return fmt.Errorf("%s: invalid ssa after %s: %w", f.Name(), stage, err)
+	}
+
+	// registers only mean something once they've been handed out
+	if stage == allocateStage {
+		if err := verifyAllocation(f); err != nil {
+			return fmt.Errorf("%s: invalid allocation: %w", f.Name(), err)
+		}
 	}
 
 	return nil
@@ -235,6 +243,131 @@ func verifyUses(f *Func) error {
 	}
 
 	return nil
+}
+
+// verifyAllocation replays what every register holds through f, and reports the first read that would find the wrong value
+// TODO: for loops, iterate to a fixpoint across back edges and replay the restores on each edge
+func verifyAllocation(f *Func) error {
+	exits := make(map[*Block]map[register.Register]*Value)
+
+	for b := range f.OrderedBlocks() {
+		held, err := entryRegisters(b, exits)
+		if err != nil {
+			return err
+		}
+
+		for _, v := range b.Values {
+			if v.NeedsRegister() && v.Loc.Kind == LocNone {
+				return fmt.Errorf("v%d was never given a register", v.Id)
+			}
+			// a phi's operands are read on the way out of its predecessors
+			if v.Op != OpPhi {
+				if err := verifyReads(v, held); err != nil {
+					return err
+				}
+			}
+			for r := range v.Clobbers().All() {
+				delete(held, r)
+			}
+			if v.NeedsRegister() && v.Loc.Kind == LocRegister {
+				held[v.Loc.Reg] = v
+			}
+		}
+
+		for _, c := range b.Control {
+			// a result's operand was read where the result sits
+			if c.Op == OpResult {
+				continue
+			}
+			if err := verifyHeld(c, held); err != nil {
+				return fmt.Errorf("control of block %d: %w", b.Id, err)
+			}
+		}
+
+		exits[b] = held
+	}
+
+	return nil
+}
+
+// entryRegisters is what b can count on each register holding as it starts: whatever every walked predecessor leaves
+// there once the edge into b hands b's phis their operands
+func entryRegisters(b *Block, exits map[*Block]map[register.Register]*Value) (map[register.Register]*Value, error) {
+	var entry map[register.Register]*Value
+	for _, p := range b.Predecessors {
+		exit, ok := exits[p]
+		if !ok {
+			continue
+		}
+
+		// the edge's parallel copy reads every operand before it writes any phi
+		held := maps.Clone(exit)
+		for phi, arg := range b.PhiArgsFrom(p) {
+			if err := verifyHeld(arg, exit); err != nil {
+				return nil, fmt.Errorf("operand of phi v%d on the edge from block %d: %w", phi.Id, p.Id, err)
+			}
+			if phi.Loc.Kind == LocRegister {
+				held[phi.Loc.Reg] = phi
+			}
+		}
+
+		if entry == nil {
+			entry = held
+			continue
+		}
+		// a register only holds something for sure if every predecessor agrees on what
+		for r, v := range entry {
+			if held[r] != v {
+				delete(entry, r)
+			}
+		}
+	}
+
+	if entry == nil {
+		entry = make(map[register.Register]*Value)
+	}
+	return entry, nil
+}
+
+// verifyReads checks that every operand v reads out of a register is still there, and that codegen can't overwrite an
+// operand before reading it
+func verifyReads(v *Value, held map[register.Register]*Value) error {
+	for _, a := range v.Args {
+		if err := verifyHeld(a, held); err != nil {
+			return fmt.Errorf("operand of v%d: %w", v.Id, err)
+		}
+	}
+
+	switch {
+	case v.Op == OpDivide:
+		// idiv divides into rax and rdx, so its divisor has to come from anywhere else
+		if d := v.Args[1].Loc; d.Kind == LocRegister && (d.Reg == register.RegA || d.Reg == register.RegD) {
+			return fmt.Errorf("divisor of v%d is in r%d, which idiv overwrites", v.Id, d.Reg)
+		}
+	case v.IsBinaryOp():
+		// codegen moves the left operand into v before it reads the right one
+		if l, r := v.Args[0], v.Args[1]; l != r && r.Loc.Kind == LocRegister && r.Loc == v.Loc {
+			return fmt.Errorf("v%d shares r%d with its right operand v%d", v.Id, v.Loc.Reg, r.Id)
+		}
+	}
+
+	return nil
+}
+
+// verifyHeld checks that a is in its register, if it lives in one
+func verifyHeld(a *Value, held map[register.Register]*Value) error {
+	if a.Loc.Kind != LocRegister {
+		return nil
+	}
+
+	switch h := held[a.Loc.Reg]; h {
+	case a:
+		return nil
+	case nil:
+		return fmt.Errorf("v%d should be in r%d, but nothing is known to be there", a.Id, a.Loc.Reg)
+	default:
+		return fmt.Errorf("v%d should be in r%d, but v%d is", a.Id, a.Loc.Reg, h.Id)
+	}
 }
 
 // tally is how many times each element appears in xs
