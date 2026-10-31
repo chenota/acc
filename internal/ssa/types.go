@@ -530,21 +530,9 @@ func (f *Func) removeIfDead(v *Value) {
 	f.removeValue(v)
 }
 
+// removeValue drops v from its block's instruction stream; nothing may still use it.
 func (f *Func) removeValue(v *Value) {
-	// filter v out of each block's values list and control value
-	for _, block := range f.Blocks {
-		// stupid go does not have a filter function so this is what we're doing
-		var n int
-		for _, value := range block.Values {
-			if value != v {
-				block.Values[n] = value
-				n += 1
-			}
-		}
-		block.Values = block.Values[:n]
-
-		block.Control = slices.DeleteFunc(block.Control, func(c *Value) bool { return c == v })
-	}
+	v.Block.Values = slices.DeleteFunc(v.Block.Values, func(u *Value) bool { return u == v })
 }
 
 // StackAdjustment is the number of bytes the function prologue must subtract from rsp.
