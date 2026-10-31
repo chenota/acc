@@ -19,8 +19,7 @@ func (s span) overlaps(o span) bool {
 type liveRanges map[*Block]map[*Value]span
 
 // computeLiveRanges finds each value's span in every block it's live in.
-func computeLiveRanges(f *Func) liveRanges {
-	lv := computeLiveness(f)
+func computeLiveRanges(f *Func, uses nextUses) liveRanges {
 	ranges := make(liveRanges)
 
 	for b := range f.OrderedBlocks() {
@@ -36,7 +35,7 @@ func computeLiveRanges(f *Func) liveRanges {
 		}
 
 		// anything live coming in already holds its register before the first instruction
-		for v := range lv[b].in {
+		for v := range uses[b].in {
 			touch(v, -1)
 		}
 
@@ -66,7 +65,7 @@ func computeLiveRanges(f *Func) liveRanges {
 		}
 
 		// anything still needed once b is finished
-		for v := range lv[b].out {
+		for v := range uses[b].out {
 			touch(v, len(b.Values)+1)
 		}
 

@@ -119,10 +119,6 @@ func (v *Value) IsAssociativeOp() bool {
 	return v.Op == OpAdd || v.Op == OpMultiply
 }
 
-func (v *Value) ArgIndex(arg *Value) int {
-	return slices.Index(v.Args, arg)
-}
-
 // NeedsRegister reports whether a value produces a result that occupies a physical register.
 func (v *Value) NeedsRegister() bool {
 	return !(v.Op == OpStore ||
