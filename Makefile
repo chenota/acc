@@ -3,10 +3,13 @@ BIN=bin
 
 TAG ?= ~wip
 
-.PHONY: build test testp testp-wip clean 
+.PHONY: build generate test testp testp-wip clean
 
 build:
 	go build -o $(BIN)/$(ACC) main.go
+
+generate:
+	go generate ./internal/runtime
 
 test:
 	go test -tags ssacheck ./internal/... ./cmd/...

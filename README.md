@@ -13,6 +13,11 @@ You can build `acc` with
 make build
 ```
 
+`acc` links every program against a small C runtime. If you edit [`internal/runtime/c/runtime.c`](internal/runtime/c/runtime.c), regenerate those objects with clang installed by running
+```shell
+make generate
+```
+
 You can view information on how to run `acc` with
 ```shell
 acc --help

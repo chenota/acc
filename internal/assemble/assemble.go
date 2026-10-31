@@ -20,7 +20,7 @@ func Assemble(instructions []string, w io.Writer) error {
 	// we don't want to write to this initially so close for now
 	tmpBinary.Close()
 
-	tmpRuntime, err := runtime.WriteSource()
+	tmpRuntime, err := runtime.WriteObject()
 	if err != nil {
 		return err
 	}
