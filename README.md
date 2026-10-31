@@ -384,22 +384,46 @@ Type     = "fun" "(" [ Typelist ] ")" [ "->" Type ]
 Typelist = Type { "," Type } [ "," ] ;
 ```
 
-### Vertical Slice 12: More Integer Sizes [Not Started]
+### Vertical Slice 12: Introduce ARM64 [Not Started]
+
+This one is huge. I'd like to introduce ARM64 (Linux and MacOS) as a target for ACC.
+
+### Vertical Slice 13: More Integer Sizes [Not Started]
 
 To support file reading `acc` is going to need some more integer sizes.
 
-### Vertical Slice 13: Strings and File Output [Not Started]
+### Vertical Slice 14: Bitwise Operations [Not Started]
 
-First real step towards file I/O is going to be writing to files in a super primitive way.
+Add bitwise operations into `acc` to support a runtime rewrite.
 
-### Vertical Slice 14: File API and File Input [Not Started]
+### Vertical Slice 15: Arrays [Not Started]
 
-With a string base for working with files we can implement a useful file API.
+Add arrays into `acc` to support a runtime rewrite.
 
-### Vertical Slice 15: Improved Garbage Collector [Not Started]
+### Vertical Slice 16: Improved Garbage Collector [Not Started]
 
 The existing garbage collector is comically bad and limited to 1kb of memory allocated throughout a program's runtime, it needs improved.
 
-### Vertical Slice 16: Floating Points [Not Started]
+### Vertical Slice 17: Strings and File Output [Not Started]
+
+First real step towards file I/O is going to be writing to files in a super primitive way.
+
+### Vertical Slice 18: File API and File Input [Not Started]
+
+With a string base for working with files we can implement a useful file API.
+
+### Vertical Slice 19: Floating Points [Not Started]
 
 Add in floating points to improve `acc`'s math capabilities.
+
+### Vertical Slice 20: Runtime in acc [Not Started]
+
+Rewrite the C in `acc`. While I'm not going to bootstrap the entire compiler quite yet, I think this is a good foray into that sort of thing.
+
+### Vertical Slice 21: Assembler [Not Started]
+
+Up until this point, `acc` has relied on gcc and clang to assemble and link its output. The first step towards getting rid of that dependency is having `acc` write its own object files, which the system linker can still link for now.
+
+### Vertical Slice 22: Linker [Not Started]
+
+With `acc` writing its own object files, the last step is linking them into executables `acc` no longer needs a C toolchain.
