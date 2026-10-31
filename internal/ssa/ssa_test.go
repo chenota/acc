@@ -1487,23 +1487,30 @@ func TestGenSsa_Conditional_BuildsDiamond(t *testing.T) {
 	assert.ElementsMatch(t, []int{then.Id, els.Id}, blockIds(merge.Predecessors))
 }
 
-func TestMem2Reg_SlotSharedBetweenBlocksStaysInMemory(t *testing.T) {
+func TestMem2Reg_SlotSharedBetweenBlocksBecomesAPhi(t *testing.T) {
 	f := requireFunc(t, requireBuildSSA(t, `fun f (c bool) -> int { if c { 1 } else { 2 } } fun main () -> int { 0 }`), "f")
 
-	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
-	load := requireReturned(t, then.Successors[0])
-	require.Equal(t, OpStaticLoad, load.Op, "the merge block reads the value back out of the slot")
-
 	// the first successor is the one taken when the condition holds
-	for _, tt := range []struct {
-		side *Block
-		want int32
-	}{{then, 1}, {els, 2}} {
-		stores := findValues(tt.side.Values, OpStaticStore)
-		require.Len(t, stores, 1)
-		assert.Same(t, load.Slot(), stores[0].Slot())
-		assert.Equal(t, tt.want, stores[0].Args[0].Value)
-	}
+	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
+	require.Len(t, then.Successors, 1)
+	merge := then.Successors[0]
+	require.Equal(t, []int{then.Id, els.Id}, blockIds(merge.Predecessors))
+
+	phi := requireReturned(t, merge)
+	require.Equal(t, OpPhi, phi.Op, "the merge block joins the value each arm leaves")
+	require.Len(t, phi.Args, 2)
+
+	// each operand lines up with the predecessor it comes in from
+	assert.Same(t, then, phi.Args[0].Block)
+	assert.Equal(t, OpLiteral, phi.Args[0].Op)
+	assert.Equal(t, int32(1), phi.Args[0].Value)
+	assert.Same(t, els, phi.Args[1].Block)
+	assert.Equal(t, OpLiteral, phi.Args[1].Op)
+	assert.Equal(t, int32(2), phi.Args[1].Value)
+
+	assert.Empty(t, findValues(then.Values, OpStaticStore), "the slot is promoted out of memory")
+	assert.Empty(t, findValues(els.Values, OpStaticStore), "the slot is promoted out of memory")
+	assert.Empty(t, findValues(merge.Values, OpStaticLoad), "the slot is promoted out of memory")
 }
 
 func TestMem2Reg_VariableReadAcrossABranchIsPromoted(t *testing.T) {
@@ -1665,6 +1672,102 @@ func TestRegalloc_ValueOnlyOneArmNeedsIgnoresACallInTheOther(t *testing.T) {
 	assert.True(t, register.CallerSaved.Contains(ptr.Loc.Reg), "expected a caller-saved register, got %v", ptr.Loc.Reg)
 }
 
+func TestSpill_EvictedPhiIsStoredAfterEveryPhi(t *testing.T) {
+	// a through n wait out the branch alongside both phis, just filling every register as the merge starts,
+	// so the 2 it starts with needs one given up; y is read last, so its phi goes
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (c bool, a int, b int, d int, e int, g int, h int, i int, j int, k int, l int, m int, n int) -> int {
+			let x = 0;
+			let y = 0;
+			if c { x = 1; y = 2; } else { x = 3; y = 4; };
+			y + (a + (b + (d + (e + (g + (h + (i + (j + (k + (l + (m + (n + x * 2))))))))))))
+		}
+		fun main () -> int { 0 }`), "f")
+	require.Len(t, f.Entry.Successors, 2)
+	then := f.Entry.Successors[0]
+	require.Len(t, then.Successors, 1)
+	merge := then.Successors[0]
+	require.GreaterOrEqual(t, len(merge.Values), 3)
+
+	stores := findStoresOf(f, merge.Values[0])
+	require.Len(t, stores, 1, "the first phi is given up")
+
+	// phis sit together at the top of the block, so the store waits until the last of them
+	assert.Equal(t, OpPhi, merge.Values[0].Op)
+	assert.Equal(t, OpPhi, merge.Values[1].Op)
+	assert.Same(t, stores[0], merge.Values[2])
+}
+
+func TestSpill_PhisBeyondTheRegistersWaitInMemory(t *testing.T) {
+	// all sixteen are merged, and every phi takes its register as the merge starts, so not all of them can
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (c bool) -> int {
+			let a = 0; let b = 0; let d = 0; let e = 0; let g = 0; let h = 0; let i = 0; let j = 0;
+			let k = 0; let l = 0; let m = 0; let n = 0; let o = 0; let p = 0; let q = 0; let r = 0;
+			if c {
+				a = 1; b = 2; d = 3; e = 4; g = 5; h = 6; i = 7; j = 8;
+				k = 9; l = 10; m = 11; n = 12; o = 13; p = 14; q = 15; r = 16;
+			} else {
+				a = 17; b = 18; d = 19; e = 20; g = 21; h = 22; i = 23; j = 24;
+				k = 25; l = 26; m = 27; n = 28; o = 29; p = 30; q = 31; r = 32;
+			};
+			a + b + d + e + g + h + i + j + k + l + m + n + o + p + q + r
+		}
+		fun main () -> int { 0 }`), "f")
+	require.Len(t, f.Entry.Successors, 2)
+	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
+	require.Len(t, then.Successors, 1)
+	merge := then.Successors[0]
+
+	assert.LessOrEqual(t, len(findValues(merge.Values, OpPhi)), register.Allocatable.Count(), "only as many phis as there are registers")
+
+	sum := requireReturned(t, merge)
+	require.Equal(t, OpAdd, sum.Op)
+	require.Len(t, sum.Args, 2)
+
+	// r is read last, so it's one of the phis that waits in memory, and the merge reads it back from its slot
+	last := sum.Args[1]
+	require.Equal(t, OpStaticLoad, last.Op)
+	assert.Same(t, merge, last.Block)
+
+	// each arm leaves its value for r in that slot on the way out
+	thenStores := findStoresTo(then, last.Slot())
+	require.Len(t, thenStores, 1)
+	assert.Equal(t, OpLiteral, thenStores[0].Args[0].Op)
+	assert.Equal(t, int32(16), thenStores[0].Args[0].Value)
+
+	elseStores := findStoresTo(els, last.Slot())
+	require.Len(t, elseStores, 1)
+	assert.Equal(t, OpLiteral, elseStores[0].Args[0].Op)
+	assert.Equal(t, int32(32), elseStores[0].Args[0].Value)
+}
+
+func TestRegalloc_PhiTakesTheRegisterItsOperandsShare(t *testing.T) {
+	// x outlives a call in each arm, so both arms keep it in the same callee-saved register,
+	// away from the result register the phi would otherwise be drawn to
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun g (v int) -> int { v }
+		fun f (c bool) -> int {
+			let x = 0;
+			if c { x = 1; g(x); } else { x = 2; g(x); };
+			x
+		}
+		fun main () -> int { 0 }`), "f")
+	require.Len(t, f.Entry.Successors, 2)
+	then := f.Entry.Successors[0]
+	require.Len(t, then.Successors, 1)
+
+	phi := requireReturned(t, then.Successors[0])
+	require.Equal(t, OpPhi, phi.Op)
+	require.Len(t, phi.Args, 2)
+	require.Equal(t, LocRegister, phi.Args[0].Loc.Kind)
+	require.True(t, register.CalleeSaved.Contains(phi.Args[0].Loc.Reg))
+	require.Equal(t, phi.Args[0].Loc, phi.Args[1].Loc)
+
+	// so the phi joins them, and neither edge has to move anything
+	assert.Equal(t, phi.Args[0].Loc, phi.Loc)
+}
+
 func blockIds(blocks []*Block) []int {
 	ids := make([]int, len(blocks))
 	for i, b := range blocks {
@@ -1679,6 +1782,17 @@ func findStoresOf(f *Func, v *Value) []*Value {
 	for u := range f.UnorderedValues() {
 		if u.Op == OpStaticStore && u.Args[0] == v {
 			result = append(result, u)
+		}
+	}
+	return result
+}
+
+// findStoresTo returns the stores in b that write to slot
+func findStoresTo(b *Block, slot *Slot) []*Value {
+	var result []*Value
+	for _, v := range findValues(b.Values, OpStaticStore) {
+		if v.Slot() == slot {
+			result = append(result, v)
 		}
 	}
 	return result

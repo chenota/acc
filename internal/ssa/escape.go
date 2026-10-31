@@ -157,6 +157,10 @@ func walk(f *Func, seeds []seed) map[node]int {
 			relax(valueNode(v.Args[0]), d+1)
 		case OpCopy, OpFieldAddr: // v = args[0] (offset does not change the level), args[0] inherits deficit of v
 			relax(valueNode(v.Args[0]), d)
+		case OpPhi:
+			for _, a := range v.Args {
+				relax(valueNode(a), d)
+			}
 		case OpCallResult:
 			call := v.Args[0]
 			if call.Op != OpStaticCall {

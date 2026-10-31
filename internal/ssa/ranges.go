@@ -43,12 +43,14 @@ func computeLiveRanges(f *Func) liveRanges {
 		// every value is live at its definition and for as long as each of its reads needs it
 		for i, v := range b.Values {
 			touch(v, i)
-			for j, arg := range v.Args {
-				touch(arg, readEnd(v, j, i))
+			if v.Op != OpPhi {
+				for j, arg := range v.Args {
+					touch(arg, readEnd(v, j, i))
+				}
 			}
 
 			// parameters and the closure environment occupy their registers before the function's first instruction
-			if v.Op == OpParam || v.Op == OpClosurePtr {
+			if v.Op == OpParam || v.Op == OpClosurePtr || v.Op == OpPhi {
 				touch(v, -1)
 			}
 

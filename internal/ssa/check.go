@@ -162,9 +162,32 @@ func verifyValues(f *Func) error {
 	}
 
 	for _, b := range f.Blocks {
-		for i, v := range b.Values {
+		n := b.phiIndex()
+
+		// phi values
+		for _, v := range b.Values[:n] {
+			// does each predecessor have an associated arg?
+			if len(b.Predecessors) != len(v.Args) {
+				return fmt.Errorf("phi v%d incorrect argument count. want=%d got=%d", v.Id, len(b.Predecessors), len(v.Args))
+			}
+			// each arg is read at the end of the predecessor it comes in from
+			for j, a := range v.Args {
+				p := b.Predecessors[j]
+				if err := defined(a, p, len(p.Values)); err != nil {
+					return fmt.Errorf("operand %d of phi v%d: %w", j, v.Id, err)
+				}
+			}
+			// phiIndex already checks for OpPhi so no need to check here
+		}
+
+		// non-phi values
+		for i, v := range b.Values[n:] {
+			if v.Op == OpPhi {
+				return fmt.Errorf("phi value v%d in outside of contiguous phi section at beginning of block.", v.Id)
+			}
 			for _, a := range v.Args {
-				if err := defined(a, b, i); err != nil {
+				// i counts from the first non-phi, but defined wants a position in all of b.Values
+				if err := defined(a, b, n+i); err != nil {
 					return fmt.Errorf("operand of v%d: %w", v.Id, err)
 				}
 			}

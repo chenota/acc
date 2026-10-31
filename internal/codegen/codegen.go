@@ -129,7 +129,9 @@ func generateBlock(f *ssa.Func, b *ssa.Block, next *ssa.Block) []Inst {
 func generateTerminator(f *ssa.Func, b *ssa.Block, next *ssa.Block) []Inst {
 	switch b.Kind {
 	case ssa.BlockPlain:
-		return jumpUnlessNext(f, b.Successors[0], next)
+		// the successor's phis take their operands from b on the way in
+		insts := generateEdgeMoves(b)
+		return append(insts, jumpUnlessNext(f, b.Successors[0], next)...)
 	case ssa.BlockIf:
 		cond := toArg(b.Control[0])
 		then, els := b.Successors[0], b.Successors[1]
@@ -152,6 +154,30 @@ func generateTerminator(f *ssa.Func, b *ssa.Block, next *ssa.Block) []Inst {
 		return []Inst{{Op: "jmp", Dest: text(epilogueLabel(f))}}
 	}
 	return nil
+}
+
+// generateEdgeMoves puts each operand b hands its successors' phis where that phi lives
+func generateEdgeMoves(b *ssa.Block) []Inst {
+	var insts []Inst
+	for _, m := range b.EdgeMoves() {
+		switch m.Kind {
+		case ssa.MoveCopy:
+			size := m.Type.Size()
+			insts = append(insts, Inst{
+				Op:   movOp(size),
+				Src1: locArg(m.Src, size),
+				Dest: locArg(m.Dst, size),
+			})
+		case ssa.MoveSwap:
+			// trading whole registers keeps each value intact whatever its size
+			insts = append(insts, Inst{
+				Op:   "xchgq",
+				Src1: register64(m.Src.Reg),
+				Dest: register64(m.Dst.Reg),
+			})
+		}
+	}
+	return insts
 }
 
 func jumpUnlessNext(f *ssa.Func, target *ssa.Block, next *ssa.Block) []Inst {
@@ -414,18 +440,23 @@ func indirect(ptr *ssa.Value, offset int) Arg {
 }
 
 func toArg(v *ssa.Value) Arg {
-	switch v.Loc.Kind {
+	return locArg(v.Loc, v.Type.Size())
+}
+
+// locArg addresses a value of the given size held at loc
+func locArg(loc ssa.Location, size int) Arg {
+	switch loc.Kind {
 	case ssa.LocRegister:
 		return Arg{
 			Kind:  KRegister,
-			Reg:   v.Loc.Reg,
-			Value: v.Type.Size(),
+			Reg:   loc.Reg,
+			Value: size,
 		}
 	case ssa.LocMemory:
 		return Arg{
 			Kind:  KMemory,
-			Reg:   v.Loc.Reg,
-			Value: v.Loc.Offset,
+			Reg:   loc.Reg,
+			Value: loc.Offset,
 		}
 	}
 	return Arg{}

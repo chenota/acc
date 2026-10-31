@@ -43,6 +43,7 @@ const (
 	OpClosureCall // indirect call to the code pointer in Args[0], with its environment in Args[1] and ABI arguments after
 	OpUnit
 	OpLabelAddr // address bound to a label
+	OpPhi
 )
 
 type Value struct {
@@ -215,6 +216,18 @@ func (b *Block) firstUse(slot *Slot) int {
 	}
 
 	return len(b.Values)
+}
+
+// phiIndex reports the index that separates phi values from regular values
+func (b *Block) phiIndex() int {
+	var i int
+	for _, v := range b.Values {
+		if v.Op != OpPhi {
+			break
+		}
+		i += 1
+	}
+	return i
 }
 
 type Func struct {
@@ -397,7 +410,12 @@ func (f *Func) insertValueAfter(v *Value, op Op, t *types.Type, b *Block) *Value
 	return newVal
 }
 
+func (f *Func) insertValueFront(op Op, t *types.Type, b *Block) *Value {
+	return f.insertValueAt(0, op, t, b)
+}
+
 // insertValueAt splices a new value into b at index i.
+// TODO: Use this function as a helper in more funcs
 func (f *Func) insertValueAt(i int, op Op, t *types.Type, b *Block) *Value {
 	newVal := f.newValue(op, t, b)
 	b.Values = slices.Insert(b.Values, i, newVal)

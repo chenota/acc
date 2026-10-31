@@ -18,6 +18,15 @@ func regalloc(f *Func) error {
 			continue
 		}
 
+		// a phi sharing a register with its operand makes the move on that edge redundant
+		if v.Op == OpPhi {
+			for _, a := range v.Args {
+				if a.Loc.Kind == LocRegister {
+					v.RecordHint(a.Loc.Reg)
+				}
+			}
+		}
+
 		reg, ok := pick(v, register.Allocatable.Without(ranges.blockedFor(v)))
 		if !ok {
 			return fmt.Errorf("regalloc: out of registers for v%d in block %d of %s, something has gone very wrong :D", v.Id, v.Block.Id, f.Name())

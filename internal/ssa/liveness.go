@@ -3,6 +3,7 @@ package ssa
 import (
 	"iter"
 	"maps"
+	"slices"
 
 	"github.com/chenota/acc/internal/iterutil"
 )
@@ -39,15 +40,24 @@ func computeLiveness(f *Func) liveness {
 // update recomputes b's boundaries from its successors and reports whether either one moved.
 func (lv liveness) update(b *Block) bool {
 	// anything a successor needs is needed once b is done
-	// TODO: a phi reads each operand on the edge from its predecessor, so phi operands belong in that predecessor's out
 	out := make(map[*Value]struct{})
 	for _, s := range b.Successors {
 		maps.Copy(out, lv[s].in)
+
+		// copy each predecessor's phis that this block outputs to its out set
+		for _, p := range b.Successors {
+			i := slices.Index(p.Predecessors, b)
+			for _, v := range p.Values[:p.phiIndex()] {
+				out[v.Args[i]] = struct{}{}
+			}
+		}
 	}
 
 	// so is anything b reads, unless b defines it first
 	in := maps.Clone(out)
-	for _, v := range reads(b.Values, b.Control) {
+	// want to skip phi args in reads to prevent erraneous values getting copied into successors out sets
+	// NOTE: this omits phi args from the in set of this block which may cause issues in the future but works for now
+	for _, v := range reads(b.Values[b.phiIndex():], b.Control) {
 		in[v] = struct{}{}
 	}
 	for _, v := range b.Values {
