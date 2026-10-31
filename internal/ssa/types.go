@@ -232,8 +232,8 @@ func (b *Block) phiIndex() int {
 	return i
 }
 
-// phiArgsFrom yields each of b's phis with the operand it takes on the edge from pred
-func (b *Block) phiArgsFrom(pred *Block) iter.Seq2[*Value, *Value] {
+// PhiArgsFrom yields each of b's phis with the operand it takes on the edge from pred
+func (b *Block) PhiArgsFrom(pred *Block) iter.Seq2[*Value, *Value] {
 	i := slices.Index(b.Predecessors, pred)
 	return func(yield func(*Value, *Value) bool) {
 		for _, phi := range b.Values[:b.phiIndex()] {

@@ -42,7 +42,7 @@ func (lv liveness) update(b *Block) bool {
 	out := make(map[*Value]struct{})
 	for _, s := range b.Successors {
 		maps.Copy(out, lv[s].in)
-		for _, a := range s.phiArgsFrom(b) {
+		for _, a := range s.PhiArgsFrom(b) {
 			out[a] = struct{}{}
 		}
 	}

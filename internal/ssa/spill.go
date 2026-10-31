@@ -211,7 +211,7 @@ func (s *spiller) takePhi(b *Block, p int, phi *Value, phis []*Value) {
 // storeMemoryPhiArgs writes each operand b hands a successor's memory phi into that phi's slot as b ends
 func (s *spiller) storeMemoryPhiArgs(b *Block) {
 	for _, succ := range b.Successors {
-		for phi, arg := range succ.phiArgsFrom(b) {
+		for phi, arg := range succ.PhiArgsFrom(b) {
 			slot, ok := s.memPhis[phi]
 			if !ok {
 				continue
@@ -235,7 +235,7 @@ func (s *spiller) reloadPhiArgs(b *Block) {
 	for _, succ := range b.Successors {
 		// collect all phi args to be allocated at once
 		var phis, args []*Value
-		for phi, arg := range succ.phiArgsFrom(b) {
+		for phi, arg := range succ.PhiArgsFrom(b) {
 			if _, ok := s.memPhis[phi]; !ok {
 				phis = append(phis, phi)
 				args = append(args, arg)
@@ -436,7 +436,7 @@ func computeNextUses(f *Func) nextUses {
 				}
 
 				// s's phis read the operand for the edge from b as b ends
-				for _, a := range s.phiArgsFrom(b) {
+				for _, a := range s.PhiArgsFrom(b) {
 					out[a] = 0
 				}
 			}

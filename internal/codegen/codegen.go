@@ -130,7 +130,7 @@ func generateTerminator(f *ssa.Func, b *ssa.Block, next *ssa.Block) []Inst {
 	switch b.Kind {
 	case ssa.BlockPlain:
 		// the successor's phis take their operands from b on the way in
-		insts := generateEdgeMoves(b)
+		insts := generateEdgeMoves(b, b.Successors[0])
 		return append(insts, jumpUnlessNext(f, b.Successors[0], next)...)
 	case ssa.BlockIf:
 		cond := toArg(b.Control[0])
@@ -156,24 +156,31 @@ func generateTerminator(f *ssa.Func, b *ssa.Block, next *ssa.Block) []Inst {
 	return nil
 }
 
-// generateEdgeMoves puts each operand b hands its successors' phis where that phi lives
-func generateEdgeMoves(b *ssa.Block) []Inst {
+// generateEdgeMoves puts each operand pred hands succ's phis where that phi lives
+func generateEdgeMoves(pred, succ *ssa.Block) []Inst {
+	var pending []move
+	for phi, arg := range succ.PhiArgsFrom(pred) {
+		if phi.Loc.Kind == ssa.LocNone || phi.Loc == arg.Loc {
+			continue
+		}
+		pending = append(pending, move{kind: moveCopy, dst: phi.Loc, src: arg.Loc, size: phi.Type.Size()})
+	}
+
 	var insts []Inst
-	for _, m := range b.EdgeMoves() {
-		switch m.Kind {
-		case ssa.MoveCopy:
-			size := m.Type.Size()
+	for _, m := range sequentialize(pending) {
+		switch m.kind {
+		case moveCopy:
 			insts = append(insts, Inst{
-				Op:   movOp(size),
-				Src1: locArg(m.Src, size),
-				Dest: locArg(m.Dst, size),
+				Op:   movOp(m.size),
+				Src1: locArg(m.src, m.size),
+				Dest: locArg(m.dst, m.size),
 			})
-		case ssa.MoveSwap:
+		case moveSwap:
 			// trading whole registers keeps each value intact whatever its size
 			insts = append(insts, Inst{
 				Op:   "xchgq",
-				Src1: register64(m.Src.Reg),
-				Dest: register64(m.Dst.Reg),
+				Src1: register64(m.src.Reg),
+				Dest: register64(m.dst.Reg),
 			})
 		}
 	}
