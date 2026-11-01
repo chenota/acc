@@ -10,9 +10,8 @@ import (
 	"github.com/chenota/acc/internal/types"
 )
 
-// buildFuncBody fills in the pre-created shell f from its AST node n.
+// buildFuncBody fills in the module's pre-created function for n.
 func (m *Module) buildFuncBody(n *ir.Node) error {
-	// look up function in module
 	f := m.lookup(n.Signature.Label)
 	if f == nil {
 		return diagnostic.NewError(n.Pos, "could not find function in module")
@@ -39,7 +38,6 @@ func (m *Module) buildFuncBody(n *ir.Node) error {
 		}
 	}
 
-	// trailing value used as return value
 	if v := body.Value(); v != nil {
 		if err := b.genReturnValue(v); err != nil {
 			return err
@@ -76,9 +74,7 @@ func (b *builder) bindCaptures(n *ir.Node) {
 			continue
 		}
 
-		// grab box pointer from environment
 		box := b.genLoadFrom(field, types.Pointer(sym.Type))
-		// create a slot for the captured variable and move
 		slot := b.targetFunc.newSlot(sym, types.Pointer(sym.Type))
 		b.genStoreTo(addr{Slot: slot}, box)
 		b.captures[sym] = slot
@@ -94,7 +90,6 @@ func (b *builder) bindParams(params []*ir.Node) {
 		incomingTypes = append(incomingTypes, leafTypes...)
 	}
 
-	// append every incomingValues leaf as a restricted param value
 	incomingValues := make([]*Value, len(incomingTypes))
 	for i, t := range incomingTypes {
 		v := b.targetFunc.appendValue(OpParam, t, b.currentBlock)
@@ -119,12 +114,19 @@ func (b *builder) bindParams(params []*ir.Node) {
 	}
 }
 
+type breakTarget struct {
+	head *Block // header of loop structure
+	exit *Block // block being jumped to
+	dest addr   // where to put value
+}
+
 type builder struct {
 	targetFunc   *Func
 	module       *Module
 	currentBlock *Block
 	vars         map[*ir.Sym]*Slot
 	captures     map[*ir.Sym]*Slot
+	target       breakTarget
 }
 
 func (b *builder) genStatement(stmt *ir.Node) error {
@@ -144,6 +146,13 @@ func (b *builder) genStatement(stmt *ir.Node) error {
 	case ir.OpConditional:
 		// the value is discarded, but the branches still need somewhere to write it
 		return b.genConditional(addr{Slot: b.targetFunc.newSlot(nil, stmt.Type)}, stmt)
+	case ir.OpLoop:
+		// the value is discarded, but the branches still need somewhere to write it
+		return b.genLoop(addr{Slot: b.targetFunc.newSlot(nil, stmt.Type)}, stmt)
+	case ir.OpBreak:
+		return b.genBreak(stmt)
+	case ir.OpContinue:
+		return b.genContinue(stmt)
 	default:
 		return diagnostic.NewError(stmt.Pos, "unknown statement operation: %d", stmt.Op)
 	}
@@ -160,20 +169,16 @@ func (b *builder) genAssignOp(n *ir.Node) error {
 		return err
 	}
 
-	// read the current value out of the destination
 	loadOp := b.genLoadFrom(dest, target.Type)
 
-	// generate expression value
 	exprVal, err := b.genExpr(n.List[1])
 	if err != nil {
 		return err
 	}
 
-	// glue together with arithmetic bop
 	arithOp := b.targetFunc.appendValue(bopFrom(n), target.Type, b.currentBlock)
 	arithOp.setArgs(loadOp, exprVal)
 
-	// write the result back where it came from
 	b.genStoreTo(dest, arithOp)
 
 	return nil
@@ -181,7 +186,6 @@ func (b *builder) genAssignOp(n *ir.Node) error {
 
 func (b *builder) genReturn(n *ir.Node) error {
 	if len(n.List) == 0 {
-		// no specified return value, we're done
 		b.currentBlock.Kind = BlockRet
 		return nil
 	}
@@ -189,7 +193,6 @@ func (b *builder) genReturn(n *ir.Node) error {
 	return b.genReturnValue(n.List[0])
 }
 
-// genReturnValue sets the current block's return value
 func (b *builder) genReturnValue(e *ir.Node) error {
 	vals, err := b.genArg(e)
 	if err != nil {
@@ -201,7 +204,6 @@ func (b *builder) genReturnValue(e *ir.Node) error {
 	return b.genResults(e, vals)
 }
 
-// genResults hands vals back to the caller, one result value per value returned.
 func (b *builder) genResults(n *ir.Node, vals []*Value) error {
 	var results []*Value
 	for i, val := range vals {
@@ -230,7 +232,6 @@ func (b *builder) genDecl(n *ir.Node) error {
 	slot := b.targetFunc.newSlot(n.Sym, n.Sym.Type)
 	b.vars[n.Sym] = slot
 
-	// generate n into the slot
 	return b.genExprInto(addr{Slot: slot}, n.List[2])
 }
 
@@ -239,15 +240,14 @@ func (b *builder) genAssign(n *ir.Node) error {
 		return diagnostic.NewError(n.Pos, "variable assignment missing target or expression")
 	}
 
-	// figure out destination we're assigning to
 	dest, err := b.genLValue(n.List[0])
 	if err != nil {
 		return err
 	}
 
-	// build-then-copy tuples (and conditionals, whose branches may build tuples) to get around self-assign issues
+	// build-then-copy tuples (and conditionals and loops, whose branches and breaks may build tuples) to get around self-assign issues
 	rhs := n.List[1]
-	if rhs.Op == ir.OpTuple || rhs.Op == ir.OpConditional {
+	if rhs.Op == ir.OpTuple || rhs.Op == ir.OpConditional || rhs.Op == ir.OpLoop {
 		tmp := addr{Slot: b.targetFunc.newSlot(nil, rhs.Type)}
 		if err := b.genExprInto(tmp, rhs); err != nil {
 			return err
@@ -256,7 +256,6 @@ func (b *builder) genAssign(n *ir.Node) error {
 		return nil
 	}
 
-	// generate new value into destination
 	return b.genExprInto(dest, rhs)
 }
 
@@ -290,8 +289,8 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 		return b.genNil(expr)
 	case ir.OpNot:
 		return b.genNot(expr)
-	case ir.OpConditional:
-		// the branches write into a temporary that is read back after they merge
+	case ir.OpConditional, ir.OpLoop:
+		// the branches (or breaks) write into a temporary that is read back once control rejoins
 		place, err := b.genPlace(expr)
 		if err != nil {
 			return nil, err
@@ -303,13 +302,11 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 }
 
 func (b *builder) genNot(e *ir.Node) (*Value, error) {
-	// generate sub-expression
 	sub, err := b.genExpr(e.List[0])
 	if err != nil {
 		return nil, err
 	}
 
-	// generate not
 	notVal := b.targetFunc.appendValue(OpNot, e.Type, b.currentBlock)
 	notVal.setArgs(sub)
 
@@ -328,17 +325,14 @@ func (b *builder) genBool(e *ir.Node) (*Value, error) {
 	return boolVal, nil
 }
 
-// closureEnvType is the layout of the environment lambda closes over
 func closureEnvType(lambda *ir.Node) *types.Type {
 	captures := lambda.Captures()
 	elems := make([]*types.Type, 0, len(captures))
 	for _, sym := range captures {
 		if capturedByValue(lambda, sym) {
-			// items captured by value get their base type
 			elems = append(elems, sym.Type)
 			continue
 		}
-		// everything else is held by reference so make it a pointer
 		elems = append(elems, types.Pointer(sym.Type))
 	}
 	return types.Tuple(elems)
@@ -347,7 +341,6 @@ func closureEnvType(lambda *ir.Node) *types.Type {
 // TODO: raise this once captures are unpacked lazily and the per-call copy goes away
 const maxByValueLeaves = 4
 
-// capturedByValue reports whether lambda captured sym by value
 func capturedByValue(lambda *ir.Node, sym *ir.Sym) bool {
 	if sym.Observed(ir.SOMutated) || sym == lambda.RecSym() {
 		return false
@@ -381,7 +374,6 @@ func (b *builder) genZero(t *types.Type) *Value {
 	return v
 }
 
-// genEnv generates an environment pointer for a closure over lambda's captures
 func (b *builder) genEnv(expr *ir.Node, lambda *ir.Node) (*Value, error) {
 	captures := lambda.Captures()
 	if len(captures) == 0 {
@@ -389,7 +381,6 @@ func (b *builder) genEnv(expr *ir.Node, lambda *ir.Node) (*Value, error) {
 		return b.genZero(types.UnitPointer()), nil
 	}
 
-	// create the environment
 	envType := closureEnvType(lambda)
 	env := addr{Slot: b.targetFunc.newSlot(nil, envType)}
 
@@ -413,14 +404,12 @@ func (b *builder) genEnv(expr *ir.Node, lambda *ir.Node) (*Value, error) {
 		b.genStoreTo(field, box)
 	}
 
-	// address the environment
 	envRef := b.targetFunc.appendValue(OpLocalAddr, types.UnitPointer(), b.currentBlock)
 	envRef.Value = env.Slot
 
 	return envRef, nil
 }
 
-// genBoxAddr is the address of sym's storage
 func (b *builder) genBoxAddr(expr *ir.Node, sym *ir.Sym) (*Value, error) {
 	if slot, ok := b.vars[sym]; ok {
 		// shallow capture (variable lives in frame this closure is defined in), so grab from the stack
@@ -430,7 +419,7 @@ func (b *builder) genBoxAddr(expr *ir.Node, sym *ir.Sym) (*Value, error) {
 	}
 
 	if slot, ok := b.captures[sym]; ok {
-		// nested caapture (variable lives outside the frame this closure is defined in), so grab from captures list
+		// nested capture (variable lives outside the frame this closure is defined in), so grab from captures list
 		return b.genLoadFrom(addr{Slot: slot}, types.Pointer(sym.Type)), nil
 	}
 
@@ -449,11 +438,9 @@ func (b *builder) genNil(expr *ir.Node) (*Value, error) {
 // genPlace returns an addressable bucket for expr
 func (b *builder) genPlace(expr *ir.Node) (addr, error) {
 	if isPlace(expr) {
-		// idents, derefs, dots already refer to addresable locations so grab that address
 		return b.genLValue(expr)
 	}
 
-	// all others need a new address
 	a := addr{
 		Slot: b.targetFunc.newSlot(nil, expr.Type),
 	}
@@ -463,7 +450,6 @@ func (b *builder) genPlace(expr *ir.Node) (addr, error) {
 	return a, nil
 }
 
-// genExprInto generates an expression value into an area of memory
 func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
 	switch {
 	case expr.Op == ir.OpTuple:
@@ -487,6 +473,8 @@ func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
 		b.implode(dest, expr.Type, vals)
 	case expr.Op == ir.OpConditional:
 		return b.genConditional(dest, expr)
+	case expr.Op == ir.OpLoop:
+		return b.genLoop(dest, expr)
 	case expr.Op == ir.OpFunction:
 		code := b.module.lookup(expr.Signature.Label)
 		if code == nil {
@@ -528,18 +516,15 @@ func (b *builder) genConditional(dest addr, expr *ir.Node) error {
 	consequent := expr.List[1]
 	alternative := expr.List[2]
 
-	// generate condition
 	cond, err := b.genExpr(predicate)
 	if err != nil {
 		return err
 	}
 
-	// mark block as conditional controlled by condition
 	branchBlock := b.currentBlock
 	branchBlock.Kind = BlockIf
 	branchBlock.setControl(cond)
 
-	// block pointing shenanigans
 	consequentBlock := b.targetFunc.newBlock()
 	addEdge(branchBlock, consequentBlock)
 
@@ -548,7 +533,14 @@ func (b *builder) genConditional(dest addr, expr *ir.Node) error {
 
 	mergeBlock := b.targetFunc.newBlock()
 
-	// generate consequent in new block
+	oldBreakTo := b.target
+	defer func() { b.target = oldBreakTo }()
+	b.target = breakTarget{
+		// continue isn't valid for conditionals so omitting header here
+		exit: mergeBlock,
+		dest: dest,
+	}
+
 	b.currentBlock = consequentBlock
 	for _, s := range consequent.Stmts() {
 		if err := b.genStatement(s); err != nil {
@@ -560,12 +552,10 @@ func (b *builder) genConditional(dest addr, expr *ir.Node) error {
 			return err
 		}
 	}
-	if b.currentBlock.Kind != BlockRet {
-		addEdge(b.currentBlock, mergeBlock)
-		b.currentBlock.Kind = BlockPlain
+	if b.currentBlock.Kind == BlockUnset {
+		b.jump(mergeBlock)
 	}
 
-	// optionally generate alternative in new block
 	b.currentBlock = alternativeBlock
 	if alternative != nil {
 		switch alternative.Op {
@@ -590,9 +580,8 @@ func (b *builder) genConditional(dest addr, expr *ir.Node) error {
 			return err
 		}
 	}
-	if b.currentBlock.Kind != BlockRet {
-		addEdge(b.currentBlock, mergeBlock)
-		b.currentBlock.Kind = BlockPlain
+	if b.currentBlock.Kind == BlockUnset {
+		b.jump(mergeBlock)
 	}
 
 	b.currentBlock = mergeBlock
@@ -600,7 +589,56 @@ func (b *builder) genConditional(dest addr, expr *ir.Node) error {
 	return nil
 }
 
-// isPlace reports whether expr denotes an existing addressable location.
+func (b *builder) genLoop(dest addr, expr *ir.Node) error {
+	body := expr.Body()
+	if body == nil {
+		return diagnostic.NewError(expr.Pos, "loop missing body node")
+	}
+
+	header := b.targetFunc.newBlock()
+	exit := b.targetFunc.newBlock()
+
+	b.jump(header)
+
+	oldBreakTo := b.target
+	defer func() { b.target = oldBreakTo }()
+	b.target = breakTarget{
+		head: header,
+		exit: exit,
+		dest: dest,
+	}
+
+	b.currentBlock = header
+	for _, s := range body.Stmts() {
+		if err := b.genStatement(s); err != nil {
+			return err
+		}
+	}
+
+	if b.currentBlock.Kind == BlockUnset {
+		b.jump(header)
+	}
+
+	b.currentBlock = exit
+
+	return nil
+}
+
+func (b *builder) genBreak(n *ir.Node) error {
+	if len(n.List) == 1 {
+		if err := b.genExprInto(b.target.dest, n.List[0]); err != nil {
+			return err
+		}
+	}
+	b.jump(b.target.exit)
+	return nil
+}
+
+func (b *builder) genContinue(n *ir.Node) error {
+	b.jump(b.target.head)
+	return nil
+}
+
 func isPlace(expr *ir.Node) bool {
 	switch expr.Op {
 	case ir.OpIdent:
@@ -612,7 +650,6 @@ func isPlace(expr *ir.Node) bool {
 	return false
 }
 
-// genCopyFields copies src into dest one atomic field at a time
 func (b *builder) genCopyFields(dest, src addr, t *types.Type) {
 	for offset, leaf := range t.Leaves() {
 		b.genStoreTo(dest.OffsetBy(offset), b.genLoadFrom(src.OffsetBy(offset), leaf))
@@ -646,7 +683,6 @@ func (b *builder) genRef(expr *ir.Node) (*Value, error) {
 		return v, nil
 	}
 
-	// take the address of the stack slot
 	v := b.targetFunc.appendValue(OpLocalAddr, expr.Type, b.currentBlock)
 	v.Value = dest.Slot
 	v.Offset = dest.Offset
@@ -670,7 +706,7 @@ func (b *builder) genDeref(expr *ir.Node) (*Value, error) {
 type addr struct {
 	Slot   *Slot  // frame slot referenced directly
 	Ptr    *Value // an address computed at runtime
-	Offset int    // offset from address
+	Offset int
 }
 
 func (a addr) OffsetBy(bytes int) addr {
@@ -686,14 +722,12 @@ func (b *builder) genLValue(expr *ir.Node) (addr, error) {
 		if len(expr.List) < 1 {
 			return addr{}, diagnostic.NewError(expr.Pos, "deref missing argument")
 		}
-		// evaluating the expression should return a value containing the address we care about
 		ptr, err := b.genExpr(expr.List[0])
 		if err != nil {
 			return addr{}, err
 		}
 		return addr{Ptr: ptr}, nil
 	case ir.OpDot:
-		// get the address of the dot'ed tuple
 		base, err := b.genPlace(expr.List[0])
 		if err != nil {
 			return addr{}, err
@@ -717,7 +751,6 @@ func (b *builder) genSymPlace(expr *ir.Node, sym *ir.Sym) (addr, error) {
 	return addr{}, diagnostic.NewError(expr.Pos, "variable missing slot: %s", sym.Name)
 }
 
-// genLoadFrom reads the value of type t living at dest.
 func (b *builder) genLoadFrom(dest addr, t *types.Type) *Value {
 	// a singleton's value is already known from its type, so there is nothing to read
 	if t.IsSingleton() {
@@ -737,7 +770,6 @@ func (b *builder) genLoadFrom(dest addr, t *types.Type) *Value {
 	return v
 }
 
-// genStoreTo writes val to dest.
 func (b *builder) genStoreTo(dest addr, val *Value) {
 	if val.Type.IsSingleton() {
 		return
@@ -765,7 +797,6 @@ func (b *builder) genArg(arg *ir.Node) ([]*Value, error) {
 	return b.explode(place, arg.Type), nil
 }
 
-// explode reads the atomic leaf values of t into a list of values
 func (b *builder) explode(a addr, t *types.Type) []*Value {
 	var vals []*Value
 	for offset, leaf := range t.Leaves() {
@@ -794,11 +825,9 @@ func (b *builder) genCall(expr *ir.Node) (*Value, error) {
 		return b.genStaticCall(expr, callee)
 	}
 
-	// all else attempt to do a closure call
 	return b.genClosureCall(expr, callee)
 }
 
-// genStaticCall calls a statically known function
 func (b *builder) genStaticCall(expr *ir.Node, callee *ir.Node) (*Value, error) {
 	target := b.module.lookup(callee.Sym.Name)
 	if target == nil {
@@ -819,7 +848,6 @@ func (b *builder) genStaticCall(expr *ir.Node, callee *ir.Node) (*Value, error) 
 
 // genClosureCall calls the code pointer a closure carries, handing it the closure's environment
 func (b *builder) genClosureCall(expr *ir.Node, callee *ir.Node) (*Value, error) {
-	// use genArg to explode the callee into (code, env)
 	closure, err := b.genArg(callee)
 	if err != nil {
 		return nil, err
@@ -832,9 +860,9 @@ func (b *builder) genClosureCall(expr *ir.Node, callee *ir.Node) (*Value, error)
 
 	v := b.targetFunc.appendValue(OpClosureCall, expr.Type, b.currentBlock)
 	args := make([]*Value, 2+len(argVals))
-	args[0] = closure[0]    // code pointer
-	args[1] = closure[1]    // environment pointer
-	copy(args[2:], argVals) // ordinary call args
+	args[0] = closure[0]
+	args[1] = closure[1]
+	copy(args[2:], argVals)
 	v.setArgs(args...)
 
 	return v, nil
@@ -854,7 +882,6 @@ func (b *builder) genCallArgs(expr *ir.Node) ([]*Value, error) {
 	return argVals, nil
 }
 
-// genCallResults emits a call and reads back the returned values
 func (b *builder) genCallResults(expr *ir.Node) ([]*Value, error) {
 	call, err := b.genCall(expr)
 	if err != nil {
@@ -975,6 +1002,11 @@ func bopFrom(n *ir.Node) Op {
 	default:
 		return OpUnknown
 	}
+}
+
+func (b *builder) jump(to *Block) {
+	addEdge(b.currentBlock, to)
+	b.currentBlock.Kind = BlockPlain
 }
 
 func addEdge(from *Block, to *Block) {
