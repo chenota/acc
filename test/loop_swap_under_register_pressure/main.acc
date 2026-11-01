@@ -1,0 +1,30 @@
+fun f (n int) -> int {
+    let a = n + 1;
+    let b = n + 2;
+    let c = n + 3;
+    let d = n + 4;
+    let e = n + 5;
+    let g = n + 6;
+    let h = n + 7;
+    let j = n + 8;
+    let k = n + 9;
+    let l = n + 10;
+    let m = n + 11;
+    let o = n + 12;
+    let p = n + 13;
+    let x = n + 1;
+    let y = n + 2;
+    let i = 0;
+    loop {
+        if i == 5 { break; };
+        let t = x;
+        x = y;
+        y = t + x;
+        i = i + 1;
+    };
+    x + y + a + b + c + d + e + g + h + j + k + l + m + o + p
+}
+
+fun main () -> int {
+    f(0)
+}

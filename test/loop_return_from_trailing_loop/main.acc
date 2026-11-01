@@ -1,0 +1,11 @@
+fun find (target int) -> int {
+    let i = 0;
+    loop {
+        if i * 3 == target { return i; };
+        i = i + 1;
+    }
+}
+
+fun main () -> int {
+    find(36) + find(9)
+}

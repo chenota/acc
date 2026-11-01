@@ -1,0 +1,10 @@
+fun main () -> int {
+    let s = 200;
+    let i = 0;
+    loop {
+        i += 1;
+        s -= i * i;
+        if i == 5 { break; };
+    };
+    s
+}

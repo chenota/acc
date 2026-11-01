@@ -1,0 +1,11 @@
+fun main () -> int {
+    let a = 5;
+    let b = 9;
+    let i = 0;
+    let p = loop {
+        i = i + 1;
+        if i == 3 { break &b; };
+        if i > 5 { break nil; };
+    };
+    if p == nil { 0 } else { *p + a }
+}

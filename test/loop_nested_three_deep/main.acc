@@ -1,0 +1,20 @@
+fun main () -> int {
+    let count = 0;
+    let a = 0;
+    loop {
+        if a == 3 { break; };
+        let b = 0;
+        loop {
+            if b == 4 { break; };
+            let c = 0;
+            loop {
+                if c == 5 { break; };
+                count = count + 1;
+                c = c + 1;
+            };
+            b = b + 1;
+        };
+        a = a + 1;
+    };
+    count
+}

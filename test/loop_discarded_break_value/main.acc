@@ -1,0 +1,5 @@
+fun main () -> int {
+    let x = 1;
+    loop { x = x + 4; break x * 100; };
+    x
+}

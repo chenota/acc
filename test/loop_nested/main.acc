@@ -1,0 +1,15 @@
+fun main () -> int {
+    let total = 0;
+    let i = 1;
+    loop {
+        if i > 4 { break; };
+        let j = 1;
+        loop {
+            if j > i { break; };
+            total = total + i * j;
+            j = j + 1;
+        };
+        i = i + 1;
+    };
+    total
+}

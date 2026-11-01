@@ -1,0 +1,6 @@
+fun add (a int, b int) -> int { a + b }
+
+fun main () -> int {
+    let n = 3;
+    add(loop { break n * 2; }, 1) + (loop { n = n + 1; if n == 10 { break n; }; }) * 2
+}

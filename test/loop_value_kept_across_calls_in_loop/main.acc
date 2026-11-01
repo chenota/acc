@@ -1,0 +1,11 @@
+fun bump (x int) -> int { x + 1 }
+
+fun main () -> int {
+    let keep = 40;
+    let i = 0;
+    loop {
+        if i == 5 { break; };
+        i = bump(i);
+    };
+    keep + i
+}

@@ -1,0 +1,5 @@
+{
+  "name": "Loop Body Declaration Shadows An Outer Variable",
+  "tags": ["vs11"],
+  "status": 73
+}

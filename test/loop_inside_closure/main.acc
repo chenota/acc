@@ -1,0 +1,12 @@
+fun main () -> int {
+    let sum_to = fun (n int) -> int {
+        let i = 0;
+        let s = 0;
+        loop {
+            if i > n { break s; };
+            s = s + i;
+            i = i + 1;
+        }
+    };
+    sum_to(10) + sum_to(4)
+}

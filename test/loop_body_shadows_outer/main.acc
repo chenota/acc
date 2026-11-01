@@ -1,0 +1,12 @@
+fun main () -> int {
+    let x = 10;
+    let i = 0;
+    let s = 0;
+    loop {
+        if i == 3 { break; };
+        let x = x * 2 + i;
+        s = s + x;
+        i = i + 1;
+    };
+    s + x
+}

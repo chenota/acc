@@ -1,0 +1,13 @@
+fun main () -> int {
+    let outer = 0;
+    let inner = 0;
+    loop {
+        outer = outer + 1;
+        loop {
+            inner = inner + 1;
+            break;
+        };
+        if outer == 7 { break; };
+    };
+    outer * 10 + inner
+}

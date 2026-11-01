@@ -1,0 +1,4 @@
+fun main () -> int {
+    let n = 0;
+    if loop { n = n + 1; if n == 6 { break n > 5; }; } { n * 2 } else { 1 }
+}

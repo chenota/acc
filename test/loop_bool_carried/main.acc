@@ -1,0 +1,12 @@
+fun main () -> int {
+    let on = false;
+    let flips = 0;
+    let i = 0;
+    loop {
+        if i == 7 { break; };
+        on = !on;
+        if on { flips = flips + 1; };
+        i = i + 1;
+    };
+    if on { flips + 100 } else { flips }
+}

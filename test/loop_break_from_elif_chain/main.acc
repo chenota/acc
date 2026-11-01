@@ -1,0 +1,11 @@
+fun classify (n int) -> int {
+    let i = 0;
+    loop {
+        i = i + 1;
+        if i == n { break 1; } elif i * 2 == n { break 2; } elif i > 20 { break 3; } else { };
+    }
+}
+
+fun main () -> int {
+    classify(1) * 100 + classify(8) * 10 + classify(50)
+}

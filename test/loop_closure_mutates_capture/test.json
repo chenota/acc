@@ -1,0 +1,5 @@
+{
+  "name": "Closure Called In A Loop Mutates Its Capture",
+  "tags": ["vs11"],
+  "status": 27
+}

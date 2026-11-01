@@ -1,0 +1,5 @@
+{
+  "name": "Closures From Different Iterations Keep Their Own Captures",
+  "tags": ["wip"],
+  "status": 19
+}

@@ -1,0 +1,15 @@
+fun f (x int, n int) -> int {
+    let k = x * 7;
+    let i = 0;
+    let s = 0;
+    loop {
+        if i == n { break; };
+        s = s + k;
+        i = i + 1;
+    };
+    s + k
+}
+
+fun main () -> int {
+    f(3, 5)
+}

@@ -1,0 +1,12 @@
+fun sq (x int) -> int { x * x }
+
+fun main () -> int {
+    let i = 0;
+    let total = 0;
+    loop {
+        if i == 6 { break; };
+        total = total + sq(i);
+        i = i + 1;
+    };
+    total
+}

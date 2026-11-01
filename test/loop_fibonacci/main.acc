@@ -1,0 +1,17 @@
+fun fib (n int) -> int {
+    let a = 0;
+    let b = 1;
+    let i = 0;
+    loop {
+        if i == n { break; };
+        let t = a + b;
+        a = b;
+        b = t;
+        i = i + 1;
+    };
+    a
+}
+
+fun main () -> int {
+    fib(13)
+}

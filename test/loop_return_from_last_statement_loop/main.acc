@@ -1,0 +1,11 @@
+fun first_over (limit int) -> int {
+    let i = 1;
+    loop {
+        i = i * 2;
+        if i > limit { return i; };
+    };
+}
+
+fun main () -> int {
+    first_over(100) + first_over(5)
+}

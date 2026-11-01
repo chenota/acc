@@ -1,0 +1,11 @@
+fun main () -> int {
+    let i = 0;
+    let total = 0;
+    loop {
+        i = i + 1;
+        if i > 19 { break; };
+        if (i / 2) * 2 == i { continue; };
+        total = total + i;
+    };
+    total
+}

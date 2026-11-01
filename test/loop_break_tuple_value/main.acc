@@ -1,0 +1,14 @@
+fun divmod (a int, b int) -> (int, int) {
+    let q = 0;
+    let r = a;
+    loop {
+        if r < b { break (q, r); };
+        r = r - b;
+        q = q + 1;
+    }
+}
+
+fun main () -> int {
+    let p = divmod(47, 5);
+    p.0 * 10 + p.1
+}

@@ -1,0 +1,11 @@
+fun main () -> int {
+    let count = 0;
+    let inc = fun () { count = count + 3; };
+    let i = 0;
+    loop {
+        if i == 9 { break; };
+        inc();
+        i = i + 1;
+    };
+    count
+}

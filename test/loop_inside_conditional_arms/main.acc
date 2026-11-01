@@ -1,0 +1,12 @@
+fun f (b bool) -> int {
+    if b {
+        let i = 0;
+        loop { i = i + 2; if i >= 10 { break i; }; }
+    } else {
+        loop { break 7; }
+    }
+}
+
+fun main () -> int {
+    f(true) * 10 + f(false)
+}

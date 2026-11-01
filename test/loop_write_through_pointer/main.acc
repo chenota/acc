@@ -1,0 +1,14 @@
+fun add_to (p *int, x int) {
+    *p = *p + x;
+}
+
+fun main () -> int {
+    let total = 0;
+    let i = 1;
+    loop {
+        if i > 11 { break; };
+        add_to(&total, i);
+        i = i + 1;
+    };
+    total
+}

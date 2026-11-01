@@ -1,0 +1,17 @@
+fun main () -> int {
+    let i = 0;
+    let hits = 0;
+    loop {
+        i = i + 1;
+        if i > 10 { break; };
+        let j = 0;
+        let found = loop {
+            j = j + 1;
+            if j * j == i { break true; };
+            if j * j > i { break false; };
+        };
+        if !found { continue; };
+        hits = hits + i;
+    };
+    hits
+}

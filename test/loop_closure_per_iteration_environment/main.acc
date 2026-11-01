@@ -1,0 +1,14 @@
+fun main () -> int {
+    let i = 0;
+    let first = fun () -> int { 0 };
+    let last = fun () -> int { 0 };
+    loop {
+        if i == 5 { break; };
+        let j = i * 2 + 1;
+        let f = fun () -> int { j };
+        if i == 0 { first = f; };
+        last = f;
+        i = i + 1;
+    };
+    first() * 10 + last()
+}

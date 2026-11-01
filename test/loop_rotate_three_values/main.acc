@@ -1,0 +1,16 @@
+fun f (a int, b int, c int, n int) -> int {
+    let i = 0;
+    loop {
+        if i == n { break; };
+        let t = a;
+        a = b;
+        b = c;
+        c = t;
+        i = i + 1;
+    };
+    a * 100 + b * 10 + c
+}
+
+fun main () -> int {
+    f(1, 2, 3, 4)
+}

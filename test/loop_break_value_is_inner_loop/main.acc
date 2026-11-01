@@ -1,0 +1,10 @@
+fun main () -> int {
+    let i = 0;
+    let x = loop {
+        i = i + 1;
+        if i == 4 {
+            break loop { i = i * 10; if i > 30 { break i + 1; }; };
+        };
+    };
+    x
+}

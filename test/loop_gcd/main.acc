@@ -1,0 +1,12 @@
+fun gcd (a int, b int) -> int {
+    loop {
+        if b == 0 { break a; };
+        let r = a - (a / b) * b;
+        a = b;
+        b = r;
+    }
+}
+
+fun main () -> int {
+    gcd(1071, 462) + gcd(48, 180)
+}
