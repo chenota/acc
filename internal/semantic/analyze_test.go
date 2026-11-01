@@ -125,7 +125,7 @@ func TestAnalyze_UnreachableAfterReturn_Err(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := analyzeSrc(t, tt.test)
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), "unreachable code after return")
+			assert.Contains(t, err.Error(), "unreachable code")
 		})
 	}
 }
@@ -1416,6 +1416,172 @@ func TestAnalyze_Conditional_MissingReturn(t *testing.T) {
 			assert.Contains(t, err.Error(), "missing return")
 		})
 	}
+}
+
+func TestAnalyze_Loop(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { let x = loop { break 1; }; x }`)
+
+	loop := funcs[0].Body().Stmts()[0].List[2]
+	require.Equal(t, ir.OpLoop, loop.Op)
+
+	// the untyped break value is materialized along with the loop
+	assert.True(t, types.Equal(types.Int(), loop.Type))
+	assert.True(t, types.Equal(types.Int(), loop.Body().Stmts()[0].List[0].Type))
+}
+
+func TestAnalyze_Loop_SettlesBreaks(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+		want *types.Type
+	}{
+		{"bare break", `fun main () -> int { let x = loop { break; }; 0 }`, types.Unit()},
+		{"untyped against concrete sibling", `fun main () -> int { let y = 5; let x = loop { if true { break 1; }; break y; }; 0 }`, types.Int()},
+		{"nil against pointer sibling", `fun main () -> int { let y = 5; let x = loop { if true { break nil; }; break &y; }; 0 }`, types.Pointer(types.Int())},
+		{"nil against annotation", `fun main () -> int { let x *int = loop { break nil; }; 0 }`, types.Pointer(types.Int())},
+		{"tuple against annotation", `fun main () -> int { let x (int, int) = loop { break (1, 2); }; 0 }`, types.Tuple([]*types.Type{types.Int(), types.Int()})},
+		{"break nested in conditional", `fun main () -> int { let x = loop { if true { break 1; } else { break 2; }; }; 0 }`, types.Int()},
+		{"inner break skips outer loop", `fun main () -> int { let x = loop { loop { break true; }; break 1; }; 0 }`, types.Int()},
+		{"no break against annotation", `fun main () -> int { let x int = loop { return 0; }; 0 }`, types.Int()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			funcs := mustAnalyze(t, tt.test)
+
+			stmts := funcs[0].Body().Stmts()
+			loop := stmts[len(stmts)-1].List[2]
+			require.Equal(t, ir.OpLoop, loop.Op)
+			assert.True(t, types.Equal(tt.want, loop.Type), "got %v", loop.Type)
+		})
+	}
+}
+
+func TestAnalyze_Loop_AsTrailingValue(t *testing.T) {
+	funcs := mustAnalyze(t, `fun main () -> int { loop { break 3; } }`)
+
+	loop := funcs[0].Body().Value()
+	require.Equal(t, ir.OpLoop, loop.Op)
+	assert.True(t, types.Equal(types.Int(), loop.Type), "got %v", loop.Type)
+}
+
+func TestAnalyze_Loop_Statement(t *testing.T) {
+	// a discarded value is still materialized
+	funcs := mustAnalyze(t, `fun main () -> int { loop { break 1; }; 0 }`)
+
+	loop := funcs[0].Body().Stmts()[0]
+	require.Equal(t, ir.OpLoop, loop.Op)
+	assert.True(t, types.Equal(types.Int(), loop.Type))
+}
+
+func TestAnalyze_Loop_Comparison(t *testing.T) {
+	// the untyped loop settles against its concrete sibling
+	funcs := mustAnalyze(t, `fun main () -> int { let y = 1; let b = loop { break 1; } == y; 0 }`)
+
+	cmp := funcs[0].Body().Stmts()[1].List[2]
+	require.Equal(t, ir.OpEqual, cmp.Op)
+	assert.True(t, types.Equal(types.Int(), cmp.List[0].Type))
+}
+
+func TestAnalyze_Loop_LambdaDeclaredOnce(t *testing.T) {
+	// materializing the untyped loop must not analyze the body's lambda a second time
+	funcs := mustAnalyze(t, `fun main () -> int { let x = loop { let g = fun () -> int { 1 }; break 1; }; x }`)
+
+	require.Len(t, funcs, 2)
+	funcByLabel(t, funcs, "main.func0")
+}
+
+func TestAnalyze_Loop_Valid(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"continue", `fun main () -> int { let i = 0; loop { i = i + 1; if i < 3 { continue; }; break; }; i }`},
+		{"continue in nested loop", `fun main () -> int { loop { loop { continue; }; }; }`},
+		{"diverging branch beside value", `fun main () -> int { let i = 0; loop { let x = if i > 3 { break; } else { 5 }; i = i + x; }; i }`},
+		{"break in loop inside lambda", `fun main () -> int { let f = fun () -> int { loop { break 1; } }; f() }`},
+		{"unit trailing value in body", `fun g () { } fun main () -> int { loop { g() }; }`},
+		{"break leaves a loop that falls through", `fun main () -> int { loop { break; }; 0 }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mustAnalyze(t, tt.test)
+		})
+	}
+}
+
+func TestAnalyze_Loop_Diverges(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"as trailing value", `fun f () -> int { loop { return 1; } } fun main () -> int { 0 }`},
+		{"as last statement", `fun f () -> int { loop { return 1; }; } fun main () -> int { 0 }`},
+		{"break only from inner loop", `fun f () -> int { loop { loop { break; }; return 1; }; } fun main () -> int { 0 }`},
+		{"empty body", `fun f () -> int { loop { }; } fun main () -> int { 0 }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mustAnalyze(t, tt.test)
+		})
+	}
+}
+
+func TestAnalyze_Loop_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+	}{
+		{"mismatched breaks", `fun main () -> int { let x = loop { if true { break 1; }; break true; }; 0 }`},
+		{"value against bare break", `fun main () -> int { let x = loop { if true { break 1; }; break; }; 0 }`},
+		{"annotation mismatch", `fun main () -> int { let x bool = loop { break 1; }; 0 }`},
+		{"nil in every break", `fun main () -> int { let p = loop { break nil; }; 0 }`},
+		{"wrong result type", `fun main () -> int { loop { break true; } }`},
+		{"non-unit trailing value in body", `fun main () -> int { loop { 5 }; }`},
+		{"error inside break value", `fun main () -> int { loop { break y; }; }`},
+		{"unreachable after break", `fun main () -> int { loop { break; let x = 1; }; 0 }`},
+		{"unreachable after continue", `fun main () -> int { loop { continue; let x = 1; }; }`},
+		{"unreachable after diverging loop", `fun main () -> int { loop { }; 0 }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestAnalyze_Loop_Placement_Err(t *testing.T) {
+	tests := []struct {
+		name string
+		test string
+		msg  string
+	}{
+		{"break outside loop", `fun main () -> int { break; }`, "break statement appears outside of a loop"},
+		{"break in conditional outside loop", `fun main () -> int { if true { break; }; 0 }`, "break statement appears outside of a loop"},
+		{"break in lambda outside loop", `fun main () -> int { let f = fun () { break; }; 0 }`, "break statement appears outside of a loop"},
+		{"break in lambda inside loop", `fun main () -> int { loop { let f = fun () { break; }; }; }`, "break inside a closure cannot exit an enclosing loop"},
+		{"break in lambda nested in conditional inside loop", `fun main () -> int { loop { if true { let f = fun () { break; }; }; }; }`, "break inside a closure cannot exit an enclosing loop"},
+		{"continue outside loop", `fun main () -> int { continue; }`, "continue statement appears outside of a loop"},
+		{"continue in lambda inside loop", `fun main () -> int { loop { let f = fun () { continue; }; }; }`, "continue inside a closure cannot exit an enclosing loop"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := analyzeSrc(t, tt.test)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.msg)
+		})
+	}
+}
+
+func TestAnalyze_Loop_MissingReturn(t *testing.T) {
+	_, err := analyzeSrc(t, `fun f () -> int { loop { break; }; } fun main () -> int { 0 }`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing return")
 }
 
 // mustAnalyze parses and analyzes src, returning every function in the program, lifted lambdas included.

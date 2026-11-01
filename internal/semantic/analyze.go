@@ -13,7 +13,7 @@ import (
 
 func Analyze(globalFuncs []*ir.Node) ([]*ir.Node, error) {
 	globalScope := ir.NewTable()
-	a := &analyzer{}
+	a := &analyzer{loops: make(map[*ir.Node]*loopInfo)}
 
 	// register every global function's signature first
 	for _, f := range globalFuncs {
@@ -33,6 +33,13 @@ func Analyze(globalFuncs []*ir.Node) ([]*ir.Node, error) {
 
 type analyzer struct {
 	lambdas []*ir.Node
+	loops   map[*ir.Node]*loopInfo
+}
+
+// loopInfo is what an analyzed loop's breaks need from it, and what it needs from its breaks
+type loopInfo struct {
+	want   *types.Type
+	breaks []*ir.Node
 }
 
 func (a *analyzer) analyzeStmt(scope *ir.Table, n *ir.Node) error {
@@ -53,6 +60,16 @@ func (a *analyzer) analyzeStmt(scope *ir.Table, n *ir.Node) error {
 		}
 		// the value is discarded, but it still needs a concrete type
 		return a.materialize(scope, n)
+	case ir.OpLoop:
+		if err := a.inferLoop(scope, n); err != nil {
+			return err
+		}
+		// the value is discarded, but it still needs a concrete type
+		return a.materialize(scope, n)
+	case ir.OpBreak:
+		return a.analyzeBreak(scope, n)
+	case ir.OpContinue:
+		return a.analyzeContinue(n)
 	default:
 		return diagnostic.NewError(n.Pos, "unknown statement operation: %d", n.Op)
 	}
@@ -85,7 +102,6 @@ func (a *analyzer) analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 		return err
 	}
 
-	// make sure the expression and target type match
 	if !types.Equal(target.Type, e.Type) {
 		return diagnostic.NewError(n.Pos, "variable assignment with mismatched types: want %v, got %v", target.Type, e.Type)
 	}
@@ -93,7 +109,6 @@ func (a *analyzer) analyzeAssignment(scope *ir.Table, n *ir.Node) error {
 	return nil
 }
 
-// analyzeAssignOp types a compound assignment.
 func (a *analyzer) analyzeAssignOp(scope *ir.Table, n *ir.Node) error {
 	if err := a.analyzeAssignment(scope, n); err != nil {
 		return err
@@ -138,7 +153,6 @@ func (a *analyzer) analyzeDeclaration(scope *ir.Table, n *ir.Node) error {
 		return err
 	}
 
-	// wanted type must equal got type
 	if want != nil && !types.Equal(want, e.Type) {
 		return diagnostic.NewError(n.Pos, "variable declaration with mismatched types: want %v, got %v", want, e.Type)
 	}
@@ -152,12 +166,10 @@ func (a *analyzer) analyzeRecDeclaration(scope *ir.Table, n *ir.Node) error {
 	typeNode := n.List[1]
 	e := n.List[2]
 
-	// only function literals are allowed
 	if e.Op != ir.OpFunction {
 		return diagnostic.NewError(e.Pos, "right-hand side of let rec must be a function literal")
 	}
 
-	// register this lambda itself with the analyzer
 	if err := a.declareLambda(e); err != nil {
 		return err
 	}
@@ -166,7 +178,6 @@ func (a *analyzer) analyzeRecDeclaration(scope *ir.Table, n *ir.Node) error {
 		return diagnostic.NewError(n.Pos, "variable declaration with mismatched types: want %v, got %v", typeNode.Type, e.Type)
 	}
 
-	// register the identifier in the scope
 	sym, err := a.registerDeclaration(scope, n, e.Type)
 	if err != nil {
 		return err
@@ -177,16 +188,15 @@ func (a *analyzer) analyzeRecDeclaration(scope *ir.Table, n *ir.Node) error {
 	return a.analyzeFunctionBody(scope, e)
 }
 
-// registerDeclaration puts a declaration's name into scope with the given type.
 func (a *analyzer) registerDeclaration(scope *ir.Table, n *ir.Node, t *types.Type) (*ir.Sym, error) {
 	nameNode := n.List[0]
 
-	// register self in scope; will get nil if variable already exists in scope
+	// nil if the name is already declared in this scope
 	sym := scope.Register(nameNode.Ident(), t, ir.SymLocal)
 	if sym == nil {
 		return nil, diagnostic.NewError(nameNode.Pos, "variable re-declared: %v", nameNode.Ident())
 	}
-	sym.Def = n.Encl() // function context this variable was defined in
+	sym.Def = n.Encl()
 	n.Sym = sym
 
 	return sym, nil
@@ -233,6 +243,8 @@ func (a *analyzer) inferExpr(scope *ir.Table, n *ir.Node) error {
 		return a.inferDot(scope, n)
 	case ir.OpConditional:
 		return a.inferConditional(scope, n)
+	case ir.OpLoop:
+		return a.inferLoop(scope, n)
 	default:
 		return diagnostic.NewError(n.Pos, "unknown expression operation: %d", n.Op)
 	}
@@ -250,7 +262,6 @@ func (a *analyzer) checkConditional(scope *ir.Table, n *ir.Node, want *types.Typ
 	return a.analyzeConditional(scope, n, want)
 }
 
-// analyzeConditional types a conditional's condition and branches
 func (a *analyzer) analyzeConditional(scope *ir.Table, n *ir.Node, want *types.Type) error {
 	if len(n.List) != 3 {
 		return diagnostic.NewError(n.Pos, "conditional without three arguments")
@@ -260,7 +271,6 @@ func (a *analyzer) analyzeConditional(scope *ir.Table, n *ir.Node, want *types.T
 	consequent := n.List[1]
 	alternative := n.List[2]
 
-	// make sure condition is a bool
 	if err := a.inferExpr(scope, condition); err != nil {
 		return err
 	}
@@ -285,12 +295,161 @@ func (a *analyzer) analyzeConditional(scope *ir.Table, n *ir.Node, want *types.T
 	return a.settleConditional(scope, n, want)
 }
 
-// analyzeBranch types a conditional's branch
+func (a *analyzer) inferLoop(scope *ir.Table, n *ir.Node) error {
+	return a.analyzeLoop(scope, n, nil)
+}
+
+func (a *analyzer) checkLoop(scope *ir.Table, n *ir.Node, want *types.Type) error {
+	if n.Type != nil {
+		return a.settleLoop(scope, n, want)
+	}
+
+	return a.analyzeLoop(scope, n, want)
+}
+
+func (a *analyzer) analyzeLoop(scope *ir.Table, n *ir.Node, want *types.Type) error {
+	body := n.Body()
+	if body == nil {
+		return diagnostic.NewError(n.Pos, "loop missing body")
+	}
+
+	// breaks find their loop here while the body is analyzed
+	a.loops[n] = &loopInfo{want: want}
+
+	if err := a.checkBlock(scope, body, nil); err != nil {
+		return err
+	}
+
+	// the body's value is thrown away every iteration, so it has to be unit
+	if v := body.Value(); v != nil && !v.Type.IsUnit() {
+		return diagnostic.NewError(v.Pos, "loop body has trailing value of type %v", v.Type)
+	}
+
+	return a.settleLoop(scope, n, want)
+}
+
+// settleLoop agrees an analyzed loop's breaks on one type
+func (a *analyzer) settleLoop(scope *ir.Table, n *ir.Node, want *types.Type) error {
+	breaks := a.loops[n].breaks
+
+	// nothing breaks out, so the loop never produces a value and can be anything
+	if len(breaks) == 0 {
+		if want == nil {
+			n.Type = types.Unit()
+		} else {
+			n.Type = want
+		}
+		return nil
+	}
+
+	target := want
+	if target == nil {
+		for _, b := range breaks {
+			if t := breakType(b); !isUntyped(t) {
+				target = t
+				break
+			}
+		}
+	}
+	if target != nil {
+		for _, b := range breaks {
+			if v := breakValue(b); v != nil && isUntyped(v.Type) {
+				if err := a.checkExpr(scope, v, target); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	first := breakType(breaks[0])
+	for _, b := range breaks[1:] {
+		if t := breakType(b); !types.Equal(first, t) {
+			return diagnostic.NewError(b.Pos, "loop breaks with mismatched types: %v and %v", first, t)
+		}
+	}
+
+	n.Type = first
+
+	return nil
+}
+
+func (a *analyzer) analyzeBreak(scope *ir.Table, n *ir.Node) error {
+	loop, err := loopTarget(n, "break")
+	if err != nil {
+		return err
+	}
+	info := a.loops[loop]
+	info.breaks = append(info.breaks, n)
+
+	v := breakValue(n)
+	if v == nil {
+		return nil
+	}
+
+	// the loop's want is what every break expects of its value
+	if info.want != nil {
+		return a.checkExpr(scope, v, info.want)
+	}
+
+	return a.inferExpr(scope, v)
+}
+
+func (a *analyzer) analyzeContinue(n *ir.Node) error {
+	_, err := loopTarget(n, "continue")
+	return err
+}
+
+// loopTarget finds the loop a break or continue targets
+func loopTarget(n *ir.Node, keyword string) (*ir.Node, error) {
+	if loop := enclosingLoop(n); loop != nil {
+		return loop, nil
+	}
+
+	// special error message if this was called from a closure inside a loop
+	if n.Predecessor(ir.OpLoop) != nil {
+		return nil, diagnostic.NewError(n.Pos, "%s inside a closure cannot exit an enclosing loop", keyword)
+	}
+
+	return nil, diagnostic.NewError(n.Pos, "%s statement appears outside of a loop", keyword)
+}
+
+// enclosingLoop finds the loop a break or continue in n targets, which never lies outside n's function
+func enclosingLoop(n *ir.Node) *ir.Node {
+	for curr := n.Parent; curr != nil; curr = curr.Parent {
+		switch curr.Op {
+		case ir.OpLoop:
+			return curr
+		case ir.OpFunction:
+			return nil
+		}
+	}
+
+	return nil
+}
+
+func breakValue(b *ir.Node) *ir.Node {
+	if len(b.List) == 0 {
+		return nil
+	}
+
+	return b.List[0]
+}
+
+func breakType(b *ir.Node) *types.Type {
+	if v := breakValue(b); v != nil {
+		return v.Type
+	}
+
+	return types.Unit()
+}
+
 func (a *analyzer) analyzeBranch(scope *ir.Table, b *ir.Node, want *types.Type) error {
 	if b.Op == ir.OpConditional {
+		// if/elif
 		return a.analyzeConditional(scope, b, want)
 	}
 
+	// else
 	return a.checkBlock(scope, b, want)
 }
 
@@ -301,7 +460,7 @@ func (a *analyzer) settleConditional(scope *ir.Table, n *ir.Node, want *types.Ty
 
 	// if there's no alternative make sure the consequent doesn't want to produce a value
 	if alternative == nil {
-		if t := branchType(consequent); !terminates(consequent) && !t.IsUnit() {
+		if t := branchType(consequent); !a.terminates(consequent) && !t.IsUnit() {
 			return diagnostic.NewError(branchValue(consequent).Pos, "conditional without alternative has consequent of type %v", t)
 		}
 		n.Type = types.Unit()
@@ -310,10 +469,10 @@ func (a *analyzer) settleConditional(scope *ir.Table, n *ir.Node, want *types.Ty
 
 	// make sure diverging branches don't contribute to type checking
 	var live []*ir.Node
-	if !terminates(consequent) {
+	if !a.terminates(consequent) {
 		live = append(live, consequent)
 	}
-	if !terminates(alternative) {
+	if !a.terminates(alternative) {
 		live = append(live, alternative)
 	}
 
@@ -327,10 +486,8 @@ func (a *analyzer) settleConditional(scope *ir.Table, n *ir.Node, want *types.Ty
 		return nil
 	}
 
-	// resolve wanted outcome type for the conditional
 	target := want
 	if target == nil {
-		// no want target, so take from first typed live branch
 		for _, b := range live {
 			if t := branchType(b); !isUntyped(t) {
 				target = t
@@ -338,7 +495,6 @@ func (a *analyzer) settleConditional(scope *ir.Table, n *ir.Node, want *types.Ty
 			}
 		}
 	}
-	// resolve any untyped branches against target value (if there is one)
 	if target != nil {
 		for _, b := range live {
 			if v := branchValue(b); v != nil && isUntyped(v.Type) {
@@ -349,12 +505,10 @@ func (a *analyzer) settleConditional(scope *ir.Table, n *ir.Node, want *types.Ty
 		}
 	}
 
-	// if both branches are live, make sure they agree on type
 	if len(live) == 2 && !types.Equal(branchType(consequent), branchType(alternative)) {
 		return diagnostic.NewError(n.Pos, "conditional branches with mismatched types: %v and %v", branchType(consequent), branchType(alternative))
 	}
 
-	// pull the type from one of the live branches since they actually give a value back
 	n.Type = branchType(live[0])
 
 	return nil
@@ -370,7 +524,6 @@ func branchValue(b *ir.Node) *ir.Node {
 	return b.Value()
 }
 
-// branchType returns the type of a conditional branch's value
 func branchType(b *ir.Node) *types.Type {
 	if v := branchValue(b); v != nil {
 		return v.Type
@@ -432,7 +585,6 @@ func (a *analyzer) inferComparison(scope *ir.Table, n *ir.Node) error {
 		return err
 	}
 
-	// resolve untyped siblings
 	if isUntyped(left.Type) && !isUntyped(right.Type) {
 		if err := a.checkExpr(scope, left, right.Type); err != nil {
 			return err
@@ -443,7 +595,6 @@ func (a *analyzer) inferComparison(scope *ir.Table, n *ir.Node) error {
 		}
 	}
 
-	// anything still untyped gets materialized
 	if err := a.materialize(scope, left); err != nil {
 		return err
 	}
@@ -481,6 +632,8 @@ func (a *analyzer) checkExpr(scope *ir.Table, n *ir.Node, want *types.Type) erro
 		return a.checkTuple(scope, n, want)
 	case ir.OpConditional:
 		return a.checkConditional(scope, n, want)
+	case ir.OpLoop:
+		return a.checkLoop(scope, n, want)
 	default:
 		// nothing to push down, so synthesize and let the caller compare
 		return a.inferExpr(scope, n)
@@ -551,7 +704,6 @@ func (a *analyzer) inferDot(scope *ir.Table, n *ir.Node) error {
 	return nil
 }
 
-// inferTuple types a tuple literal with nothing expected of it.
 func (a *analyzer) inferTuple(scope *ir.Table, n *ir.Node) error {
 	typeList := make([]*types.Type, len(n.List))
 	for i, e := range n.List {
@@ -632,7 +784,6 @@ func (a *analyzer) inferRef(scope *ir.Table, n *ir.Node) error {
 
 	sub := n.List[0]
 
-	// can only take the address of an addressable expression
 	if !sub.IsLValue() {
 		return diagnostic.NewError(sub.Pos, "cannot take reference of non-addressable expression")
 	}
@@ -647,7 +798,6 @@ func (a *analyzer) inferRef(scope *ir.Table, n *ir.Node) error {
 	// a pointer can be written through later, so we mark it as mutated to be safe
 	markMutated(sub)
 
-	// n's type is a pointer of sub's type
 	n.Type = types.Pointer(sub.Type)
 
 	return nil
@@ -663,7 +813,6 @@ func (a *analyzer) inferDeref(scope *ir.Table, n *ir.Node) error {
 		return err
 	}
 
-	// make sure sub's type is a pointer
 	if !sub.Type.IsPointer() {
 		return diagnostic.NewError(n.Pos, "dereference of a non-pointer type")
 	}
@@ -678,13 +827,11 @@ func (a *analyzer) inferCall(scope *ir.Table, n *ir.Node) error {
 		return diagnostic.NewError(n.Pos, "call without a callee")
 	}
 
-	// analyze the expression being called
 	callee := n.List[0]
 	if err := a.inferExpr(scope, callee); err != nil {
 		return err
 	}
 
-	// make sure the callee is a function
 	if !callee.Type.IsFunction() {
 		return diagnostic.NewError(n.Pos, "function call on non-function")
 	}
@@ -692,17 +839,14 @@ func (a *analyzer) inferCall(scope *ir.Table, n *ir.Node) error {
 	args := n.List[1:]
 	params := callee.Type.Params()
 
-	// should have same number of params and args
 	if len(params) != len(args) {
 		return diagnostic.NewError(n.Pos, "mismatched number of arguments: wanted %d, got %d", len(params), len(args))
 	}
 
-	// analyze each argument and make sure its type lines up with that of the matching parameter
 	for i := range args {
 		arg := args[i]
 		param := params[i]
 
-		// the parameter is what this position expects of the argument
 		if err := a.checkExpr(scope, arg, param); err != nil {
 			return err
 		}
@@ -712,7 +856,6 @@ func (a *analyzer) inferCall(scope *ir.Table, n *ir.Node) error {
 		}
 	}
 
-	// now that we know all is good mark type of call expression as function result
 	n.Type = callee.Type.Result()
 
 	return nil
@@ -731,7 +874,6 @@ func (a *analyzer) inferNegate(scope *ir.Table, n *ir.Node) error {
 		return diagnostic.NewError(n.Pos, "negation unavailable for type: %v", e.Type)
 	}
 
-	// steal type from sub-expression
 	n.Type = e.Type
 
 	return nil
@@ -764,7 +906,6 @@ func negateOperand(n *ir.Node) (*ir.Node, error) {
 }
 
 func (a *analyzer) inferIdent(scope *ir.Table, n *ir.Node) error {
-	// need an existing symbol for this ident
 	existingSym := scope.Sym(n.Ident())
 	if existingSym == nil {
 		return diagnostic.NewError(n.Pos, "variable used before declaration: %v", n.Ident())
@@ -824,7 +965,6 @@ func (a *analyzer) settleBop(scope *ir.Table, n *ir.Node, left *ir.Node, right *
 		}
 	}
 
-	// types must be equal
 	if !types.Equal(left.Type, right.Type) {
 		return diagnostic.NewError(n.Pos, "binary operation with mismatched types: %v and %v", left.Type, right.Type)
 	}
@@ -834,7 +974,6 @@ func (a *analyzer) settleBop(scope *ir.Table, n *ir.Node, left *ir.Node, right *
 		return diagnostic.NewError(n.Pos, "binary operation unavailable for type: %v", left.Type)
 	}
 
-	// finally, assign bop node to the agreed-upon type
 	n.Type = left.Type
 
 	return nil
@@ -860,7 +999,6 @@ func isComparable(t *types.Type) bool {
 	return t.IsConcreteNumeric() || t.IsPointer() || types.Equal(t, types.Bool())
 }
 
-// isOrdering reports whether op compares by order rather than equality
 func isOrdering(op ir.Op) bool {
 	switch op {
 	case ir.OpLess, ir.OpLessEqual, ir.OpGreater, ir.OpGreaterEqual:
@@ -871,20 +1009,22 @@ func isOrdering(op ir.Op) bool {
 }
 
 // terminates reports whether control cannot flow past n.
-func terminates(n *ir.Node) bool {
+func (a *analyzer) terminates(n *ir.Node) bool {
 	if n == nil {
 		return false
 	}
 
 	switch n.Op {
-	case ir.OpReturn:
+	case ir.OpReturn, ir.OpBreak, ir.OpContinue:
 		return true
 	case ir.OpBlock:
-		// does the last statement in the block terminate?
-		return len(n.List) > 0 && terminates(n.List[len(n.List)-1])
+		return len(n.List) > 0 && a.terminates(n.List[len(n.List)-1])
 	case ir.OpConditional:
 		// without an alternative, control falls through when the condition fails
-		return n.List[2] != nil && terminates(n.List[1]) && terminates(n.List[2])
+		return n.List[2] != nil && a.terminates(n.List[1]) && a.terminates(n.List[2])
+	case ir.OpLoop:
+		// only a break gets control out of a loop
+		return len(a.loops[n].breaks) == 0
 	default:
 		return false
 	}
@@ -912,7 +1052,6 @@ func (a *analyzer) registerGlobalFunction(scope *ir.Table, f *ir.Node) error {
 
 	f.Signature.Label = f.Signature.Name.Ident()
 
-	// resolve parameter types and set own type
 	sigType, err := a.signatureType(f)
 	if err != nil {
 		return err
@@ -925,7 +1064,6 @@ func (a *analyzer) registerGlobalFunction(scope *ir.Table, f *ir.Node) error {
 
 	f.Type = sigType
 
-	// register self onto scope
 	name := f.Signature.Name
 	sym := scope.Register(name.Ident(), f.Type, ir.SymFunc)
 	if sym == nil {
@@ -938,17 +1076,15 @@ func (a *analyzer) registerGlobalFunction(scope *ir.Table, f *ir.Node) error {
 }
 
 func (a *analyzer) analyzeFunctionBody(scope *ir.Table, f *ir.Node) error {
-	// need a child scope for function body
 	paramScope := scope.NewChild()
 
-	// register parameters into their own scope
 	for _, p := range f.Signature.Params {
 		pName := p.List[0]
 		sym := paramScope.Register(pName.Ident(), p.Type, ir.SymParam)
 		if sym == nil {
 			return diagnostic.NewError(pName.Pos, "parameter '%s' already declared", pName.Ident())
 		}
-		sym.Def = f // parameter defined in f
+		sym.Def = f
 		p.Sym = sym
 	}
 
@@ -963,7 +1099,7 @@ func (a *analyzer) analyzeFunctionBody(scope *ir.Table, f *ir.Node) error {
 	}
 
 	// TODO: point this at the body's closing brace instead of the function's start once nodes carry an end position
-	if !terminates(body) && !f.Type.Result().IsUnit() {
+	if !a.terminates(body) && !f.Type.Result().IsUnit() {
 		return diagnostic.NewError(f.Pos, "missing return at end of function")
 	}
 
@@ -972,19 +1108,16 @@ func (a *analyzer) analyzeFunctionBody(scope *ir.Table, f *ir.Node) error {
 
 // checkBlock types a block's statements in a new scope
 func (a *analyzer) checkBlock(scope *ir.Table, body *ir.Node, want *types.Type) error {
-	// new scope for the block
 	blockScope := scope.NewChild()
 
-	// analyze types of body statements
 	stmts := body.Stmts()
 	for i, s := range stmts {
 		if err := a.analyzeStmt(blockScope, s); err != nil {
 			return err
 		}
 
-		// if this statement terminates and there's still more to go then error out
-		if terminates(s) && i < len(body.List)-1 {
-			return diagnostic.NewError(body.List[i+1].Pos, "unreachable code after return")
+		if a.terminates(s) && i < len(body.List)-1 {
+			return diagnostic.NewError(body.List[i+1].Pos, "unreachable code")
 		}
 	}
 
@@ -1030,14 +1163,11 @@ func (a *analyzer) analyzeParam(p *ir.Node) error {
 }
 
 func (a *analyzer) analyzeReturn(scope *ir.Table, r *ir.Node) error {
-	// grab first function we can find in the AST
 	currentFunc := r.Predecessor(ir.OpFunction)
 
-	// we expect a return to appear in a function
 	if currentFunc == nil {
 		return diagnostic.NewError(r.Pos, "return statement appears outside of a function definition")
 	}
-	// determine type of sub-expression
 	if len(r.List) > 0 {
 		return a.checkResult(scope, currentFunc, r.List[0])
 	}
@@ -1050,7 +1180,6 @@ func (a *analyzer) analyzeReturn(scope *ir.Table, r *ir.Node) error {
 	return nil
 }
 
-// checkResult types e against f's return type
 func (a *analyzer) checkResult(scope *ir.Table, f *ir.Node, e *ir.Node) error {
 	if err := a.checkExpr(scope, e, f.Type.Result()); err != nil {
 		return err
