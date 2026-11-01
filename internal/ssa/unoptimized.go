@@ -533,14 +533,6 @@ func (b *builder) genConditional(dest addr, expr *ir.Node) error {
 
 	mergeBlock := b.targetFunc.newBlock()
 
-	oldBreakTo := b.target
-	defer func() { b.target = oldBreakTo }()
-	b.target = breakTarget{
-		// continue isn't valid for conditionals so omitting header here
-		exit: mergeBlock,
-		dest: dest,
-	}
-
 	b.currentBlock = consequentBlock
 	for _, s := range consequent.Stmts() {
 		if err := b.genStatement(s); err != nil {
@@ -611,6 +603,12 @@ func (b *builder) genLoop(dest addr, expr *ir.Node) error {
 	b.currentBlock = header
 	for _, s := range body.Stmts() {
 		if err := b.genStatement(s); err != nil {
+			return err
+		}
+	}
+	if v := body.Value(); v != nil {
+		// the body's value is unit and thrown away, but evaluating it may still have effects
+		if err := b.genExprInto(addr{Slot: b.targetFunc.newSlot(nil, v.Type)}, v); err != nil {
 			return err
 		}
 	}

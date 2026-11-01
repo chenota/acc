@@ -1487,6 +1487,56 @@ func TestGenSsa_Conditional_BuildsDiamond(t *testing.T) {
 	assert.ElementsMatch(t, []int{then.Id, els.Id}, blockIds(merge.Predecessors))
 }
 
+func TestGenSsa_Loop_BreakInConditionalExitsLoop(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (n int) -> int { let i = 0; loop { if i == n { break; }; i = i + 1; }; i }
+		fun main () -> int { 0 }`), "f")
+
+	require.Len(t, f.Entry.Successors, 1)
+	header := f.Entry.Successors[0]
+	require.Equal(t, BlockIf, header.Kind)
+	require.Len(t, header.Successors, 2)
+
+	// the breaking arm leaves the loop entirely rather than falling into the conditional's merge
+	then := header.Successors[0]
+	require.Len(t, then.Successors, 1)
+	exit := then.Successors[0]
+	assert.Equal(t, BlockRet, exit.Kind)
+	assert.Equal(t, []int{then.Id}, blockIds(exit.Predecessors))
+
+	// the other arm carries on through the rest of the body and back around
+	els := header.Successors[1]
+	require.Len(t, els.Successors, 1)
+	merge := els.Successors[0]
+	require.Len(t, merge.Successors, 1)
+	assert.Same(t, header, merge.Successors[0])
+}
+
+func TestGenSsa_Loop_ContinueInConditionalTargetsHeader(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (n int) -> int { let i = 0; loop { i = i + 1; if i < n { continue; }; break; }; i }
+		fun main () -> int { 0 }`), "f")
+
+	require.Len(t, f.Entry.Successors, 1)
+	header := f.Entry.Successors[0]
+	require.Equal(t, BlockIf, header.Kind)
+	require.Len(t, header.Successors, 2)
+
+	then := header.Successors[0]
+	require.Len(t, then.Successors, 1)
+	assert.Same(t, header, then.Successors[0])
+}
+
+func TestGenSsa_Loop_BodyValueIsEvaluated(t *testing.T) {
+	// the body's unit value is discarded, but the call producing it still happens
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun g () { }
+		fun f () { loop { g() }; }
+		fun main () -> int { 0 }`), "f")
+
+	assert.Len(t, findValues(slices.Collect(f.OrderedValues()), OpStaticCall), 1)
+}
+
 func TestMem2Reg_SlotSharedBetweenBlocksBecomesAPhi(t *testing.T) {
 	f := requireFunc(t, requireBuildSSA(t, `fun f (c bool) -> int { if c { 1 } else { 2 } } fun main () -> int { 0 }`), "f")
 
