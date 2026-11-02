@@ -1,0 +1,46 @@
+fun counter (max *int) -> (fun () -> int, fun ()) {
+    let i int = 0;
+
+    let get = fun () -> int {
+        return i;
+    };
+
+    let set = fun () {
+        if max == nil || i < *max {
+            i += 1;
+        };
+    };
+
+    return (get, set);
+}
+
+fun set (counter (fun () -> int, fun())) {
+    counter.1();
+}
+
+fun get (counter (fun () -> int, fun())) -> int {
+    counter.0()
+}
+
+fun ptr(x int) -> *int {
+    return &x;
+}
+
+fun main () -> int {
+    let myCounter1 = counter(nil);
+    let myCounter2 = counter(ptr(10));
+
+    let i = 0;
+    loop {
+        if i == 100 {
+            break;
+        };
+
+        set(myCounter1);
+        set(myCounter2);
+
+        i += 1;
+    };
+
+    get(myCounter1) + get(myCounter2)
+}

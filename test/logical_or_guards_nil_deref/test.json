@@ -1,0 +1,5 @@
+{
+  "name": "Or Guards A Nil Dereference In A Closure",
+  "tags": ["vs11"],
+  "status": 110
+}
