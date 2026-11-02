@@ -1,0 +1,12 @@
+fun f (a bool, b bool, c bool) -> int {
+    if a || b && c { 1 } else { 0 }
+}
+
+fun g (x int) -> int {
+    if x > 0 && x < 10 || x == 100 { 1 } else { 0 }
+}
+
+fun main () -> int {
+    f(true, false, false) * 100 + f(false, true, false) * 10 + f(false, false, true) * 5
+        + g(5) - g(10) + g(100) - g(-1) - 1
+}

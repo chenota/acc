@@ -1,0 +1,11 @@
+fun bump (p *int, r bool) -> bool {
+    *p = *p + 1;
+    r
+}
+
+fun main () -> int {
+    let n = 0;
+    let a = bump(&n, true) || bump(&n, false);
+    let b = bump(&n, false) || bump(&n, false);
+    n * 10 + if a { 2 } else { 0 } + if b { 1 } else { 0 }
+}

@@ -1,0 +1,9 @@
+fun main () -> int {
+    let i = 0;
+    loop {
+        let ok = i < 5 && if i == 3 { break; } else { true };
+        if !ok { break; };
+        i = i + 1;
+    };
+    i
+}

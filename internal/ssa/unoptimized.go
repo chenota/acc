@@ -289,7 +289,7 @@ func (b *builder) genExpr(expr *ir.Node) (*Value, error) {
 		return b.genNil(expr)
 	case ir.OpNot:
 		return b.genNot(expr)
-	case ir.OpConditional, ir.OpLoop:
+	case ir.OpConditional, ir.OpLoop, ir.OpAnd, ir.OpOr:
 		// the branches (or breaks) write into a temporary that is read back once control rejoins
 		place, err := b.genPlace(expr)
 		if err != nil {
@@ -319,10 +319,13 @@ func (b *builder) genBool(e *ir.Node) (*Value, error) {
 		return nil, diagnostic.NewError(e.Pos, "unable to convert node value to boolean")
 	}
 
+	return b.genBoolLiteral(v), nil
+}
+
+func (b *builder) genBoolLiteral(v bool) *Value {
 	boolVal := b.targetFunc.appendValue(OpLiteral, types.Bool(), b.currentBlock)
 	boolVal.Value = v
-
-	return boolVal, nil
+	return boolVal
 }
 
 func closureEnvType(lambda *ir.Node) *types.Type {
@@ -475,6 +478,8 @@ func (b *builder) genExprInto(dest addr, expr *ir.Node) error {
 		return b.genConditional(dest, expr)
 	case expr.Op == ir.OpLoop:
 		return b.genLoop(dest, expr)
+	case expr.Op == ir.OpAnd || expr.Op == ir.OpOr:
+		return b.genLogical(dest, expr)
 	case expr.Op == ir.OpFunction:
 		code := b.module.lookup(expr.Signature.Label)
 		if code == nil {
@@ -521,56 +526,86 @@ func (b *builder) genConditional(dest addr, expr *ir.Node) error {
 		return err
 	}
 
+	return b.genBranch(cond,
+		func() error { return b.genArm(dest, consequent) },
+		func() error { return b.genArm(dest, alternative) },
+	)
+}
+
+// genArm writes the value of one arm of a conditional into dest
+func (b *builder) genArm(dest addr, arm *ir.Node) error {
+	if arm == nil {
+		return nil
+	}
+
+	switch arm.Op {
+	case ir.OpConditional:
+		// elif
+		return b.genExprInto(dest, arm)
+	case ir.OpBlock:
+		for _, s := range arm.Stmts() {
+			if err := b.genStatement(s); err != nil {
+				return err
+			}
+		}
+		if v := arm.Value(); v != nil {
+			return b.genExprInto(dest, v)
+		}
+		return nil
+	default:
+		return diagnostic.NewError(arm.Pos, "conditional arm does not have required op")
+	}
+}
+
+// genLogical writes a short-circuiting && or || into dest
+func (b *builder) genLogical(dest addr, expr *ir.Node) error {
+	if len(expr.List) != 2 {
+		return diagnostic.NewError(expr.Pos, "logical operator without two operands")
+	}
+
+	cond, err := b.genExpr(expr.List[0])
+	if err != nil {
+		return err
+	}
+
+	right := func() error { return b.genExprInto(dest, expr.List[1]) }
+	// a false left settles &&, and a true left settles ||
+	settled := func() error {
+		b.genStoreTo(dest, b.genBoolLiteral(expr.Op == ir.OpOr))
+		return nil
+	}
+
+	if expr.Op == ir.OpAnd {
+		return b.genBranch(cond, right, settled)
+	}
+	return b.genBranch(cond, settled, right)
+}
+
+// genBranch splits control on cond between then and els, leaving the block where they rejoin current
+func (b *builder) genBranch(cond *Value, then, els func() error) error {
 	branchBlock := b.currentBlock
 	branchBlock.Kind = BlockIf
 	branchBlock.setControl(cond)
 
-	consequentBlock := b.targetFunc.newBlock()
-	addEdge(branchBlock, consequentBlock)
+	thenBlock := b.targetFunc.newBlock()
+	addEdge(branchBlock, thenBlock)
 
-	alternativeBlock := b.targetFunc.newBlock()
-	addEdge(branchBlock, alternativeBlock)
+	elseBlock := b.targetFunc.newBlock()
+	addEdge(branchBlock, elseBlock)
 
 	mergeBlock := b.targetFunc.newBlock()
 
-	b.currentBlock = consequentBlock
-	for _, s := range consequent.Stmts() {
-		if err := b.genStatement(s); err != nil {
-			return err
-		}
-	}
-	if v := consequent.Value(); v != nil {
-		if err := b.genExprInto(dest, v); err != nil {
-			return err
-		}
+	b.currentBlock = thenBlock
+	if err := then(); err != nil {
+		return err
 	}
 	if b.currentBlock.Kind == BlockUnset {
 		b.jump(mergeBlock)
 	}
 
-	b.currentBlock = alternativeBlock
-	if alternative != nil {
-		switch alternative.Op {
-		case ir.OpConditional:
-			// elif
-			if err := b.genExprInto(dest, alternative); err != nil {
-				return err
-			}
-		case ir.OpBlock:
-			// else
-			for _, s := range alternative.Stmts() {
-				if err := b.genStatement(s); err != nil {
-					return err
-				}
-			}
-		default:
-			return diagnostic.NewError(alternative.Pos, "alternative node does not have required op")
-		}
-	}
-	if v := alternative.Value(); v != nil {
-		if err := b.genExprInto(dest, v); err != nil {
-			return err
-		}
+	b.currentBlock = elseBlock
+	if err := els(); err != nil {
+		return err
 	}
 	if b.currentBlock.Kind == BlockUnset {
 		b.jump(mergeBlock)

@@ -1,0 +1,7 @@
+fun classify (a bool, b bool) -> int {
+    if a && b { 1 } elif a || b { 2 } else { 3 }
+}
+
+fun main () -> int {
+    classify(true, true) * 10 + classify(true, false) * 10 + classify(false, true) * 2 + classify(false, false) * 2
+}

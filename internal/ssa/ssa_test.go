@@ -1842,6 +1842,67 @@ func TestRegalloc_PhiTakesTheRegisterItsOperandsShare(t *testing.T) {
 	assert.Equal(t, phi.Args[0].Loc, phi.Loc)
 }
 
+func TestGenSsa_And_EvaluatesRightOperandOnlyWhenLeftHolds(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `fun g () -> bool { true } fun f (a bool) -> bool { a && g() } fun main () -> int { 0 }`), "f")
+
+	branch := f.Entry
+	require.Equal(t, BlockIf, branch.Kind)
+	require.Len(t, branch.Successors, 2)
+
+	// the first successor is the one taken when the condition holds
+	then, els := branch.Successors[0], branch.Successors[1]
+	assert.Empty(t, findValues(branch.Values, OpStaticCall))
+	assert.Len(t, findValues(then.Values, OpStaticCall), 1)
+	assert.Empty(t, findValues(els.Values, OpStaticCall))
+}
+
+func TestGenSsa_Or_EvaluatesRightOperandOnlyWhenLeftFails(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `fun g () -> bool { true } fun f (a bool) -> bool { a || g() } fun main () -> int { 0 }`), "f")
+
+	branch := f.Entry
+	require.Equal(t, BlockIf, branch.Kind)
+	require.Len(t, branch.Successors, 2)
+
+	then, els := branch.Successors[0], branch.Successors[1]
+	assert.Empty(t, findValues(branch.Values, OpStaticCall))
+	assert.Empty(t, findValues(then.Values, OpStaticCall))
+	assert.Len(t, findValues(els.Values, OpStaticCall), 1)
+}
+
+func TestMem2Reg_AndJoinsRightOperandWithFalse(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `fun f (a bool, b bool) -> bool { a && b } fun main () -> int { 0 }`), "f")
+
+	require.Len(t, f.Entry.Successors, 2)
+	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
+	require.Len(t, then.Successors, 1)
+
+	phi := requireReturned(t, then.Successors[0])
+	require.Equal(t, OpPhi, phi.Op)
+	require.Len(t, phi.Args, 2)
+
+	assert.Same(t, requireParamCopy(t, f, 1), phi.Args[0])
+	assert.Same(t, els, phi.Args[1].Block)
+	assert.Equal(t, OpLiteral, phi.Args[1].Op)
+	assert.Equal(t, false, phi.Args[1].Value)
+}
+
+func TestMem2Reg_OrJoinsTrueWithRightOperand(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `fun f (a bool, b bool) -> bool { a || b } fun main () -> int { 0 }`), "f")
+
+	require.Len(t, f.Entry.Successors, 2)
+	then := f.Entry.Successors[0]
+	require.Len(t, then.Successors, 1)
+
+	phi := requireReturned(t, then.Successors[0])
+	require.Equal(t, OpPhi, phi.Op)
+	require.Len(t, phi.Args, 2)
+
+	assert.Same(t, then, phi.Args[0].Block)
+	assert.Equal(t, OpLiteral, phi.Args[0].Op)
+	assert.Equal(t, true, phi.Args[0].Value)
+	assert.Same(t, requireParamCopy(t, f, 1), phi.Args[1])
+}
+
 func blockIds(blocks []*Block) []int {
 	ids := make([]int, len(blocks))
 	for i, b := range blocks {

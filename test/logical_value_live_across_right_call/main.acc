@@ -1,0 +1,10 @@
+fun id (b bool) -> bool {
+    b
+}
+
+fun main () -> int {
+    let a = 7;
+    let b = 6;
+    let c = a > 0 && id(b > 0);
+    a * b + if c { a } else { 0 }
+}

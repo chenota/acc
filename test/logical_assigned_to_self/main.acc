@@ -1,0 +1,8 @@
+fun main () -> int {
+    let x = true;
+    let y = false;
+    x = x && !y;
+    y = y || x;
+    x = y && x && false;
+    if x { 1 } else { 2 } + if y { 4 } else { 8 }
+}
