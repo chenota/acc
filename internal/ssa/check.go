@@ -91,6 +91,28 @@ func verifyBlocks(f *Func) error {
 		}
 	}
 
+	return verifyReducible(f)
+}
+
+// verifyReducible checks that f's CFG is reducable
+func verifyReducible(f *Func) error {
+	dom := computeDominators(f)
+
+	order := slices.Collect(f.OrderedBlocks())
+	index := make(map[*Block]int)
+	for i, b := range order {
+		index[b] = i
+	}
+
+	for i, b := range order {
+		for _, s := range b.Successors {
+			// a block jumping to itself runs backwards too
+			if index[s] <= i && !dom.dominates(s, b) {
+				return fmt.Errorf("edge %d -> %d loops back to %d, which doesn't dominate %d, so control flow is irreducible", b.Id, s.Id, s.Id, b.Id)
+			}
+		}
+	}
+
 	return nil
 }
 

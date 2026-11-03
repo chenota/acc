@@ -497,6 +497,60 @@ func (f *Func) SlotValues(s *Slot) iter.Seq[*Value] {
 	}
 }
 
+type Loop struct {
+	Header *Block              // entry point into the loop, and where back edges point to
+	Outer  *Loop               // immediate parent of this loop
+	Blocks map[*Block]struct{} // every block in the loop
+}
+
+func (f *Func) Loops() map[*Block]*Loop {
+	dom := computeDominators(f)
+	order := slices.Collect(f.OrderedBlocks())
+	innermost := make(map[*Block]*Loop)
+
+	// walk backwards to find inner loops first
+	for _, h := range slices.Backward(order) {
+		var work []*Block
+		// search for predecessors that are dominated by h, since that indicates a loop
+		for _, p := range h.Predecessors {
+			if dom.dominates(h, p) {
+				work = append(work, p)
+			}
+		}
+		if len(work) == 0 {
+			continue
+		}
+
+		l := &Loop{Header: h, Blocks: map[*Block]struct{}{h: {}}}
+		// h dominates all blocks in work, so it must dominate their predecessors, and so on...
+		for len(work) > 0 {
+			b := work[len(work)-1]
+			work = work[:len(work)-1]
+			if _, ok := l.Blocks[b]; ok {
+				continue
+			}
+			l.Blocks[b] = struct{}{}
+			work = append(work, b.Predecessors...)
+		}
+
+		for b := range l.Blocks {
+			in, ok := innermost[b]
+			if !ok {
+				// block doesn't belong to a loop, so this loop must be its innermost
+				innermost[b] = l
+				continue
+			}
+			// block already belongs to a loop, which must sit inside this one, so wrap l around the known outermost loop this block belongs to
+			for in.Outer != nil && in.Outer != l {
+				in = in.Outer
+			}
+			in.Outer = l
+		}
+	}
+
+	return innermost
+}
+
 type LocationKind int
 
 const (
