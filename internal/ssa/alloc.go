@@ -213,7 +213,7 @@ func (s *spiller) placePhis(b *Block, phis []*Value) error {
 			if victim.Op == OpPhi && victim.Block == b {
 				s.keepInSlot(victim)
 			} else {
-				s.evict(victim)
+				s.evict(b, -1, victim)
 			}
 		}
 
@@ -351,7 +351,7 @@ func (s *spiller) makeRoom(b *Block, p int, m register.Mask, operands []*Value) 
 		if victim == nil {
 			return
 		}
-		s.evict(victim)
+		s.evict(b, p, victim)
 	}
 }
 
@@ -452,11 +452,13 @@ func (s *spiller) release(v *Value) {
 	}
 }
 
-// evict frees victim's register, storing it to a slot first unless it can be rematerialized.
-func (s *spiller) evict(victim *Value) {
+// evict frees victim's register at position p of b, storing it to a slot first unless it can be rematerialized or
+// nothing reads it again.
+func (s *spiller) evict(b *Block, p int, victim *Value) {
+	_, read := s.nextUse(b, s.vals, p, victim)
 	if victim.Rematerializable() {
 		s.dropped = append(s.dropped, victim)
-	} else if s.slots[victim] == nil {
+	} else if read && s.slots[victim] == nil {
 		slot := s.f.newSlot(nil, victim.Type)
 		var store *Value
 		if victim.Op == OpPhi {

@@ -1903,6 +1903,27 @@ func TestMem2Reg_OrJoinsTrueWithRightOperand(t *testing.T) {
 	assert.Same(t, requireParamCopy(t, f, 1), phi.Args[1])
 }
 
+func TestSpill_ValueNothingReadsAgainIsNotStored(t *testing.T) {
+	// the loop reads more values than there are registers, so each reload feeding an add is given up right after it
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (n int) -> int {
+			let a = n + 1; let b = n + 2; let c = n + 3; let d = n + 4; let e = n + 5; let g = n + 6;
+			let h = n + 7; let j = n + 8; let k = n + 9; let l = n + 10; let m = n + 11; let o = n + 12;
+			let p = n + 13; let q = n + 14; let r = n + 15; let s = n + 16;
+			let i = 0;
+			let acc = 0;
+			loop {
+				if i == 2 { break; };
+				acc = acc + a + b + c + d + e + g + h + j + k + l + m + o + p + q + r + s;
+				i = i + 1;
+			};
+			acc + a + s
+		}
+		fun main () -> int { 0 }`), "f")
+
+	assert.Empty(t, findUnreadStores(f))
+}
+
 func blockIds(blocks []*Block) []int {
 	ids := make([]int, len(blocks))
 	for i, b := range blocks {
@@ -1949,6 +1970,24 @@ func findForeignStores(b *Block) []*Value {
 	var result []*Value
 	for _, v := range findValues(b.Values, OpStaticStore) {
 		if v.Args[0].Block != b {
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
+// findUnreadStores returns every store in f to a slot nothing in f loads from
+func findUnreadStores(f *Func) []*Value {
+	var result []*Value
+	for v := range f.UnorderedValues() {
+		if v.Op != OpStaticStore {
+			continue
+		}
+		loaded := false
+		for u := range f.SlotValues(v.Slot()) {
+			loaded = loaded || u.Op == OpStaticLoad
+		}
+		if !loaded {
 			result = append(result, v)
 		}
 	}
