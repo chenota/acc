@@ -1924,12 +1924,188 @@ func TestSpill_ValueNothingReadsAgainIsNotStored(t *testing.T) {
 	assert.Empty(t, findUnreadStores(f))
 }
 
+func TestSpill_BackEdgeRestoresValueEvictedInTheBody(t *testing.T) {
+	// the body reads every value before its call, then gives one up to keep s across the call
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun id (x int) -> int { x }
+		fun f () -> int {
+			let a = id(1); let b = id(2); let c = id(3); let d = id(4); let e = id(5); let g = id(6); let h = id(7);
+			let s = 0;
+			let i = 0;
+			loop {
+				if i == 3 { break; };
+				s = s + a + b + c + d + e + g + h;
+				s = s + id(0);
+				i = i + 1;
+			};
+			s
+		}
+		fun main () -> int { 0 }`), "f")
+
+	restores := slices.Collect(requireLatch(t, f).Restores())
+	require.Len(t, restores, 1)
+	restore := restores[0]
+
+	// it comes back from the slot it was stored in, to the register the header expects it in
+	stores := findStoresOf(f, restore.Restores)
+	require.Len(t, stores, 1)
+	assert.Equal(t, OpStaticLoad, restore.Op)
+	assert.Same(t, stores[0].Slot(), restore.Slot())
+	assert.Equal(t, restore.Restores.Loc, restore.Loc)
+}
+
+func TestSpill_BackEdgeRebuildsLiteralEvictedInTheBody(t *testing.T) {
+	// literals are the cheapest thing to give up, so the one read at the top of the body goes first
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun id (x int) -> int { x }
+		fun f () -> int {
+			let k = 7;
+			let s = 0;
+			let i = 0;
+			loop {
+				if i == 3 { break; };
+				s = s + k;
+				let a = id(1); let b = id(2); let c = id(3); let d = id(4); let e = id(5); let g = id(6);
+				s = s + a + b + c + d + e + g;
+				i = i + 1;
+			};
+			s + k
+		}
+		fun main () -> int { 0 }`), "f")
+
+	restores := slices.Collect(requireLatch(t, f).Restores())
+	require.Len(t, restores, 1)
+	restore := restores[0]
+
+	assert.Equal(t, OpLiteral, restore.Op)
+	assert.Equal(t, int32(7), restore.Value)
+	assert.Equal(t, restore.Restores.Loc, restore.Loc)
+}
+
+func TestSpill_MemoryPhiTakesItsOperandOnTheBackEdge(t *testing.T) {
+	// more values are carried around the loop than there are registers, so r waits in memory
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun f (n int) -> int {
+			let a = 0; let b = 0; let d = 0; let e = 0; let g = 0; let h = 0; let j = 0; let k = 0;
+			let l = 0; let m = 0; let o = 0; let p = 0; let q = 0; let r = 0; let s = 0; let u = 0;
+			let i = 0;
+			loop {
+				if i == n { break; };
+				a = a + 1; b = b + 2; d = d + 3; e = e + 4; g = g + 5; h = h + 6; j = j + 7; k = k + 8;
+				l = l + 9; m = m + 10; o = o + 11; p = p + 12; q = q + 13; r = r + 14; s = s + 15; u = u + 16;
+				i = i + 1;
+			};
+			a + b + d + e + g + h + j + k + l + m + o + p + q + r + s + u
+		}
+		fun main () -> int { 0 }`), "f")
+	latch := requireLatch(t, f)
+	exit := requireLoopExit(t, f)
+
+	sum := requireReturned(t, exit)
+	require.Equal(t, OpAdd, sum.Op)
+	require.Len(t, sum.Args, 2)
+	last := sum.Args[1]
+	require.Equal(t, OpStaticLoad, last.Op)
+
+	// each trip around the loop leaves the next value in the slot the exit reads
+	stores := findStoresTo(latch, last.Slot())
+	require.Len(t, stores, 1)
+	assert.Equal(t, OpAdd, stores[0].Args[0].Op)
+}
+
+func TestSpill_BackEdgeLoadsSpilledOperandIntoItsPhi(t *testing.T) {
+	// total's next value is computed first and read last, so it waits out the calls in a slot
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun id (x int) -> int { x }
+		fun f (n int) -> int {
+			let total = 0;
+			let i = 0;
+			loop {
+				if i == n { break; };
+				total = total + 1;
+				let a = id(1); let b = id(2); let c = id(3); let d = id(4); let e = id(5); let g = id(6);
+				i = i + a + b + c + d + e + g;
+			};
+			total
+		}
+		fun main () -> int { 0 }`), "f")
+	latch := requireLatch(t, f)
+
+	operand := requireRestoredOperand(t, latch)
+
+	assert.Equal(t, OpStaticLoad, operand.Op)
+	assert.Same(t, latch, operand.Block)
+	assert.Equal(t, OpAdd, operand.Restores.Op)
+}
+
+func TestSpill_BlockJumpingToItselfFinishesItsOwnEdge(t *testing.T) {
+	// with no way out the whole body is one block, which is its own header and its own latch
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun id (x int) -> int { x }
+		fun f () {
+			let a = id(1); let b = id(2); let c = id(3); let d = id(4); let e = id(5); let g = id(6); let h = id(7);
+			let s = 0;
+			loop {
+				s = s + a + b + c + d + e + g + h;
+				s = s + id(0);
+			};
+		}
+		fun main () -> int { 0 }`), "f")
+	latch := requireLatch(t, f)
+
+	assert.Same(t, latch, latch.Successors[0])
+	assert.NotEmpty(t, slices.Collect(latch.Restores()))
+}
+
 func blockIds(blocks []*Block) []int {
 	ids := make([]int, len(blocks))
 	for i, b := range blocks {
 		ids[i] = b.Id
 	}
 	return ids
+}
+
+// requireLatch returns the one block jumping back to the header of f's one loop
+func requireLatch(t *testing.T, f *Func) *Block {
+	t.Helper()
+
+	loops := f.Loops()
+	var latches []*Block
+	for _, b := range f.Blocks {
+		if l := loops[b]; l != nil && slices.Contains(b.Successors, l.Header) {
+			latches = append(latches, b)
+		}
+	}
+	require.Len(t, latches, 1)
+	return latches[0]
+}
+
+// requireLoopExit returns the one block f returns from, which sits past its one loop
+func requireLoopExit(t *testing.T, f *Func) *Block {
+	t.Helper()
+
+	var exits []*Block
+	for _, b := range f.Blocks {
+		if b.Kind == BlockRet {
+			exits = append(exits, b)
+		}
+	}
+	require.Len(t, exits, 1)
+	return exits[0]
+}
+
+// requireRestoredOperand returns the one restore in b that hands a phi of b's successor its operand
+func requireRestoredOperand(t *testing.T, b *Block) *Value {
+	t.Helper()
+
+	var operands []*Value
+	for _, arg := range b.Successors[0].PhiArgsFrom(b) {
+		if arg.Restores != nil {
+			operands = append(operands, arg)
+		}
+	}
+	require.Len(t, operands, 1)
+	return operands[0]
 }
 
 // findStoresOf returns every store in f that writes v to a slot

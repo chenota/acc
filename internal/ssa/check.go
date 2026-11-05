@@ -16,7 +16,6 @@ func init() {
 	stageHooks = append(stageHooks, checkStage)
 }
 
-// checkStage runs a stage, then sanity-checks its result
 func checkStage(f *Func, stage string, next func() error) error {
 	if err := next(); err != nil {
 		return err
@@ -36,7 +35,6 @@ func checkStage(f *Func, stage string, next func() error) error {
 	return nil
 }
 
-// verify reports the first broken invariant it finds in f
 func verify(f *Func) error {
 	if err := verifyBlocks(f); err != nil {
 		return err
@@ -47,7 +45,6 @@ func verify(f *Func) error {
 	return verifyUses(f)
 }
 
-// verifyBlocks checks the shape of f's control flow graph
 func verifyBlocks(f *Func) error {
 	if !slices.Contains(f.Blocks, f.Entry) {
 		return fmt.Errorf("entry block %d is not in the function", f.Entry.Id)
@@ -94,7 +91,6 @@ func verifyBlocks(f *Func) error {
 	return verifyReducible(f)
 }
 
-// verifyReducible checks that f's CFG is reducable
 func verifyReducible(f *Func) error {
 	dom := computeDominators(f)
 
@@ -116,7 +112,6 @@ func verifyReducible(f *Func) error {
 	return nil
 }
 
-// verifyTerminator checks that b's kind matches how it hands off control
 func verifyTerminator(b *Block) error {
 	switch b.Kind {
 	case BlockPlain:
@@ -150,7 +145,6 @@ func verifyTerminator(b *Block) error {
 func verifyValues(f *Func) error {
 	dom := computeDominators(f)
 
-	// where each value in the instruction stream sits
 	type site struct {
 		block *Block
 		index int
@@ -177,7 +171,7 @@ func verifyValues(f *Func) error {
 		}
 	}
 
-	// defined reports whether a is available to something reading it at index i of b
+	// defined checks that a is available to something reading it at index i of b
 	defined := func(a *Value, b *Block, i int) error {
 		if a == nil {
 			return fmt.Errorf("a nil value is read in block %d", b.Id)
@@ -198,9 +192,7 @@ func verifyValues(f *Func) error {
 	for _, b := range f.Blocks {
 		n := b.phiIndex()
 
-		// phi values
 		for _, v := range b.Values[:n] {
-			// does each predecessor have an associated arg?
 			if len(b.Predecessors) != len(v.Args) {
 				return fmt.Errorf("phi v%d incorrect argument count. want=%d got=%d", v.Id, len(b.Predecessors), len(v.Args))
 			}
@@ -211,10 +203,8 @@ func verifyValues(f *Func) error {
 					return fmt.Errorf("operand %d of phi v%d: %w", j, v.Id, err)
 				}
 			}
-			// phiIndex already checks for OpPhi so no need to check here
 		}
 
-		// non-phi values
 		for i, v := range b.Values[n:] {
 			if v.Op == OpPhi {
 				return fmt.Errorf("phi v%d comes after a non-phi value in block %d", v.Id, b.Id)
@@ -268,52 +258,71 @@ func verifyUses(f *Func) error {
 }
 
 // verifyAllocation replays what every register holds through f, and reports the first read that would find the wrong value
-// TODO: for loops, iterate to a fixpoint across back edges and replay the restores on each edge
 func verifyAllocation(f *Func) error {
 	exits := make(map[*Block]map[register.Register]*Value)
 
-	for b := range f.OrderedBlocks() {
-		held, err := entryRegisters(b, exits)
-		if err != nil {
-			return err
-		}
-
-		for _, v := range b.Values {
-			if v.NeedsRegister() && v.Loc.Kind == LocNone {
-				return fmt.Errorf("v%d was never given a register", v.Id)
+	// a block only trusts its predecessors replayed so far, so anything it wrongly trusts falls out as back edges catch up
+	for changed := true; changed; {
+		changed = false
+		for b := range f.OrderedBlocks() {
+			held, err := replayBlock(b, exits)
+			if err != nil {
+				return err
 			}
-			// a phi's operands are read on the way out of its predecessors
-			if v.Op != OpPhi {
-				if err := verifyReads(v, held); err != nil {
-					return err
-				}
-			}
-			for r := range v.Clobbers().All() {
-				delete(held, r)
-			}
-			if v.NeedsRegister() && v.Loc.Kind == LocRegister {
-				held[v.Loc.Reg] = v
+			if exit, ok := exits[b]; !ok || !maps.Equal(exit, held) {
+				exits[b] = held
+				changed = true
 			}
 		}
-
-		for _, c := range b.Control {
-			// a result's operand was read where the result sits
-			if c.Op == OpResult {
-				continue
-			}
-			if err := verifyHeld(c, held); err != nil {
-				return fmt.Errorf("control of block %d: %w", b.Id, err)
-			}
-		}
-
-		exits[b] = held
 	}
 
 	return nil
 }
 
-// entryRegisters is what b can count on each register holding as it starts: whatever every walked predecessor leaves
-// there once the edge into b hands b's phis their operands
+// replayBlock is what each register holds as b ends
+func replayBlock(b *Block, exits map[*Block]map[register.Register]*Value) (map[register.Register]*Value, error) {
+	held, err := entryRegisters(b, exits)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, v := range b.Values {
+		if v.NeedsRegister() && v.Loc.Kind == LocNone {
+			return nil, fmt.Errorf("v%d was never given a register", v.Id)
+		}
+		// a restore runs on the edge out of b
+		if v.Restores != nil {
+			continue
+		}
+		// a phi's operands are read on the way out of its predecessors
+		if v.Op != OpPhi {
+			if err := verifyReads(v, held); err != nil {
+				return nil, err
+			}
+		}
+		for r := range v.Clobbers().All() {
+			delete(held, r)
+		}
+		if v.NeedsRegister() && v.Loc.Kind == LocRegister {
+			held[v.Loc.Reg] = v
+		}
+	}
+
+	for _, c := range b.Control {
+		// a result's operand was read where the result sits
+		if c.Op == OpResult {
+			continue
+		}
+		if err := verifyHeld(c, held); err != nil {
+			return nil, fmt.Errorf("control of block %d: %w", b.Id, err)
+		}
+	}
+
+	return held, nil
+}
+
+// entryRegisters is what b can count on each register holding as it starts: whatever every replayed predecessor leaves
+// there once the edge into b hands b's phis their operands and restores what it owes b
 func entryRegisters(b *Block, exits map[*Block]map[register.Register]*Value) (map[register.Register]*Value, error) {
 	var entry map[register.Register]*Value
 	for _, p := range b.Predecessors {
@@ -322,11 +331,19 @@ func entryRegisters(b *Block, exits map[*Block]map[register.Register]*Value) (ma
 			continue
 		}
 
-		// the edge's parallel copy reads every operand before it writes any phi
+		// the edge reads every operand before it writes any phi or restores anything
 		held := maps.Clone(exit)
+		for v := range p.Restores() {
+			if err := verifyRestore(v); err != nil {
+				return nil, fmt.Errorf("on the edge from block %d: %w", p.Id, err)
+			}
+			held[v.Loc.Reg] = v.Restores
+		}
 		for phi, arg := range b.PhiArgsFrom(p) {
-			if err := verifyHeld(arg, exit); err != nil {
-				return nil, fmt.Errorf("operand of phi v%d on the edge from block %d: %w", phi.Id, p.Id, err)
+			if arg.Restores == nil {
+				if err := verifyHeld(arg, exit); err != nil {
+					return nil, fmt.Errorf("operand of phi v%d on the edge from block %d: %w", phi.Id, p.Id, err)
+				}
 			}
 			if phi.Loc.Kind == LocRegister {
 				held[phi.Loc.Reg] = phi
@@ -349,6 +366,21 @@ func entryRegisters(b *Block, exits map[*Block]map[register.Register]*Value) (ma
 		entry = make(map[register.Register]*Value)
 	}
 	return entry, nil
+}
+
+// verifyRestore checks that a restore loading from a slot reads one its value was stored in
+func verifyRestore(v *Value) error {
+	a := v.Restores
+	if v.Op != OpStaticLoad || waitsInSlot(a) {
+		return nil
+	}
+
+	for _, u := range a.users {
+		if u.Op == OpStaticStore && u.Slot() == v.Slot() {
+			return nil
+		}
+	}
+	return fmt.Errorf("v%d restores v%d from a slot it was never stored in", v.Id, a.Id)
 }
 
 // verifyReads checks that every operand v reads out of a register is still there, and that codegen can't overwrite an
@@ -376,7 +408,6 @@ func verifyReads(v *Value, held map[register.Register]*Value) error {
 	return nil
 }
 
-// verifyHeld checks that a is in its register, if it lives in one
 func verifyHeld(a *Value, held map[register.Register]*Value) error {
 	if a.Loc.Kind != LocRegister {
 		return nil
@@ -392,7 +423,6 @@ func verifyHeld(a *Value, held map[register.Register]*Value) error {
 	}
 }
 
-// tally is how many times each element appears in xs
 func tally[T comparable](xs []T) map[T]int {
 	n := make(map[T]int)
 	for _, x := range xs {
@@ -417,7 +447,6 @@ func idsOfBlocks(bs []*Block) []int {
 	return ids
 }
 
-// count is the number of times b appears in blocks
 func count(blocks []*Block, b *Block) int {
 	var n int
 	for _, c := range blocks {

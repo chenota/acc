@@ -119,7 +119,10 @@ func generateBlock(f *ssa.Func, b *ssa.Block, next *ssa.Block) []Inst {
 	insts := []Inst{label(blockLabel(f, b))}
 
 	for _, v := range b.Values {
-		insts = append(insts, generateValue(v)...)
+		// a restore waits for the edge's moves
+		if v.Restores == nil {
+			insts = append(insts, generateValue(v)...)
+		}
 	}
 
 	return append(insts, generateTerminator(f, b, next)...)
@@ -183,6 +186,10 @@ func generateEdgeMoves(pred, succ *ssa.Block) []Inst {
 				Dest: register64(m.dst.Reg),
 			})
 		}
+	}
+
+	for v := range pred.Restores() {
+		insts = append(insts, generateValue(v)...)
 	}
 	return insts
 }

@@ -24,8 +24,10 @@ func allocate(f *Func) error {
 		if err := s.placePhis(b, phis); err != nil {
 			return err
 		}
+		s.entries[b] = maps.Clone(s.holders)
+
 		for _, p := range b.Predecessors {
-			if err := s.finishEdge(p, b, phis); err != nil {
+			if err := s.finishEdge(p, b); err != nil {
 				return err
 			}
 		}
@@ -54,9 +56,14 @@ func allocate(f *Func) error {
 			return err
 		}
 
-		// TODO: when b ends a loop body, the loop header was walked first, so finish the edge back to it here instead,
-		// restoring each value the header holds on entry but b doesn't from its slot into its own register
 		s.exits[b] = blockExit{holders: s.holders, vals: s.vals}
+
+		// a loop header is walked before the blocks that jump back to it, so those edges finish here
+		for _, h := range b.Successors {
+			if err := s.finishEdge(b, h); err != nil {
+				return err
+			}
+		}
 	}
 
 	// once every read of a phi waiting in a slot is a reload, nothing reads the phi itself
@@ -84,6 +91,7 @@ type spiller struct {
 	ranges liveRanges
 
 	holders map[register.Register]*Value
+	entries map[*Block]map[register.Register]*Value // what each block expects in its registers as it starts
 	exits   map[*Block]blockExit
 	regs    map[*Value]register.Register // the register each value lives in whenever it isn't spilled
 	slots   map[*Value]*Slot
@@ -101,13 +109,14 @@ type blockExit struct {
 func newSpiller(f *Func) *spiller {
 	uses := computeNextUses(f)
 	s := &spiller{
-		f:      f,
-		uses:   uses,
-		ranges: computeLiveRanges(f, uses),
-		avail:  make(map[*Value]register.Mask),
-		exits:  make(map[*Block]blockExit),
-		regs:   make(map[*Value]register.Register),
-		slots:  make(map[*Value]*Slot),
+		f:       f,
+		uses:    uses,
+		ranges:  computeLiveRanges(f, uses),
+		avail:   make(map[*Value]register.Mask),
+		entries: make(map[*Block]map[register.Register]*Value),
+		exits:   make(map[*Block]blockExit),
+		regs:    make(map[*Value]register.Register),
+		slots:   make(map[*Value]*Slot),
 	}
 
 	// TODO: recompute these as spilling shortens ranges, since the ranges from before the walk rule out more than they need to
@@ -120,11 +129,10 @@ func newSpiller(f *Func) *spiller {
 	return s
 }
 
-// enter is values that b's predecessors left in registers
-//
-// TODO: a loop header is walked before its back edges, so choose its entry set up front instead
-// Braun & Hack, "Register Spilling and Live-Range Splitting for SSA-Form Programs"
+// enter returns the values that b's predecessors left in registers.
+// Based on Braun & Hack, "Register Spilling and Live-Range Splitting for SSA-Form Programs".
 func (s *spiller) enter(b *Block) map[register.Register]*Value {
+	// TODO: pick a loop header's entry set from what the loop reads rather than inheriting it
 	var regs map[register.Register]*Value
 	for _, p := range b.Predecessors {
 		exit, ok := s.exits[p]
@@ -149,7 +157,7 @@ func (s *spiller) enter(b *Block) map[register.Register]*Value {
 }
 
 // reloadOperands brings v's spilled operands back into registers just before v reads them at position p of b
-func (s *spiller) reloadOperands(b *Block, p int, v *Value, keep ...*Value) error {
+func (s *spiller) reloadOperands(b *Block, p int, v *Value) error {
 	for i, a := range v.Args {
 		if !spillable(a) || s.resident(a) {
 			continue
@@ -157,7 +165,7 @@ func (s *spiller) reloadOperands(b *Block, p int, v *Value, keep ...*Value) erro
 
 		reload := s.reload(b, b.indexOf(v), a)
 		v.setArg(i, reload)
-		if err := s.assignAt(b, p, reload, slices.Concat(v.Args, keep)); err != nil {
+		if err := s.assignAt(b, p, reload, v.Args); err != nil {
 			return err
 		}
 
@@ -248,43 +256,42 @@ func (s *spiller) distance(b *Block, v *Value) int {
 	return math.MaxInt
 }
 
-// finishEdge hands b's phis their operands at the end of p
-//
-// TODO: across a back edge a phi can take another phi of the same block as an operand, so every operand has to be read
-// before any slot is written. Also the loop header's entry set can hold every register, leaving no room to reload a
-// slot's operand
-func (s *spiller) finishEdge(p, b *Block, phis []*Value) error {
-	exit, ok := s.exits[p]
-	if !ok || len(phis) == 0 {
+// finishEdge leaves everything where b expects it on the way from p, once both ends of the edge have been walked
+func (s *spiller) finishEdge(p, b *Block) error {
+	exit, walked := s.exits[p]
+	entry, entered := s.entries[b]
+	if !walked || !entered {
 		return nil
 	}
 
-	entry, vals := s.holders, s.vals
-	defer func() { s.holders, s.vals = entry, vals }()
+	holders, vals := s.holders, s.vals
+	defer func() { s.holders, s.vals = holders, vals }()
 	s.holders, s.vals = maps.Clone(exit.holders), exit.vals
 	end := len(s.vals)
 
-	// whatever b holds as it starts has to stay where b expects it
-	var keep []*Value
-	for _, v := range entry {
-		if s.resident(v) {
-			keep = append(keep, v)
+	i := slices.Index(b.Predecessors, p)
+	phis := b.Values[:b.phiIndex()]
+
+	// across a back edge a phi can read another phi of b, which has to see that phi's slot before this edge writes it
+	for _, phi := range phis {
+		if a := phi.Args[i]; a != phi && a.Block == b && waitsInSlot(a) {
+			if err := s.saveOperand(p, end, phi, i); err != nil {
+				return err
+			}
 		}
 	}
 
-	i := slices.Index(b.Predecessors, p)
-
 	// a phi in a slot has its operand stored there, which only needs a register for the store to read it
 	for _, phi := range phis {
-		if !waitsInSlot(phi) {
+		arg := phi.Args[i]
+		if !waitsInSlot(phi) || arg == phi {
 			continue
 		}
 
-		arg := phi.Args[i]
 		store := s.f.appendValue(OpStaticStore, phi.Type, p)
 		store.setArgs(arg)
 		store.Value = phi.Slot()
-		if err := s.reloadOperands(p, end, store, keep...); err != nil {
+		if err := s.reloadOperands(p, end, store); err != nil {
 			return err
 		}
 		phi.setArg(i, store.Args[0])
@@ -293,29 +300,46 @@ func (s *spiller) finishEdge(p, b *Block, phis []*Value) error {
 		}
 	}
 
-	// make sure values not waiting in slots are safe
+	// the stores can give up anything to read their operands, so only now is it clear what's left to put back
 	for _, phi := range phis {
-		if !waitsInSlot(phi) {
-			keep = append(keep, phi.Args[i])
+		if a := phi.Args[i]; !waitsInSlot(phi) && spillable(a) && !s.resident(a) {
+			phi.setArg(i, s.restore(p, a, s.regs[phi]))
 		}
 	}
-
-	// everything else is fully reloaded
-	for _, phi := range phis {
-		a := phi.Args[i]
-		if waitsInSlot(phi) || !spillable(a) || s.resident(a) {
-			continue
+	for _, r := range slices.Sorted(maps.Keys(entry)) {
+		if v := entry[r]; !s.resident(v) && !slices.Contains(phis, v) {
+			s.restore(p, v, r)
 		}
-
-		reload := s.reload(p, len(p.Values), a)
-		phi.setArg(i, reload)
-		if err := s.assignAt(p, end, reload, keep); err != nil {
-			return err
-		}
-		keep = append(keep, reload)
 	}
 
 	return nil
+}
+
+// saveOperand moves the ith operand of phi to a slot of its own, leaving what p reads it from free to be written
+func (s *spiller) saveOperand(p *Block, end int, phi *Value, i int) error {
+	a := phi.Args[i]
+
+	load := s.reload(p, len(p.Values), a)
+	if err := s.assignAt(p, end, load, nil); err != nil {
+		return err
+	}
+
+	s.slots[load] = s.f.newSlot(nil, a.Type)
+	store := s.f.appendValue(OpStaticStore, a.Type, p)
+	store.setArgs(load)
+	store.Value = s.slots[load]
+
+	s.release(load)
+	phi.setArg(i, load)
+	return nil
+}
+
+// restore has p put a back in r on its way out, once the phi moves are done with r
+func (s *spiller) restore(p *Block, a *Value, r register.Register) *Value {
+	v := s.reload(p, len(p.Values), a)
+	v.Restores = a
+	s.regs[v] = r
+	return v
 }
 
 func spillable(v *Value) bool {
@@ -344,7 +368,6 @@ func (s *spiller) scratch(b *Block, p int) register.Mask {
 	return register.Allocatable.Without(s.ranges.blockedAt(b, p))
 }
 
-// makeRoom evicts resident values until m has a register
 func (s *spiller) makeRoom(b *Block, p int, m register.Mask, operands []*Value) {
 	for m.Without(s.used()).Count() == 0 {
 		victim := s.pickVictim(b, p, m, operands)
@@ -425,7 +448,6 @@ func (s *spiller) preferences(v *Value) []register.Register {
 		}
 	}
 
-	// the register more of them share comes first, breaking ties by register number
 	prefs := slices.Collect(maps.Keys(votes))
 	slices.SortFunc(prefs, func(a, b register.Register) int { return cmp.Or(votes[b]-votes[a], int(a)-int(b)) })
 	return prefs
@@ -475,7 +497,7 @@ func (s *spiller) evict(b *Block, p int, victim *Value) {
 	s.release(victim)
 }
 
-// reload brings evicted a back at index i of b, rebuilding it from scratch if it can be and loading it from its slot if not
+// reload brings evicted a back at index i of b
 func (s *spiller) reload(b *Block, i int, a *Value) *Value {
 	if a.Rematerializable() {
 		r := s.f.insertValueAt(i, a.Op, a.Type, b)
