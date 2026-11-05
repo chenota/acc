@@ -1,0 +1,41 @@
+fun main () -> int {
+    let a = 1;
+    let b = 2;
+    let c = 3;
+    let d = 4;
+    let e = 5;
+    let f = 6;
+    let g = 7;
+    let h = 8;
+    let j = 9;
+    let k = 10;
+    let l = 11;
+    let m = 12;
+    let n = 13;
+    let o = 14;
+    let p = 15;
+    let q = 16;
+    let i = 0;
+    loop {
+        if i == 3 { break; };
+        let t = a;
+        a = q;
+        q = p;
+        p = o;
+        o = n;
+        n = m;
+        m = l;
+        l = k;
+        k = j;
+        j = h;
+        h = g;
+        g = f;
+        f = e;
+        e = d;
+        d = c;
+        c = b;
+        b = t;
+        i = i + 1;
+    };
+    a + b * 2 + c * 3 + d * 4 + e * 5 + f * 6 + g * 7 + h * 8 + j * 9 + k * 10 + l * 11 + m * 12 + n * 13 + o * 14 + p * 15 + q * 16
+}
