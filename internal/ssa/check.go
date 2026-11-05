@@ -260,12 +260,13 @@ func verifyUses(f *Func) error {
 // verifyAllocation replays what every register holds through f, and reports the first read that would find the wrong value
 func verifyAllocation(f *Func) error {
 	exits := make(map[*Block]map[register.Register]*Value)
+	origins := computeOrigins(f)
 
 	// a block only trusts its predecessors replayed so far, so anything it wrongly trusts falls out as back edges catch up
 	for changed := true; changed; {
 		changed = false
 		for b := range f.OrderedBlocks() {
-			held, err := replayBlock(b, exits)
+			held, err := replayBlock(b, exits, origins)
 			if err != nil {
 				return err
 			}
@@ -279,9 +280,58 @@ func verifyAllocation(f *Func) error {
 	return nil
 }
 
+// computeOrigins maps every value to the one it reproduces, which is itself unless it's a reload or a rebuilt constant
+func computeOrigins(f *Func) map[*Value]*Value {
+	// a spill slot only stands for one value if one store fills it, or if it's where a phi waits
+	spilled := make(map[*Slot]*Value)
+	for v := range f.UnorderedValues() {
+		if v.Op != OpStaticStore || v.Slot().Sym != nil {
+			continue
+		}
+		if _, ok := spilled[v.Slot()]; ok {
+			spilled[v.Slot()] = nil
+		} else {
+			spilled[v.Slot()] = v.Args[0]
+		}
+	}
+	for v := range f.UnorderedValues() {
+		if waitsInSlot(v) {
+			spilled[v.Slot()] = v
+		}
+	}
+
+	type constant struct {
+		op     Op
+		value  any
+		offset int
+	}
+	constants := make(map[constant]*Value)
+
+	var origin func(v *Value) *Value
+	origin = func(v *Value) *Value {
+		if v.Rematerializable() {
+			key := constant{v.Op, v.Value, v.Offset}
+			if _, ok := constants[key]; !ok {
+				constants[key] = v
+			}
+			return constants[key]
+		}
+		if a := spilled[v.Slot()]; v.Op == OpStaticLoad && a != nil {
+			return origin(a)
+		}
+		return v
+	}
+
+	origins := make(map[*Value]*Value)
+	for v := range f.UnorderedValues() {
+		origins[v] = origin(v)
+	}
+	return origins
+}
+
 // replayBlock is what each register holds as b ends
-func replayBlock(b *Block, exits map[*Block]map[register.Register]*Value) (map[register.Register]*Value, error) {
-	held, err := entryRegisters(b, exits)
+func replayBlock(b *Block, exits map[*Block]map[register.Register]*Value, origins map[*Value]*Value) (map[register.Register]*Value, error) {
+	held, err := entryRegisters(b, exits, origins)
 	if err != nil {
 		return nil, err
 	}
@@ -290,13 +340,9 @@ func replayBlock(b *Block, exits map[*Block]map[register.Register]*Value) (map[r
 		if v.NeedsRegister() && v.Loc.Kind == LocNone {
 			return nil, fmt.Errorf("v%d was never given a register", v.Id)
 		}
-		// a restore runs on the edge out of b
-		if v.Restores != nil {
-			continue
-		}
 		// a phi's operands are read on the way out of its predecessors
 		if v.Op != OpPhi {
-			if err := verifyReads(v, held); err != nil {
+			if err := verifyReads(v, held, origins); err != nil {
 				return nil, err
 			}
 		}
@@ -304,7 +350,7 @@ func replayBlock(b *Block, exits map[*Block]map[register.Register]*Value) (map[r
 			delete(held, r)
 		}
 		if v.NeedsRegister() && v.Loc.Kind == LocRegister {
-			held[v.Loc.Reg] = v
+			held[v.Loc.Reg] = origins[v]
 		}
 	}
 
@@ -313,7 +359,7 @@ func replayBlock(b *Block, exits map[*Block]map[register.Register]*Value) (map[r
 		if c.Op == OpResult {
 			continue
 		}
-		if err := verifyHeld(c, held); err != nil {
+		if err := verifyHeld(c, held, origins); err != nil {
 			return nil, fmt.Errorf("control of block %d: %w", b.Id, err)
 		}
 	}
@@ -322,8 +368,8 @@ func replayBlock(b *Block, exits map[*Block]map[register.Register]*Value) (map[r
 }
 
 // entryRegisters is what b can count on each register holding as it starts: whatever every replayed predecessor leaves
-// there once the edge into b hands b's phis their operands and restores what it owes b
-func entryRegisters(b *Block, exits map[*Block]map[register.Register]*Value) (map[register.Register]*Value, error) {
+// there once the edge into b hands b's phis their operands
+func entryRegisters(b *Block, exits map[*Block]map[register.Register]*Value, origins map[*Value]*Value) (map[register.Register]*Value, error) {
 	var entry map[register.Register]*Value
 	for _, p := range b.Predecessors {
 		exit, ok := exits[p]
@@ -331,23 +377,17 @@ func entryRegisters(b *Block, exits map[*Block]map[register.Register]*Value) (ma
 			continue
 		}
 
-		// the edge reads every operand before it writes any phi or restores anything
+		// the edge reads every operand before it writes any phi
 		held := maps.Clone(exit)
-		for v := range p.Restores() {
-			if err := verifyRestore(v); err != nil {
-				return nil, fmt.Errorf("on the edge from block %d: %w", p.Id, err)
-			}
-			held[v.Loc.Reg] = v.Restores
-		}
 		for phi, arg := range b.PhiArgsFrom(p) {
-			if arg.Restores == nil {
-				if err := verifyHeld(arg, exit); err != nil {
-					return nil, fmt.Errorf("operand of phi v%d on the edge from block %d: %w", phi.Id, p.Id, err)
-				}
+			// a phi in a slot read its operand at the store that filled the slot
+			if phi.Loc.Kind != LocRegister {
+				continue
 			}
-			if phi.Loc.Kind == LocRegister {
-				held[phi.Loc.Reg] = phi
+			if err := verifyHeld(arg, exit, origins); err != nil {
+				return nil, fmt.Errorf("operand of phi v%d on the edge from block %d: %w", phi.Id, p.Id, err)
 			}
+			held[phi.Loc.Reg] = phi
 		}
 
 		if entry == nil {
@@ -368,26 +408,11 @@ func entryRegisters(b *Block, exits map[*Block]map[register.Register]*Value) (ma
 	return entry, nil
 }
 
-// verifyRestore checks that a restore loading from a slot reads one its value was stored in
-func verifyRestore(v *Value) error {
-	a := v.Restores
-	if v.Op != OpStaticLoad || waitsInSlot(a) {
-		return nil
-	}
-
-	for _, u := range a.users {
-		if u.Op == OpStaticStore && u.Slot() == v.Slot() {
-			return nil
-		}
-	}
-	return fmt.Errorf("v%d restores v%d from a slot it was never stored in", v.Id, a.Id)
-}
-
 // verifyReads checks that every operand v reads out of a register is still there, and that codegen can't overwrite an
 // operand before reading it
-func verifyReads(v *Value, held map[register.Register]*Value) error {
+func verifyReads(v *Value, held map[register.Register]*Value, origins map[*Value]*Value) error {
 	for _, a := range v.Args {
-		if err := verifyHeld(a, held); err != nil {
+		if err := verifyHeld(a, held, origins); err != nil {
 			return fmt.Errorf("operand of v%d: %w", v.Id, err)
 		}
 	}
@@ -408,13 +433,13 @@ func verifyReads(v *Value, held map[register.Register]*Value) error {
 	return nil
 }
 
-func verifyHeld(a *Value, held map[register.Register]*Value) error {
+func verifyHeld(a *Value, held map[register.Register]*Value, origins map[*Value]*Value) error {
 	if a.Loc.Kind != LocRegister {
 		return nil
 	}
 
 	switch h := held[a.Loc.Reg]; h {
-	case a:
+	case origins[a]:
 		return nil
 	case nil:
 		return fmt.Errorf("v%d should be in r%d, but nothing is known to be there", a.Id, a.Loc.Reg)

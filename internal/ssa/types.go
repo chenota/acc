@@ -61,10 +61,6 @@ type Value struct {
 	Offset int // byte offset from the slot or pointer this value addresses.
 
 	Loc Location
-
-	// the value this one puts back in a register on the way out of its block, running after the block's phi moves
-	// instead of where it sits
-	Restores *Value
 }
 
 // Clobbers reports the registers this value destroys when it executes.
@@ -204,17 +200,6 @@ func (b *Block) PhiArgsFrom(pred *Block) iter.Seq2[*Value, *Value] {
 	return func(yield func(*Value, *Value) bool) {
 		for _, phi := range b.Values[:b.phiIndex()] {
 			if !yield(phi, phi.Args[i]) {
-				return
-			}
-		}
-	}
-}
-
-// Restores yields the values b puts back in registers on its way to its successor
-func (b *Block) Restores() iter.Seq[*Value] {
-	return func(yield func(*Value) bool) {
-		for _, v := range b.Values {
-			if v.Restores != nil && !yield(v) {
 				return
 			}
 		}
@@ -419,6 +404,19 @@ func (f *Func) newBlock() *Block {
 	f.blockId += 1
 	f.Blocks = append(f.Blocks, b)
 	return b
+}
+
+// splitEdge puts a new plain block on the edge from p to b
+func (f *Func) splitEdge(p, b *Block) *Block {
+	e := f.newBlock()
+	e.Kind = BlockPlain
+	e.Predecessors = []*Block{p}
+	e.Successors = []*Block{b}
+
+	p.Successors[slices.Index(p.Successors, b)] = e
+	b.Predecessors[slices.Index(b.Predecessors, p)] = e
+
+	return e
 }
 
 func (f *Func) IsMain() bool {

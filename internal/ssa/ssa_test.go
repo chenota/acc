@@ -1766,8 +1766,7 @@ func TestSpill_PhisBeyondTheRegistersWaitInMemory(t *testing.T) {
 		fun main () -> int { 0 }`), "f")
 	require.Len(t, f.Entry.Successors, 2)
 	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
-	require.Len(t, then.Successors, 1)
-	merge := then.Successors[0]
+	merge := requireReturnBlock(t, f)
 
 	assert.LessOrEqual(t, len(findValues(merge.Values, OpPhi)), register.Allocatable.Count(), "only as many phis as there are registers")
 
@@ -1942,16 +1941,46 @@ func TestSpill_BackEdgeRestoresValueEvictedInTheBody(t *testing.T) {
 		}
 		fun main () -> int { 0 }`), "f")
 
-	restores := slices.Collect(requireLatch(t, f).Restores())
+	restores := findRestores(requireLatch(t, f))
 	require.Len(t, restores, 1)
 	restore := restores[0]
 
 	// it comes back from the slot it was stored in, to the register the header expects it in
-	stores := findStoresOf(f, restore.Restores)
-	require.Len(t, stores, 1)
-	assert.Equal(t, OpStaticLoad, restore.Op)
-	assert.Same(t, stores[0].Slot(), restore.Slot())
-	assert.Equal(t, restore.Restores.Loc, restore.Loc)
+	require.Equal(t, OpStaticLoad, restore.Op)
+	assert.Equal(t, requireStoreTo(t, f, restore.Slot()).Args[0].Loc, restore.Loc)
+}
+
+func TestSpill_BackEdgeMovesPhisBeforeItsRestores(t *testing.T) {
+	// the same loop as above: s and i go around the back edge while another value has to be put back
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun id (x int) -> int { x }
+		fun f () -> int {
+			let a = id(1); let b = id(2); let c = id(3); let d = id(4); let e = id(5); let g = id(6); let h = id(7);
+			let s = 0;
+			let i = 0;
+			loop {
+				if i == 3 { break; };
+				s = s + a + b + c + d + e + g + h;
+				s = s + id(0);
+				i = i + 1;
+			};
+			s
+		}
+		fun main () -> int { 0 }`), "f")
+	latch := requireLatch(t, f)
+	header := latch.Successors[0]
+	back := slices.Index(header.Predecessors, latch)
+
+	phis := header.Values[:header.phiIndex()]
+	require.Len(t, phis, 2)
+
+	// each phi has its operand in place as the latch starts, so the latch's body can write what the moves read
+	assert.Equal(t, OpPhi, phis[0].Args[back].Op)
+	assert.Same(t, latch, phis[0].Args[back].Block)
+	assert.Equal(t, phis[0].Loc, phis[0].Args[back].Loc)
+	assert.Equal(t, OpPhi, phis[1].Args[back].Op)
+	assert.Same(t, latch, phis[1].Args[back].Block)
+	assert.Equal(t, phis[1].Loc, phis[1].Args[back].Loc)
 }
 
 func TestSpill_BackEdgeRebuildsLiteralEvictedInTheBody(t *testing.T) {
@@ -1973,13 +2002,13 @@ func TestSpill_BackEdgeRebuildsLiteralEvictedInTheBody(t *testing.T) {
 		}
 		fun main () -> int { 0 }`), "f")
 
-	restores := slices.Collect(requireLatch(t, f).Restores())
+	restores := findRestores(requireLatch(t, f))
 	require.Len(t, restores, 1)
 	restore := restores[0]
 
 	assert.Equal(t, OpLiteral, restore.Op)
 	assert.Equal(t, int32(7), restore.Value)
-	assert.Equal(t, restore.Restores.Loc, restore.Loc)
+	assert.Equal(t, requireLiteral(t, f.Entry, int32(7)).Loc, restore.Loc)
 }
 
 func TestSpill_MemoryPhiTakesItsOperandOnTheBackEdge(t *testing.T) {
@@ -1999,7 +2028,7 @@ func TestSpill_MemoryPhiTakesItsOperandOnTheBackEdge(t *testing.T) {
 		}
 		fun main () -> int { 0 }`), "f")
 	latch := requireLatch(t, f)
-	exit := requireLoopExit(t, f)
+	exit := requireReturnBlock(t, f)
 
 	sum := requireReturned(t, exit)
 	require.Equal(t, OpAdd, sum.Op)
@@ -2007,8 +2036,9 @@ func TestSpill_MemoryPhiTakesItsOperandOnTheBackEdge(t *testing.T) {
 	last := sum.Args[1]
 	require.Equal(t, OpStaticLoad, last.Op)
 
-	// each trip around the loop leaves the next value in the slot the exit reads
-	stores := findStoresTo(latch, last.Slot())
+	// each trip around the loop leaves the next value in the slot the exit reads, before the edge puts anything back
+	require.Len(t, latch.Predecessors, 1)
+	stores := findStoresTo(latch.Predecessors[0], last.Slot())
 	require.Len(t, stores, 1)
 	assert.Equal(t, OpAdd, stores[0].Args[0].Op)
 }
@@ -2035,7 +2065,7 @@ func TestSpill_BackEdgeLoadsSpilledOperandIntoItsPhi(t *testing.T) {
 
 	assert.Equal(t, OpStaticLoad, operand.Op)
 	assert.Same(t, latch, operand.Block)
-	assert.Equal(t, OpAdd, operand.Restores.Op)
+	assert.Equal(t, OpAdd, requireStoreTo(t, f, operand.Slot()).Args[0].Op)
 }
 
 func TestSpill_BlockJumpingToItselfFinishesItsOwnEdge(t *testing.T) {
@@ -2053,8 +2083,10 @@ func TestSpill_BlockJumpingToItselfFinishesItsOwnEdge(t *testing.T) {
 		fun main () -> int { 0 }`), "f")
 	latch := requireLatch(t, f)
 
-	assert.Same(t, latch, latch.Successors[0])
-	assert.NotEmpty(t, slices.Collect(latch.Restores()))
+	// what the edge puts back gets a block of its own, between the body and itself
+	require.Len(t, latch.Predecessors, 1)
+	assert.Same(t, latch.Predecessors[0], latch.Successors[0])
+	assert.NotEmpty(t, findRestores(latch))
 }
 
 func blockIds(blocks []*Block) []int {
@@ -2080,8 +2112,8 @@ func requireLatch(t *testing.T, f *Func) *Block {
 	return latches[0]
 }
 
-// requireLoopExit returns the one block f returns from, which sits past its one loop
-func requireLoopExit(t *testing.T, f *Func) *Block {
+// requireReturnBlock returns the one block f returns from
+func requireReturnBlock(t *testing.T, f *Func) *Block {
 	t.Helper()
 
 	var exits []*Block
@@ -2094,13 +2126,18 @@ func requireLoopExit(t *testing.T, f *Func) *Block {
 	return exits[0]
 }
 
+// findRestores returns what the edge block b puts back in registers, which is everything in it past its phis
+func findRestores(b *Block) []*Value {
+	return b.Values[b.phiIndex():]
+}
+
 // requireRestoredOperand returns the one restore in b that hands a phi of b's successor its operand
 func requireRestoredOperand(t *testing.T, b *Block) *Value {
 	t.Helper()
 
 	var operands []*Value
 	for _, arg := range b.Successors[0].PhiArgsFrom(b) {
-		if arg.Restores != nil {
+		if arg.Op != OpPhi && arg.Block == b {
 			operands = append(operands, arg)
 		}
 	}
@@ -2117,6 +2154,29 @@ func findStoresOf(f *Func, v *Value) []*Value {
 		}
 	}
 	return result
+}
+
+// requireStoreTo returns the one store in f that writes to slot
+func requireStoreTo(t *testing.T, f *Func, slot *Slot) *Value {
+	t.Helper()
+
+	stores := findValues(slices.Collect(f.SlotValues(slot)), OpStaticStore)
+	require.Len(t, stores, 1)
+	return stores[0]
+}
+
+// requireLiteral returns the one literal in b with the given value
+func requireLiteral(t *testing.T, b *Block, value any) *Value {
+	t.Helper()
+
+	var literals []*Value
+	for _, v := range findValues(b.Values, OpLiteral) {
+		if v.Value == value {
+			literals = append(literals, v)
+		}
+	}
+	require.Len(t, literals, 1)
+	return literals[0]
 }
 
 // findStoresTo returns the stores in b that write to slot

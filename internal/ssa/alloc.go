@@ -301,18 +301,42 @@ func (s *spiller) finishEdge(p, b *Block) error {
 	}
 
 	// the stores can give up anything to read their operands, so only now is it clear what's left to put back
+	lost := func(phi *Value) bool {
+		a := phi.Args[i]
+		return !waitsInSlot(phi) && spillable(a) && !s.resident(a)
+	}
+	missing := slices.DeleteFunc(slices.Sorted(maps.Keys(entry)), func(r register.Register) bool {
+		return s.resident(entry[r]) || slices.Contains(phis, entry[r])
+	})
+	if len(missing) == 0 && !slices.ContainsFunc(phis, lost) {
+		return nil
+	}
+
+	// a restore can overwrite what a phi move reads, so the moves happen on the way into a block of the edge's own
+	edge := s.f.splitEdge(p, b)
 	for _, phi := range phis {
-		if a := phi.Args[i]; !waitsInSlot(phi) && spillable(a) && !s.resident(a) {
-			phi.setArg(i, s.restore(p, a, s.regs[phi]))
+		if lost(phi) {
+			phi.setArg(i, s.restore(edge, phi.Args[i], s.regs[phi]))
+		} else if !waitsInSlot(phi) {
+			s.stagePhi(edge, phi, i)
 		}
 	}
-	for _, r := range slices.Sorted(maps.Keys(entry)) {
-		if v := entry[r]; !s.resident(v) && !slices.Contains(phis, v) {
-			s.restore(p, v, r)
-		}
+	for _, r := range missing {
+		s.restore(edge, entry[r], r)
 	}
 
 	return nil
+}
+
+// stagePhi has edge take the ith operand of phi into phi's register, leaving nothing to move on the way out of edge
+func (s *spiller) stagePhi(edge *Block, phi *Value, i int) {
+	stage := s.f.insertValueFront(OpPhi, phi.Type, edge)
+	stage.setArgs(phi.Args[i])
+	phi.setArg(i, stage)
+
+	if r, ok := s.regs[phi]; ok {
+		s.regs[stage] = r
+	}
 }
 
 // saveOperand moves the ith operand of phi to a slot of its own, leaving what p reads it from free to be written
@@ -334,10 +358,9 @@ func (s *spiller) saveOperand(p *Block, end int, phi *Value, i int) error {
 	return nil
 }
 
-// restore has p put a back in r on its way out, once the phi moves are done with r
-func (s *spiller) restore(p *Block, a *Value, r register.Register) *Value {
-	v := s.reload(p, len(p.Values), a)
-	v.Restores = a
+// restore has edge put a back in r
+func (s *spiller) restore(edge *Block, a *Value, r register.Register) *Value {
+	v := s.reload(edge, len(edge.Values), a)
 	s.regs[v] = r
 	return v
 }
