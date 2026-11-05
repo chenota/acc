@@ -1,0 +1,20 @@
+fun id (x int) -> int { x }
+
+fun main () -> int {
+    let a = id(1);
+    let b = id(2);
+    let c = id(3);
+    let d = id(4);
+    let e = id(5);
+    let f = id(6);
+    let g = id(7);
+    let s = 0;
+    let i = 0;
+    loop {
+        if i == 3 { break; };
+        s = s + a + b + c + d + e + f + g;
+        s = s + id(0);
+        i = i + 1;
+    };
+    s
+}
