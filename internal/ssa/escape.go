@@ -16,6 +16,7 @@ func (f *Func) slotEscapes() []*Slot {
 	var escaped []*Slot
 	for _, s := range f.Slots {
 		if d, ok := result[slotNode(s)]; carried[s] || (ok && d < 0) {
+			// TODO: a carried slot does not actually escape if no pointer to it is live when it's declared again
 			escaped = append(escaped, s)
 		}
 	}
