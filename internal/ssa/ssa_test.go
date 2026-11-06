@@ -946,6 +946,158 @@ func TestHeapify_ClosureLeakingItselfThroughCaptureIsHeapified(t *testing.T) {
 	assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
 }
 
+func TestHeapify_VariableDeclaredInLoopIsAllocatedInLoop(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun f (n int) -> *int {
+			let i = 0;
+			loop {
+				let j = i;
+				if j == n { return &j; };
+				i = i + 1;
+			}
+		}
+		fun main () -> int { return *f(1); }`)
+	f := requireFunc(t, funcs, "f")
+
+	alloc := requireAllocate(t, f)
+	assert.NotNil(t, f.Loops()[alloc.Block])
+}
+
+func TestHeapify_VariableDeclaredBeforeLoopIsAllocatedOutsideIt(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun f (n int) -> *int {
+			let x = 0;
+			let i = 0;
+			loop {
+				if i == n { break; };
+				x = x + 1;
+				i = i + 1;
+			};
+			&x
+		}
+		fun main () -> int { return *f(1); }`)
+	f := requireFunc(t, funcs, "f")
+
+	alloc := requireAllocate(t, f)
+	assert.Nil(t, f.Loops()[alloc.Block])
+}
+
+func TestHeapify_AddressCarriedAroundLoopIsHeapified(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun main () -> int {
+			let i = 0;
+			let z = 100;
+			let first = &z;
+			loop {
+				if i == 3 { break; };
+				let j = i;
+				if i == 0 { first = &j; };
+				i = i + 1;
+			};
+			*first
+		}`), "main")
+
+	// the next iteration's j can't share storage with the one first points at
+	alloc := requireAllocate(t, f)
+	assert.NotNil(t, f.Loops()[alloc.Block])
+	assert.Nil(t, slotNamed(f, "j"))
+
+	// there's only ever one z, however many times the loop carries its address
+	assert.NotNil(t, slotNamed(f, "z"))
+}
+
+func TestHeapify_AddressHeldBySlotOutsideLoopIsHeapified(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun main () -> int {
+			let i = 0;
+			let z = 100;
+			let first = &z;
+			let holder = &first;
+			loop {
+				if i == 3 { break; };
+				let j = i;
+				if i == 0 { first = &j; };
+				i = i + 1;
+			};
+			let p = *holder;
+			*p
+		}`), "main")
+
+	// first stays in memory, so no phi carries the address
+	require.NotNil(t, slotNamed(f, "first"))
+
+	alloc := requireAllocate(t, f)
+	assert.NotNil(t, f.Loops()[alloc.Block])
+	assert.Nil(t, slotNamed(f, "j"))
+}
+
+func TestHeapify_ClosureCarriedAroundLoopHasItsEnvironmentHeapified(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun main () -> int {
+			let i = 0;
+			let first = fun () -> int { 0 };
+			loop {
+				if i == 3 { break; };
+				let j = i;
+				let g = fun () -> int { j };
+				if i == 0 { first = g; };
+				i = i + 1;
+			};
+			first()
+		}`), "main")
+
+	alloc := requireAllocate(t, f)
+	assert.NotNil(t, f.Loops()[alloc.Block])
+	assert.Empty(t, f.Slots)
+}
+
+func TestHeapify_ClosureUsedWithinIterationStaysOnFrame(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun main () -> int {
+			let i = 0;
+			let s = 0;
+			loop {
+				if i == 3 { break; };
+				let j = i;
+				let g = fun () -> int { j };
+				s = s + g();
+				i = i + 1;
+			};
+			s
+		}`), "main")
+
+	requireEnvSlot(t, f)
+	assert.Empty(t, findAllocations(f))
+}
+
+func TestHeapify_AddressCarriedOnlyAroundInnerLoopStaysOnFrame(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun main () -> int {
+			let i = 0;
+			let s = 0;
+			loop {
+				if i == 2 { break; };
+				let j = i;
+				let y = 1;
+				let p = &j;
+				let k = 0;
+				loop {
+					if k == 2 { break; };
+					s = s + *p;
+					p = &y;
+					k = k + 1;
+				};
+				i = i + 1;
+			};
+			s
+		}`), "main")
+
+	// the inner loop's iterations all see the same j, and p is gone by the time the outer loop goes around
+	assert.Empty(t, findAllocations(f))
+	assert.NotNil(t, slotNamed(f, "j"))
+	assert.NotNil(t, slotNamed(f, "y"))
+}
+
 // requireReturned unwraps b's single result and hands back the value feeding it.
 func requireReturned(t *testing.T, b *Block) *Value {
 	t.Helper()

@@ -1,0 +1,19 @@
+fun main () -> int {
+    let i = 0;
+    let z = 100;
+    let keep = &z;
+    loop {
+        if i == 2 { break; };
+        let j = i + 1;
+        let p = &j;
+        let k = 0;
+        loop {
+            if k == 3 { break; };
+            *p = *p + 1;
+            k = k + 1;
+        };
+        if i == 0 { keep = p; };
+        i = i + 1;
+    };
+    *keep
+}

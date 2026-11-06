@@ -8,8 +8,10 @@ import (
 
 // heapify moves escaping slots off the frame, handing each one to the runtime allocator.
 func heapify(f *Func) error {
+	nearestDominators := f.nearestDominatingBlocks()
 	for _, slot := range f.slotEscapes() {
-		block, i := f.allocationPoint(slot)
+		block := nearestDominators[slot]
+		i := block.firstUse(slot)
 
 		size := f.insertValueAt(i, OpLiteral, types.Int(), block)
 		size.Value = int32(slot.Type.Size())

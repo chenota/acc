@@ -1,0 +1,13 @@
+fun main () -> int {
+    let i = 0;
+    let z = 100;
+    let first = &z;
+    let set = fun (p *int) { first = p; };
+    loop {
+        if i == 3 { break; };
+        let j = i + 5;
+        if i == 0 { set(&j); };
+        i = i + 1;
+    };
+    *first
+}

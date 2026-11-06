@@ -1,0 +1,5 @@
+{
+  "name": "Pointer Held In An Addressed Variable Keeps Its Own Iteration's Variable",
+  "tags": ["vs11"],
+  "status": 5
+}

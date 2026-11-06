@@ -1,0 +1,5 @@
+{
+  "name": "Recursive Closure Keeps Its Own Iteration's Captures",
+  "tags": ["vs11"],
+  "status": 1
+}

@@ -60,6 +60,14 @@ func computeDominators(f *Func) domTree {
 	return idom
 }
 
+// nearestCommon returns the closest block dominating both a and b
+func (d domTree) nearestCommon(a, b *Block) *Block {
+	for !d.dominates(a, b) {
+		a = d[a]
+	}
+	return a
+}
+
 // dominates reports whether every path from the entry to b passes through a
 func (d domTree) dominates(a, b *Block) bool {
 	for {

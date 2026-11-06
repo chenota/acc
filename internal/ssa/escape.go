@@ -1,6 +1,6 @@
 package ssa
 
-// slotEscapes determines the frame slots whose storage outlives the call.
+// slotEscapes determines the frame slots whose storage outlives the call or the loop iteration that declared them.
 func (f *Func) slotEscapes() []*Slot {
 	sinks := f.heapSeeds()
 	for v := range f.UnorderedValues() {
@@ -11,15 +11,75 @@ func (f *Func) slotEscapes() []*Slot {
 	}
 
 	result := walk(f, sinks)
+	carried := f.carriedSlots()
 
 	var escaped []*Slot
 	for _, s := range f.Slots {
-		if d, ok := result[slotNode(s)]; ok && d < 0 {
+		if d, ok := result[slotNode(s)]; carried[s] || (ok && d < 0) {
 			escaped = append(escaped, s)
 		}
 	}
 
 	return escaped
+}
+
+// carriedSlots finds the slots declared in a loop whose address outlives a single loop iteration
+func (f *Func) carriedSlots() map[*Slot]bool {
+	nearestDominators := f.nearestDominatingBlocks()
+	carried := make(map[*Slot]bool)
+
+	for b, l := range f.Loops() {
+		// only want to analyze loop headers
+		if b != l.Header {
+			continue
+		}
+
+		var seeds []seed
+		for _, phi := range b.Values[:b.phiIndex()] {
+			// header phi nodes are potential escape points
+
+			/*
+				NOTE TO SELF:
+
+				The point of this check is to capture variable usage that could result in a loop slot
+				outliving a specific loop iteration. For example,
+
+				let x *int = nil;
+				loop {
+					let j = whatever;
+						if something {
+						x = &j;
+					}
+					continue loop logic...
+				}
+				use x down here...
+
+				We'd want j's slot marked as carried from the loop, since it escapes through x. It's clear to see in this
+				example that x, as seen from the perspective of the loop header, is a phi value since it can come from
+				either the declaration outside of the loop, or from the update within the loop. So in short what a phi node on the
+				loop header is telling us is that there's a variable that is declared outside of the loop and updated inside the loop
+				which is a little sus so it needs to be checked as a potential escape for a loop slot.
+			*/
+
+			seeds = append(seeds, seed{valueNode(phi), 0})
+		}
+		for s, blk := range nearestDominators {
+			// slots declared outside of the loop are potential escape points
+			if !l.contains(blk) {
+				seeds = append(seeds, seed{slotNode(s), 0})
+			}
+		}
+
+		result := walk(f, seeds)
+		for s, blk := range nearestDominators {
+			// if a slot escapes and is declared in the loop, then it is carried
+			if d, ok := result[slotNode(s)]; ok && d < 0 && l.contains(blk) {
+				carried[s] = true
+			}
+		}
+	}
+
+	return carried
 }
 
 func (f *Func) escapeSummary() []paramSummary {

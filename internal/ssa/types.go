@@ -484,19 +484,22 @@ func (f *Func) UsedRegisters() register.Mask {
 	return m
 }
 
-// allocationPoint decides the point at which a slot allocation goes. Rules this needs to follow:
-// 1. Allocation dominates every use of the slot
-// 2. Runs at most once per call (not inside loops!)
-func (f *Func) allocationPoint(slot *Slot) (*Block, int) {
-	block := f.dominatingBlock(slot)
-	return block, block.firstUse(slot)
-}
-
-// dominatingBlock returns the block that dominates every use of slot.
-func (f *Func) dominatingBlock(_ *Slot) *Block {
-	// the entry dominates every block, so it's always safe
-	// TODO: use the nearest block dominating every use
-	return f.Entry
+// nearestDominatingBlocks gives each used slot the nearest block dominating all of its uses.
+func (f *Func) nearestDominatingBlocks() map[*Slot]*Block {
+	dom := computeDominators(f)
+	homes := make(map[*Slot]*Block)
+	for v := range f.UnorderedValues() {
+		s := v.Slot()
+		if s == nil {
+			continue
+		}
+		if home, ok := homes[s]; ok {
+			homes[s] = dom.nearestCommon(home, v.Block)
+		} else {
+			homes[s] = v.Block
+		}
+	}
+	return homes
 }
 
 // SlotValues returns every value that names the given frame slot
@@ -514,6 +517,11 @@ type Loop struct {
 	Header *Block              // entry point into the loop, and where back edges point to
 	Outer  *Loop               // immediate parent of this loop
 	Blocks map[*Block]struct{} // every block in the loop
+}
+
+func (l *Loop) contains(b *Block) bool {
+	_, ok := l.Blocks[b]
+	return ok
 }
 
 func (f *Func) Loops() map[*Block]*Loop {

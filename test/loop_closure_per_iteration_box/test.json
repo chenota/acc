@@ -1,5 +1,5 @@
 {
   "name": "Closures From Different Iterations Keep Their Own Boxes",
-  "tags": ["wip"],
+  "tags": ["vs11"],
   "status": 10
 }

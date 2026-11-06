@@ -1,0 +1,13 @@
+fun main () -> int {
+    let total = 1;
+    let i = 0;
+    let last = fun () -> int { 0 };
+    loop {
+        if i == 3 { break; };
+        let f = fun () -> int { total = total + 1; total };
+        f();
+        last = f;
+        i = i + 1;
+    };
+    last()
+}

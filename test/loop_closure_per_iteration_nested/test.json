@@ -1,0 +1,5 @@
+{
+  "name": "Closure Made In An Inner Loop Keeps Its Own Captures",
+  "tags": ["vs11"],
+  "status": 2
+}
