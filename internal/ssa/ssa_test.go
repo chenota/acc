@@ -1235,13 +1235,13 @@ func throughCopies(v *Value) *Value {
 	return v
 }
 
-// requireLoadFrom returns the single value read through ptr.
+// requireLoadFrom returns the single value read through ptr, or through a copy of it.
 func requireLoadFrom(t *testing.T, f *Func, ptr *Value) *Value {
 	t.Helper()
 
 	var found []*Value
 	for v := range f.UnorderedValues() {
-		if v.Op == OpLoad && len(v.Args) > 0 && v.Args[0] == ptr {
+		if v.Op == OpLoad && len(v.Args) > 0 && throughCopies(v.Args[0]) == ptr {
 			found = append(found, v)
 		}
 	}
@@ -2244,3 +2244,18 @@ const divideSrc = `
 	fun div (a int, b int) -> int { return a / b; }
 	fun main () -> int { return div(7, 2); }
 `
+
+func TestLowerClosurePtr_HandsTheEnvironmentToACopy(t *testing.T) {
+	funcs := requireBuildSSA(t, `fun main () -> int {
+		let x = 10;
+		let f = fun () -> int { return x + 1; };
+		return f();
+	}`)
+
+	// the environment is read straight out of the context register, and copied somewhere freer right away
+	ptr := requireClosurePtr(t, requireFunc(t, funcs, "main.func0"))
+	assert.Equal(t, NewReg(testTarget.ClosureContext), ptr.Loc)
+	require.Len(t, ptr.users, 1)
+	assert.Equal(t, OpCopy, ptr.users[0].Op)
+	assert.Equal(t, LocRegister, ptr.users[0].Loc.Kind)
+}

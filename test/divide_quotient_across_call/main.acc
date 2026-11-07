@@ -1,0 +1,9 @@
+fun id (x int) -> int { x }
+
+fun f (a int, b int) -> int {
+    return (a / b) / id(b);
+}
+
+fun main () -> int {
+    return f(100, 5);
+}

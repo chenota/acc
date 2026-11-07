@@ -97,20 +97,13 @@ func (b *builder) bindParams(params []*ir.Node) {
 		incomingValues[i] = v
 	}
 
-	// copy each leaf into a non-restricted slot
-	copies := make([]*Value, len(incomingValues))
-	for i, v := range incomingValues {
-		c := b.targetFunc.appendValue(OpCopy, v.Type, b.currentBlock)
-		c.setArgs(v)
-		copies[i] = c
-	}
-
 	// reassemble each parameter from the leaves it owns into its own stack slot
+	leaves := incomingValues
 	for _, p := range params {
 		slot := b.targetFunc.newSlot(p.Sym, p.Type)
 		b.vars[p.Sym] = slot
-		// update copies to just the unused tail from implode
-		copies = b.implode(addr{Slot: slot}, p.Type, copies)
+		// update leaves to just the unused tail from implode
+		leaves = b.implode(addr{Slot: slot}, p.Type, leaves)
 	}
 }
 

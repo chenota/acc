@@ -23,16 +23,17 @@ func lowerConstraints(f *Func) error {
 	return nil
 }
 
-// lowerClosurePtr pins the incoming closure object to the register the caller left it in.
+// lowerClosurePtr reads the incoming closure object out of the register the caller left it in.
 func lowerClosurePtr(f *Func) {
 	for v := range f.UnorderedValues() {
 		if v.Op != OpClosurePtr {
 			continue
 		}
-		v.Loc = NewReg(f.Target.ClosureContext)
+		placeResult(f, v, NewReg(f.Target.ClosureContext))
 	}
 }
 
+// lowerParams reads each parameter out of wherever the caller left it.
 func lowerParams(f *Func) {
 	for v := range f.UnorderedValues() {
 		if v.Op != OpParam {
@@ -40,7 +41,7 @@ func lowerParams(f *Func) {
 		}
 
 		// parameters store their index in the value slot
-		v.Loc = f.incomingArgs().loc(v.Value.(int))
+		placeResult(f, v, f.incomingArgs().loc(v.Value.(int)))
 	}
 }
 
@@ -58,7 +59,7 @@ func lowerResults(f *Func) {
 		v.Loc = seq.loc(v.Value.(int))
 
 		// move the returned value into the place it names
-		v.setArg(0, copyTo(f, v, v.Args[0], v.Loc))
+		placeOperand(f, v, 0, v.Loc)
 	}
 }
 
@@ -70,61 +71,41 @@ func lowerRegs(f *Func) {
 			if v.Op == OpPhi {
 				continue
 			}
-			pinOperands(f, v)
-			pinResult(f, v)
-		}
-	}
-}
 
-// pinOperands puts each operand of v where v can read it from
-func pinOperands(f *Func, v *Value) {
-	inputs := v.regs().inputs
-	for i, a := range v.Args {
-		m := inputs[i]
+			regs := v.regs()
 
-		if r, ok := m.Only(); ok {
-			if a.Loc != NewReg(r) {
-				v.setArg(i, copyTo(f, v, a, NewReg(r)))
+			for i, m := range regs.inputs {
+				if r, ok := m.Only(); ok {
+					placeOperand(f, v, i, NewReg(r))
+				} else if a := v.Args[i]; a.Loc.Kind == LocRegister && !m.Contains(a.Loc.Reg) {
+					// the allocator can meet any wider demand, unless the operand is stuck in a register v can't read
+					v.setArg(i, copyTo(f, v, a, Location{}))
+				}
 			}
-			continue
-		}
 
-		// anything else the allocator can handle, unless a is stuck in a register v can't read
-		if a.Loc.Kind == LocRegister && !m.Contains(a.Loc.Reg) {
-			v.setArg(i, copyTo(f, v, a, Location{}))
+			if r, ok := regs.output.Only(); ok && v.Loc.Kind == LocNone {
+				placeResult(f, v, NewReg(r))
+			}
 		}
 	}
 }
 
-// pinResult puts v's result in the one register its instruction can write it to, if there is only one
-func pinResult(f *Func, v *Value) {
-	r, ok := v.regs().output.Only()
-	if !ok || v.Loc.Kind != LocNone {
+// placeOperand has v read its ith operand from a copy made at loc just before v reads it
+func placeOperand(f *Func, v *Value, i int, loc Location) {
+	v.setArg(i, copyTo(f, v, v.Args[i], loc))
+}
+
+// placeResult pins v's result to loc, then hands it to an unconstrained copy
+func placeResult(f *Func, v *Value, loc Location) {
+	v.Loc = loc
+	if !f.hasUses(v) {
 		return
 	}
 
-	v.Loc = NewReg(r)
-
-	if !onlyReadFrom(v, r) {
-		// pinned value hordes a register for as long as it lives, so copy-out as soon as possible
-		copyOut(f, v)
-	}
-}
-
-// onlyReadFrom reports whether everything that reads v reads it from r and nowhere else
-func onlyReadFrom(v *Value, r target.Register) bool {
-	if len(v.ctrl) > 0 {
-		return false
-	}
-	for _, u := range v.users {
-		inputs := u.regs().inputs
-		for i, a := range u.Args {
-			if a == v && !r.Mask().IsSuperset(inputs[i]) {
-				return false
-			}
-		}
-	}
-	return true
+	out := f.insertValueAfter(v, OpCopy, v.Type, v.Block)
+	// redirect before wiring up the arg so the copy does not point at itself
+	f.redirectUses(v, out)
+	out.setArgs(v)
 }
 
 func lowerCalls(f *Func) {
@@ -137,13 +118,13 @@ func lowerCalls(f *Func) {
 		base := len(v.Args) - len(callArgs)
 
 		// arguments past the registers are written to the outgoing area at the bottom of this function's frame
-		for i, arg := range callArgs {
-			v.setArg(base+i, copyTo(f, v, arg, f.outgoingArgs().loc(i)))
+		for i := range callArgs {
+			placeOperand(f, v, base+i, f.outgoingArgs().loc(i))
 		}
 
-		// the context register only has a meaning at the call itself, so pin it last.
+		// the context register only has a meaning at the call itself, so place it last to keep it right next to the call
 		if v.Op == OpClosureCall {
-			v.setArg(1, copyTo(f, v, v.Args[1], NewReg(f.Target.ClosureContext)))
+			placeOperand(f, v, 1, NewReg(f.Target.ClosureContext))
 		}
 	}
 }
@@ -156,10 +137,7 @@ func lowerCallResults(f *Func) {
 		}
 
 		// call results store their index in the value slot
-		v.Loc = f.incomingResults(len(v.Args[0].CallArgs())).loc(v.Value.(int))
-
-		// move the value somewhere unconstrained before the next call needs the register back
-		copyOut(f, v)
+		placeResult(f, v, f.incomingResults(len(v.Args[0].CallArgs())).loc(v.Value.(int)))
 	}
 }
 
@@ -228,13 +206,4 @@ func copyTo(f *Func, v *Value, arg *Value, loc Location) *Value {
 	in.setArgs(arg)
 	in.Loc = loc
 	return in
-}
-
-// copyOut inserts an unconstrained copy of v's result just after v and points v's users at it.
-func copyOut(f *Func, v *Value) *Value {
-	out := f.insertValueAfter(v, OpCopy, v.Type, v.Block)
-	// redirect before wiring up the arg so the copy does not point at itself
-	f.redirectUses(v, out)
-	out.setArgs(v)
-	return out
 }
