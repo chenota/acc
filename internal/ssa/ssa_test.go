@@ -2113,3 +2113,19 @@ func TestRegs_CallClobbersCallerSaved(t *testing.T) {
 	call := requireCall(t, requireBuildSSAFor(t, target.ARM64AAPCS, src), "main")
 	assert.True(t, call.regs().clobbers.Contains(target.RegX16))
 }
+
+func TestBlockedAt_DivideClobbersRdxAsItRuns(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun div (a int, b int) -> int { return a / b; }
+		fun main () -> int { return div(7, 2); }
+	`)
+
+	f := requireFunc(t, funcs, "div")
+	divs := findValues(f.Entry.Values, OpDivide)
+	require.Len(t, divs, 1)
+	p := f.Entry.indexOf(divs[0])
+
+	// the dividend's halves stop being live as idiv reads them, so only the clobber keeps rdx off limits there
+	ranges := computeLiveRanges(f, computeNextUses(f))
+	assert.True(t, ranges.blockedAt(f.Entry, p).Contains(target.RegD))
+}

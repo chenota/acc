@@ -92,9 +92,9 @@ func (r liveRanges) liveOnEntry(b *Block, v *Value) bool {
 // blockedFor is every register v can't have, because something else occupies it somewhere v is live
 func (r liveRanges) blockedFor(v *Value) target.Mask {
 	var m target.Mask
-	for _, spans := range r {
+	for b, spans := range r {
 		if s, ok := spans[v]; ok {
-			for u, regs := range occupants(spans, s) {
+			for u, regs := range occupants(b, spans, s) {
 				// want to skip spans occupied by the value we're querying
 				if u != v {
 					m = m.Union(regs)
@@ -108,14 +108,14 @@ func (r liveRanges) blockedFor(v *Value) target.Mask {
 // blockedAt is every register something occupies across position p of b
 func (r liveRanges) blockedAt(b *Block, p int) target.Mask {
 	var m target.Mask
-	for _, regs := range occupants(r[b], span{Start: p, End: p + 1}) {
+	for _, regs := range occupants(b, r[b], span{Start: p, End: p + 1}) {
 		m = m.Union(regs)
 	}
 	return m
 }
 
-// occupants yields each value occupying registers at some point during s, along with the registers it occupies.
-func occupants(spans map[*Value]span, s span) iter.Seq2[*Value, target.Mask] {
+// occupants yields each value occupying registers at some point during s of b, along with the registers it occupies.
+func occupants(b *Block, spans map[*Value]span, s span) iter.Seq2[*Value, target.Mask] {
 	return func(yield func(*Value, target.Mask) bool) {
 		for u, su := range spans {
 			var regs target.Mask
@@ -125,8 +125,8 @@ func occupants(spans map[*Value]span, s span) iter.Seq2[*Value, target.Mask] {
 				regs = regs.Include(u.Loc.Reg)
 			}
 
-			// a call only clobbers registers at the instant it runs
-			if u.IsCall() && s.overlaps(span{Start: su.Start, End: su.Start + 1}) {
+			// a value only clobbers registers at the instant it runs
+			if u.Block == b && s.overlaps(span{Start: su.Start, End: su.Start + 1}) {
 				regs = regs.Union(u.regs().clobbers)
 			}
 
