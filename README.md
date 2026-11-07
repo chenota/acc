@@ -321,7 +321,7 @@ Type     = "fun" "(" [ Typelist ] ")" [ "->" Type ]
 Typelist = Type { "," Type } [ "," ] ;
 ```
 
-### Vertical Slice 11: Control Flow [Work in Progress]
+### Vertical Slice 11: Control Flow [Complete]
 
 I'd like to get into file I/O, but it's not reasonable to do so until we have control flow, so that's what I'm doing. Also this is going to be a HUGE shake up of the compiler's structure so it'll be good to get this out of the way early.
 
@@ -384,7 +384,7 @@ Type     = "fun" "(" [ Typelist ] ")" [ "->" Type ]
 Typelist = Type { "," Type } [ "," ] ;
 ```
 
-### Vertical Slice 12: Introduce ARM64 [Not Started]
+### Vertical Slice 12: Introduce ARM64 [Work in Progress]
 
 This one is huge. I'd like to introduce ARM64 (Linux and MacOS) as a target for ACC.
 
