@@ -388,6 +388,65 @@ Typelist = Type { "," Type } [ "," ] ;
 
 This one is huge. I'd like to introduce ARM64 (Linux and MacOS) as a target for ACC.
 
+#### Program Grammar (PEG)
+
+```
+Program       <- Function+
+Function      <- "fun" Ident "(" Paramlist ")" ( "->" Type )? Block
+Paramlist     <- ( Param ( "," Param )* )?
+Param         <- Ident Type
+Block         <- "{" Statement* Expression? "}"
+Statement     <- Declaration / Assignment / AssignmentOp / Return / Break / Continue / ExprStatement
+Declaration   <- "let" "rec"? Ident Type? "=" Expression ";"
+Assignment    <- Expression "=" Expression ";"
+AssignmentOp  <- Expression ( "+=" / "-=" / "*=" / "/=" ) Expression ";"
+Return        <- "return" Expression? ";"
+Break         <- "break" Expression? ";"
+Continue      <- "continue" ";"
+ExprStatement <- Expression ";"
+```
+
+#### Expression Grammar (EBNF)
+
+```
+Expression  = Or ;
+Or          = And { "||" And } ;
+And         = Cmp { "&&" Cmp } ;
+Cmp         = Add [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) Add ] ;
+Add         = Mul { ( "+" | "-" ) Mul } ;
+Mul         = Unary { ( "*" | "/" ) Unary } ;
+Unary       = ( "-" | "&" | "*" | "!" ) Unary
+            | Postfix ;
+Postfix     = Atom { Call | Field } ;
+Call        = "(" [ Exprlist ] ")" ;
+Field       = "." Integer ;
+Exprlist    = Expression { "," Expression } [ "," ] ;
+Atom        = Integer
+            | Ident
+            | "true" | "false"
+            | "nil"
+            | Lambda
+            | Conditional
+            | Loop
+            | "(" [ Exprlist ] ")" ;
+Lambda      = "fun" "(" Paramlist ")" [ "->" Type ] Block ;
+Conditional = "if" Expression Block { "elif" Expression Block } [ "else" Block ] ;
+Loop        = "loop" Block ;
+```
+
+`Paramlist` and `Block` are the same rules as in the program grammar, which uses `Conditional` and `Loop` from this grammar.
+
+#### Type Grammar (EBNF)
+
+```
+Type     = "fun" "(" [ Typelist ] ")" [ "->" Type ]
+         | "*" Type
+         | "(" [ Typelist ] ")"
+         | "int"
+         | "bool" ;
+Typelist = Type { "," Type } [ "," ] ;
+```
+
 ### Vertical Slice 13: More Integer Sizes [Not Started]
 
 To support file reading `acc` is going to need some more integer sizes.
@@ -427,3 +486,7 @@ Up until this point, `acc` has relied on gcc and clang to assemble and link its 
 ### Vertical Slice 22: Linker [Not Started]
 
 With `acc` writing its own object files, the last step is linking them into executables `acc` no longer needs a C toolchain.
+
+### Vertical Slice 23: Windows [Not Started]
+
+Support x86 and ARM64 Windows. Yuck.
