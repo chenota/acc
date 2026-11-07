@@ -83,19 +83,21 @@ var (
 type opRegs map[Op]regInfo
 
 var x64Regs = opRegs{
-	// x64 arithmetic writes its result over its left operand
 	OpAdd:      {twoAddress: true},
 	OpSubtract: {twoAddress: true},
 	OpMultiply: {twoAddress: true},
 	OpNegate:   {twoAddress: true},
 	OpNot:      {twoAddress: true},
 
-	// cdq/cqo sign-extends rax into rdx
-	OpSignExtend: {inputs: []target.Mask{rax}, output: rdx},
+	/*
+		NOTE TO SELF:
 
-	// idiv divides rdx:rax by its divisor, leaving the quotient in rax and the remainder in rdx
+		idiv divides rdx:rax by the divisor (arbitrary register), and leaves the quotient in rax and the remainder in rdx.
+		In codegen, this makes it important to sign-extend rax into rdx before dividing.
+	*/
+
 	OpDivide: {
-		inputs:   []target.Mask{rax, anyReg.Without(rax.Union(rdx)), rdx},
+		inputs:   []target.Mask{rax, anyReg.Without(rax.Union(rdx))},
 		output:   rax,
 		clobbers: rdx,
 	},

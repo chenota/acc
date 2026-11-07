@@ -40,6 +40,14 @@ func (m Mask) One() (Register, bool) {
 	return Register(bits.TrailingZeros64(uint64(m))), true
 }
 
+// Only returns the register in mask m, if m contains exactly one
+func (m Mask) Only() (Register, bool) {
+	if m.Count() != 1 {
+		return 0, false
+	}
+	return m.One()
+}
+
 // All returns all registers from mask m
 func (m Mask) All() iter.Seq[Register] {
 	var regs []Register
@@ -82,4 +90,9 @@ func (m Mask) Intersect(other Mask) Mask {
 // Contains checks if a register is contained in the mask
 func (m Mask) Contains(r Register) bool {
 	return m&r.Mask() != 0
+}
+
+// IsSuperset checks if every register in other is contained in the mask
+func (m Mask) IsSuperset(other Mask) bool {
+	return other&^m == 0
 }

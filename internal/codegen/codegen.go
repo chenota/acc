@@ -239,8 +239,6 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateNot(v)...)
 	case ssa.OpCopy:
 		insts = append(insts, generateCopy(v))
-	case ssa.OpSignExtend:
-		insts = append(insts, generateSignExtend(v))
 	case ssa.OpStaticCall:
 		insts = append(insts, generateCall(v))
 	case ssa.OpClosureCall:
@@ -382,17 +380,15 @@ func generateBop(v *ssa.Value, op string) []Inst {
 	}
 }
 
+// generateDiv sign-extends the dividend into rdx before idiv divides rdx:rax
 func generateDiv(v *ssa.Value) []Inst {
 	size := v.Type.Size()
 	eax := Arg{Kind: KRegister, Reg: target.RegA, Value: size}
 	return []Inst{
+		{Op: cdqOp(size)},
 		{Op: idivOp(size), Dest: toArg(v.Args[1])},
 		{Op: movOp(size), Src1: eax, Dest: toArg(v)},
 	}
-}
-
-func generateSignExtend(v *ssa.Value) Inst {
-	return Inst{Op: cdqOp(v.Type.Size())}
 }
 
 func generateLiteral(v *ssa.Value) Inst {

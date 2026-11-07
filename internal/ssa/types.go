@@ -33,7 +33,6 @@ const (
 	OpNot
 	OpCopy
 	OpStaticCall  // direct call to the function in Value
-	OpSignExtend  // sign-extends the accumulator into the high register (cdq/cqo)
 	OpParam       // incoming function argument - more of a placeholder for a location than an acutal value in its own right
 	OpResult      // outgoing function result - the mirror of OpParam
 	OpCallResult  // incoming call result

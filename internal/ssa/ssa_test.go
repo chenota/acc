@@ -2082,13 +2082,12 @@ func TestRegs_X64Divide(t *testing.T) {
 	require.Len(t, divs, 1)
 	regs := divs[0].regs()
 
-	// the dividend comes in split across rax and rdx, and the divisor can be anywhere else
-	require.Len(t, regs.inputs, 3)
+	// the dividend is read out of rax, and the divisor from anywhere idiv's halves aren't
+	require.Len(t, regs.inputs, 2)
 	assert.Equal(t, target.NewMask(target.RegA), regs.inputs[0])
 	assert.Equal(t, testTarget.Allocatable.Without(target.NewMask(target.RegA, target.RegD)), regs.inputs[1])
-	assert.Equal(t, target.NewMask(target.RegD), regs.inputs[2])
 
-	// the quotient lands in rax and the remainder wipes out rdx
+	// the quotient lands in rax, and sign-extending into rdx then leaving the remainder there wipes it out
 	assert.Equal(t, target.NewMask(target.RegA), regs.output)
 	assert.Equal(t, target.NewMask(target.RegD), regs.clobbers)
 	assert.False(t, regs.twoAddress)
@@ -2151,24 +2150,29 @@ func withX64Regs(t *testing.T, op Op, info regInfo) {
 	})
 }
 
+// a demand of more than one register is left to the allocator rather than pinned by lowering
+var twoCalleeSaved = target.NewMask(target.Reg13, target.Reg14)
+
 func TestAllocate_ResultLandsWhereItsInstructionWritesIt(t *testing.T) {
-	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{anyReg}, output: target.NewMask(target.Reg12)})
+	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{anyReg}, output: twoCalleeSaved})
 
 	neg := requireOnly(t, requireBuildSSA(t, `fun neg (a int) -> int { return -a; }`), "neg", OpNegate)
 
-	assert.Equal(t, NewReg(target.Reg12), neg.Loc)
+	require.Equal(t, LocRegister, neg.Loc.Kind)
+	assert.True(t, twoCalleeSaved.Contains(neg.Loc.Reg), "expected r13 or r14, got r%d", neg.Loc.Reg)
 }
 
 func TestAllocate_OperandLandsWhereItsReaderReadsIt(t *testing.T) {
-	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{target.NewMask(target.Reg13)}})
+	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{twoCalleeSaved}})
 
 	neg := requireOnly(t, requireBuildSSA(t, `fun neg (a int) -> int { return -a; }`), "neg", OpNegate)
 
-	assert.Equal(t, NewReg(target.Reg13), neg.Args[0].Loc)
+	require.Equal(t, LocRegister, neg.Args[0].Loc.Kind)
+	assert.True(t, twoCalleeSaved.Contains(neg.Args[0].Loc.Reg), "expected r13 or r14, got r%d", neg.Args[0].Loc.Reg)
 }
 
 func TestAllocate_ReloadLandsWhereItsReaderReadsIt(t *testing.T) {
-	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{target.NewMask(target.Reg13)}})
+	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{twoCalleeSaved}})
 
 	// a is read last, so it's the one that waits out the pressure in a slot and comes back just for the negate
 	f := requireFunc(t, requireBuildSSA(t, `
@@ -2183,5 +2187,60 @@ func TestAllocate_ReloadLandsWhereItsReaderReadsIt(t *testing.T) {
 
 	neg := requireOnly(t, []*Func{f}, "f", OpNegate)
 	require.Equal(t, OpStaticLoad, neg.Args[0].Op, "a should be reloaded for the negate")
+	require.Equal(t, LocRegister, neg.Args[0].Loc.Kind)
+	assert.True(t, twoCalleeSaved.Contains(neg.Args[0].Loc.Reg), "expected r13 or r14, got r%d", neg.Args[0].Loc.Reg)
+}
+
+func TestLowerRegs_PinsSingleRegisterOperand(t *testing.T) {
+	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{target.NewMask(target.Reg13)}})
+
+	neg := requireOnly(t, requireBuildSSA(t, `fun neg (a int) -> int { return -a; }`), "neg", OpNegate)
+
+	// the operand is copied into place right before the negate rather than left to the allocator
+	assert.Equal(t, OpCopy, neg.Args[0].Op)
 	assert.Equal(t, NewReg(target.Reg13), neg.Args[0].Loc)
 }
+
+func TestLowerRegs_PinsSingleRegisterResult(t *testing.T) {
+	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{anyReg}, output: target.NewMask(target.Reg12)})
+
+	neg := requireOnly(t, requireBuildSSA(t, `fun neg (a int) -> int { return -a; }`), "neg", OpNegate)
+
+	// the result only holds r12 for as long as it takes to copy it somewhere less contested
+	assert.Equal(t, NewReg(target.Reg12), neg.Loc)
+	require.Len(t, neg.users, 1)
+	assert.Equal(t, OpCopy, neg.users[0].Op)
+}
+
+func TestLowerRegs_X64DividePinsDividendAndQuotientToRax(t *testing.T) {
+	div := requireOnly(t, requireBuildSSA(t, divideSrc), "div", OpDivide)
+	require.Len(t, div.Args, 2)
+
+	// the dividend is copied into rax right before the divide
+	assert.Equal(t, OpCopy, div.Args[0].Op)
+	assert.Equal(t, NewReg(target.RegA), div.Args[0].Loc)
+
+	// the quotient leaves rax as soon as idiv is done with it
+	assert.Equal(t, NewReg(target.RegA), div.Loc)
+	require.Len(t, div.users, 1)
+	assert.Equal(t, OpCopy, div.users[0].Op)
+}
+
+func TestLowerRegs_ARM64DivideIsUnpinned(t *testing.T) {
+	f := requireFunc(t, requireBuildSSAFor(t, target.ARM64AAPCS, divideSrc), "div")
+	div := requireOnly(t, []*Func{f}, "div", OpDivide)
+
+	// sdiv reads and writes any register, so it reads the parameters' copies without another copy in between
+	require.Len(t, div.Args, 2)
+	assert.Same(t, requireParamCopy(t, f, 0), div.Args[0])
+	assert.Same(t, requireParamCopy(t, f, 1), div.Args[1])
+
+	// and the quotient goes straight into the copy that returns it
+	require.Len(t, div.users, 1)
+	assert.Equal(t, OpResult, div.users[0].users[0].Op)
+}
+
+const divideSrc = `
+	fun div (a int, b int) -> int { return a / b; }
+	fun main () -> int { return div(7, 2); }
+`

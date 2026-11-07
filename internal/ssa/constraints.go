@@ -1,18 +1,23 @@
 package ssa
 
 import (
+	"slices"
+
 	"github.com/chenota/acc/internal/target"
 )
 
 const stackSlotSize = 8
 
 func lowerConstraints(f *Func) error {
+	// the ABI pins what crosses a call boundary
 	lowerParams(f)
 	lowerClosurePtr(f)
-	lowerDivides(f)
 	lowerCalls(f)
 	lowerCallResults(f)
 	lowerResults(f)
+
+	// the instruction set pins whatever is left
+	lowerRegs(f)
 
 	return nil
 }
@@ -56,34 +61,69 @@ func lowerResults(f *Func) {
 	}
 }
 
-func lowerDivides(f *Func) {
-	for v := range f.UnorderedValues() {
-		if v.Op != OpDivide {
+// lowerRegs pins every operand and result that its instruction can only read or write in one register
+func lowerRegs(f *Func) {
+	for _, b := range f.Blocks {
+		for _, v := range slices.Clone(b.Values) {
+			// a phi's operands are read on the way out of its predecessors, which have nowhere to put a copy yet
+			if v.Op == OpPhi {
+				continue
+			}
+			pinOperands(f, v)
+			pinResult(f, v)
+		}
+	}
+}
+
+// pinOperands puts each operand of v where v can read it from
+func pinOperands(f *Func, v *Value) {
+	inputs := v.regs().inputs
+	for i, a := range v.Args {
+		m := inputs[i]
+
+		if r, ok := m.Only(); ok {
+			if a.Loc != NewReg(r) {
+				v.setArg(i, copyTo(f, v, a, NewReg(r)))
+			}
 			continue
 		}
 
-		/*
-			Explanation of idiv since it kind of drove me crazy:
-			- idiv divides a double-width dividend by a single-width divisor
-			- Dividend / Divisor -> Quotient (RAX) & Remainder (RDX)
-			- Lower half locked to RAX, upper half locked to RDX
-			- Divisor can go anywhere but RAX and RDX (duh)
-		*/
+		// anything else the allocator can handle, unless a is stuck in a register v can't read
+		if a.Loc.Kind == LocRegister && !m.Contains(a.Loc.Reg) {
+			v.setArg(i, copyTo(f, v, a, Location{}))
+		}
+	}
+}
 
-		dividend := v.Args[0]
-		divisor := v.Args[1]
+// pinResult puts v's result in the one register its instruction can write it to, if there is only one
+func pinResult(f *Func, v *Value) {
+	r, ok := v.regs().output.Only()
+	if !ok || v.Loc.Kind != LocNone {
+		return
+	}
 
-		lo := copyTo(f, v, dividend, NewReg(target.RegA))
+	v.Loc = NewReg(r)
 
-		hi := f.insertValueBefore(v, OpSignExtend, dividend.Type, v.Block)
-		hi.setArgs(lo)
-		hi.Loc = NewReg(target.RegD)
-
-		v.setArgs(lo, divisor, hi)
-		v.Loc = NewReg(target.RegA)
-
+	if !onlyReadFrom(v, r) {
+		// pinned value hordes a register for as long as it lives, so copy-out as soon as possible
 		copyOut(f, v)
 	}
+}
+
+// onlyReadFrom reports whether everything that reads v reads it from r and nowhere else
+func onlyReadFrom(v *Value, r target.Register) bool {
+	if len(v.ctrl) > 0 {
+		return false
+	}
+	for _, u := range v.users {
+		inputs := u.regs().inputs
+		for i, a := range u.Args {
+			if a == v && !r.Mask().IsSuperset(inputs[i]) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func lowerCalls(f *Func) {
