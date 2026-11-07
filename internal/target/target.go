@@ -18,6 +18,7 @@ type Target struct {
 
 	StackPointer Register
 	FramePointer Register
+	LinkRegister Register
 }
 
 func For(arch buildcfg.Arch, os buildcfg.OS) (*Target, error) {
@@ -25,7 +26,12 @@ func For(arch buildcfg.Arch, os buildcfg.OS) (*Target, error) {
 	case buildcfg.ArchX64:
 		// Linux and macOS share System V
 		return X64SysV, nil
+	case buildcfg.ArchARM64:
+		if os == buildcfg.OSDarwin {
+			return ARM64Apple, nil
+		}
+		return ARM64AAPCS, nil
 	default:
-		return nil, fmt.Errorf("no register target for %s yet", arch)
+		return nil, fmt.Errorf("no register target for %s", arch)
 	}
 }

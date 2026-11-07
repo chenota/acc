@@ -19,7 +19,6 @@ const (
 	Reg15
 )
 
-// X64SysV is x64 under the System V calling convention.
 var X64SysV = &Target{
 	Allocatable: NewMask(RegA, RegB, RegC, RegD, RegSI, RegDI, Reg8, Reg9, Reg10, Reg11, Reg12, Reg13, Reg14, Reg15),
 	CallerSaved: NewMask(RegA, RegC, RegD, RegSI, RegDI, Reg8, Reg9, Reg10, Reg11),
@@ -31,4 +30,5 @@ var X64SysV = &Target{
 
 	StackPointer: RegSP,
 	FramePointer: RegBP,
+	LinkRegister: NoRegister,
 }

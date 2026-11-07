@@ -8,6 +8,8 @@ import (
 
 type Register int
 
+const NoRegister Register = -1
+
 // Mask returns a mask containing just the Register
 func (r Register) Mask() Mask {
 	return 1 << r
