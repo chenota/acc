@@ -122,7 +122,7 @@ func newSpiller(f *Func) *spiller {
 	// TODO: recompute these as spilling shortens ranges, since the ranges from before the walk rule out more than they need to
 	for v := range f.UnorderedValues() {
 		if spillable(v) {
-			s.avail[v] = register.Allocatable.Without(s.ranges.blockedFor(v))
+			s.avail[v] = f.Target.Allocatable.Without(s.ranges.blockedFor(v))
 		}
 	}
 
@@ -388,7 +388,7 @@ func (s *spiller) used() register.Mask {
 
 // scratch is the set of registers nothing has been pinned to across position p of b.
 func (s *spiller) scratch(b *Block, p int) register.Mask {
-	return register.Allocatable.Without(s.ranges.blockedAt(b, p))
+	return s.f.Target.Allocatable.Without(s.ranges.blockedAt(b, p))
 }
 
 func (s *spiller) makeRoom(b *Block, p int, m register.Mask, operands []*Value) {
@@ -433,7 +433,7 @@ func (s *spiller) pickVictim(b *Block, p int, m register.Mask, operands []*Value
 func (s *spiller) assign(v *Value, m register.Mask) error {
 	free := m.Without(s.used())
 
-	r, ok := preferCallerSaved(free).One()
+	r, ok := preferCallerSaved(free, s.f.Target).One()
 	for _, p := range s.preferences(v) {
 		if free.Contains(p) {
 			r, ok = p, true
@@ -476,8 +476,8 @@ func (s *spiller) preferences(v *Value) []register.Register {
 	return prefs
 }
 
-func preferCallerSaved(m register.Mask) register.Mask {
-	if callerSaved := m.Intersect(register.CallerSaved); callerSaved.Count() > 0 {
+func preferCallerSaved(m register.Mask, t *register.Target) register.Mask {
+	if callerSaved := m.Intersect(t.CallerSaved); callerSaved.Count() > 0 {
 		return callerSaved
 	}
 	return m

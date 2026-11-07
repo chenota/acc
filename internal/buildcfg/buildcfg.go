@@ -12,12 +12,34 @@ const (
 	ArchARM64
 )
 
+func (a Arch) String() string {
+	switch a {
+	case ArchX64:
+		return "x64"
+	case ArchARM64:
+		return "arm64"
+	default:
+		return fmt.Sprintf("Arch(%d)", a)
+	}
+}
+
 type OS int
 
 const (
 	OSLinux OS = iota
 	OSDarwin
 )
+
+func (o OS) String() string {
+	switch o {
+	case OSLinux:
+		return "linux"
+	case OSDarwin:
+		return "darwin"
+	default:
+		return fmt.Sprintf("OS(%d)", o)
+	}
+}
 
 var (
 	Target     string

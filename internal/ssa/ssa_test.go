@@ -268,12 +268,12 @@ func TestLowerCalls_ResultAndClobbers(t *testing.T) {
 	require.Len(t, callResults, 1)
 	assert.Equal(t, 0, callResults[0].Value)
 	assert.Equal(t, LocRegister, callResults[0].Loc.Kind)
-	assert.Equal(t, register.Results[0], callResults[0].Loc.Reg)
+	assert.Equal(t, testTarget.Results[0], callResults[0].Loc.Reg)
 	require.Len(t, callResults[0].Args, 1)
 	assert.Same(t, call, callResults[0].Args[0], "a call result names the call it came from")
 
 	// and the call conservatively clobbers every caller-saved register
-	assert.Equal(t, register.CallerSaved, call.Clobbers())
+	assert.Equal(t, testTarget.CallerSaved, call.Clobbers())
 }
 
 func TestLowerCalls_StackArgs(t *testing.T) {
@@ -335,7 +335,7 @@ func TestLayoutFrame_ReservesOutgoingArea(t *testing.T) {
 	assert.GreaterOrEqual(t, main.StackAdjustment(), 16)
 
 	// the whole frame stays 16-byte aligned so rsp is aligned at the call
-	pushBytes := main.UsedRegisters().Intersect(register.CalleeSaved).Count() * 8
+	pushBytes := main.SavedRegisters().Count() * 8
 	assert.Equal(t, 0, (pushBytes+main.StackAdjustment())%16)
 
 	// target makes no calls and has no locals, so it subtracts nothing
@@ -699,8 +699,8 @@ func TestLowerCallResults_OverflowResultReadFromMemory(t *testing.T) {
 	}
 
 	// the caller reads the first two back out of the same registers the callee handed them over in
-	assert.Equal(t, NewReg(register.Results[0]), callResults[0].Loc)
-	assert.Equal(t, NewReg(register.Results[1]), callResults[1].Loc)
+	assert.Equal(t, NewReg(testTarget.Results[0]), callResults[0].Loc)
+	assert.Equal(t, NewReg(testTarget.Results[1]), callResults[1].Loc)
 
 	// the third comes back out of the bottom of the caller's own frame
 	assert.Equal(t, NewMem(register.RegSP, 0), callResults[2].Loc)
@@ -941,7 +941,7 @@ func requireResult(t *testing.T, b *Block, i int) *Value {
 	require.Equal(t, OpResult, result.Op, "a returning block must control its results")
 	require.Equal(t, i, result.Value, "a result carries the index of the register it lands in")
 	require.Equal(t, LocRegister, result.Loc.Kind)
-	require.Equal(t, register.Results[i], result.Loc.Reg)
+	require.Equal(t, testTarget.Results[i], result.Loc.Reg)
 	require.False(t, result.NeedsRegister(), "a result names its register without occupying one")
 	require.Len(t, result.Args, 1)
 
@@ -949,7 +949,7 @@ func requireResult(t *testing.T, b *Block, i int) *Value {
 	move := result.Args[0]
 	require.Equal(t, OpCopy, move.Op, "a result must be placed by a copy into its register")
 	require.Equal(t, LocRegister, move.Loc.Kind)
-	require.Equal(t, register.Results[i], move.Loc.Reg)
+	require.Equal(t, testTarget.Results[i], move.Loc.Reg)
 	require.Len(t, move.Args, 1)
 	require.True(t, types.Equal(move.Args[0].Type, result.Type), "a result carries the type of what it returns")
 
@@ -964,10 +964,13 @@ func requireBuildSSA(t *testing.T, src string) []*Func {
 	require.NoError(t, err)
 	newFuncs, err := semantic.Analyze(funcs)
 	require.NoError(t, err)
-	result, err := BuildAndAllocate(newFuncs)
+	result, err := BuildAndAllocate(newFuncs, WithTarget(testTarget))
 	require.NoError(t, err)
 	return result
 }
+
+// testTarget is the target unit tests compile for, whatever buildcfg resolved
+var testTarget = register.X64SysV
 
 func findValues(values []*Value, op Op) []*Value {
 	var result []*Value
@@ -1047,7 +1050,7 @@ func TestGenSsa_Closure_ImmutableCaptureIsCopied(t *testing.T) {
 	// the caller leaves the environment in the context register, so that is where it is read from
 	lambda := requireFunc(t, funcs, "main.func0")
 	ptr := requireClosurePtr(t, lambda)
-	assert.Equal(t, NewReg(register.ClosureContext), ptr.Loc)
+	assert.Equal(t, NewReg(testTarget.ClosureContext), ptr.Loc)
 	assert.Empty(t, ptr.Args, "the context register is a location, not a computed value")
 	assert.Same(t, lambda.Entry.Values[0], ptr, "the environment must be read before any call can clobber it")
 
@@ -1265,7 +1268,7 @@ func TestGenSsa_ClosureCall_OperandOrder(t *testing.T) {
 
 	// the callee reads its captures out of the context register, so the environment has to land there
 	assert.Equal(t, OpCopy, call.Args[1].Op, "the environment must be placed by a copy into its register")
-	assert.Equal(t, NewReg(register.ClosureContext), call.Args[1].Loc)
+	assert.Equal(t, NewReg(testTarget.ClosureContext), call.Args[1].Loc)
 
 	// the second is the environment, which the unknown target can't leak, so it stays on the frame
 	env := throughCopies(call.Args[1])
@@ -1597,7 +1600,7 @@ func TestRegalloc_ValueOnlyOneArmNeedsIgnoresACallInTheOther(t *testing.T) {
 
 	// the call clobbers caller-saved registers, but only on a path where the pointer is already dead
 	require.Equal(t, LocRegister, ptr.Loc.Kind)
-	assert.True(t, register.CallerSaved.Contains(ptr.Loc.Reg), "expected a caller-saved register, got %v", ptr.Loc.Reg)
+	assert.True(t, testTarget.CallerSaved.Contains(ptr.Loc.Reg), "expected a caller-saved register, got %v", ptr.Loc.Reg)
 }
 
 func TestSpill_EvictedPhiIsStoredAfterEveryPhi(t *testing.T) {
@@ -1644,7 +1647,7 @@ func TestSpill_PhisBeyondTheRegistersWaitInMemory(t *testing.T) {
 	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
 	merge := requireReturnBlock(t, f)
 
-	assert.LessOrEqual(t, len(findValues(merge.Values, OpPhi)), register.Allocatable.Count(), "only as many phis as there are registers")
+	assert.LessOrEqual(t, len(findValues(merge.Values, OpPhi)), testTarget.Allocatable.Count(), "only as many phis as there are registers")
 
 	sum := requireReturned(t, merge)
 	require.Equal(t, OpAdd, sum.Op)
@@ -1690,7 +1693,7 @@ func TestRegalloc_PhiTakesTheRegisterItsOperandsShare(t *testing.T) {
 	require.Equal(t, OpPhi, phi.Op)
 	require.Len(t, phi.Args, 2)
 	require.Equal(t, LocRegister, phi.Args[0].Loc.Kind)
-	require.True(t, register.CalleeSaved.Contains(phi.Args[0].Loc.Reg))
+	require.True(t, testTarget.CalleeSaved.Contains(phi.Args[0].Loc.Reg))
 	require.Equal(t, phi.Args[0].Loc, phi.Args[1].Loc)
 
 	// so the phi joins them, and neither edge has to move anything

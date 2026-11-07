@@ -1,12 +1,35 @@
 package ssa
 
 import (
+	"github.com/chenota/acc/internal/buildcfg"
 	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/ir"
+	"github.com/chenota/acc/internal/register"
 )
 
-func BuildAndAllocate(program []*ir.Node) ([]*Func, error) {
-	m := newModule()
+type Option func(m *Module)
+
+// WithTarget compiles for t instead of the target buildcfg resolved.
+func WithTarget(t *register.Target) Option {
+	return func(m *Module) {
+		m.Target = t
+	}
+}
+
+func BuildAndAllocate(program []*ir.Node, opts ...Option) ([]*Func, error) {
+	m := &Module{byName: make(map[string]*Func)}
+
+	for _, o := range opts {
+		o(m)
+	}
+
+	if m.Target == nil {
+		t, err := register.For(buildcfg.TargetArch, buildcfg.TargetOS)
+		if err != nil {
+			return nil, err
+		}
+		m.Target = t
+	}
 
 	// declare every function for forward-reference capabaility
 	for _, n := range program {

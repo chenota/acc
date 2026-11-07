@@ -398,7 +398,7 @@ func assertSavesCalleeBeforeStackAdjust(t *testing.T, insts []Inst) {
 	t.Helper()
 	firstPush, firstSub := -1, -1
 	for i, inst := range insts {
-		if firstPush < 0 && inst.Op == "pushq" && inst.Dest.Kind == KRegister && register.CalleeSaved.Contains(inst.Dest.Reg) {
+		if firstPush < 0 && inst.Op == "pushq" && inst.Dest.Kind == KRegister && register.X64SysV.CalleeSaved.Contains(inst.Dest.Reg) {
 			firstPush = i
 		}
 		if firstSub < 0 && inst.Op == "subq" && inst.Dest.Kind == KRegister && inst.Dest.Reg == register.RegSP {

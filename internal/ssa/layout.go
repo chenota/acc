@@ -17,7 +17,7 @@ func layoutFrame(f *Func) error {
 		align := s.Type.Align()
 		offset += s.Type.Size()
 		offset = (offset + align - 1) &^ (align - 1)
-		s.Loc = NewFrame(-offset)
+		s.Loc = f.frameLoc(-offset)
 	}
 
 	return nil

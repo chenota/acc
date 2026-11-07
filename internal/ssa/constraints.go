@@ -23,7 +23,7 @@ func lowerClosurePtr(f *Func) {
 		if v.Op != OpClosurePtr {
 			continue
 		}
-		v.Loc = NewReg(register.ClosureContext)
+		v.Loc = NewReg(f.Target.ClosureContext)
 	}
 }
 
@@ -34,14 +34,14 @@ func lowerParams(f *Func) {
 		}
 
 		// parameters store their index in the value slot
-		v.Loc = incomingArgs.loc(v.Value.(int))
+		v.Loc = f.incomingArgs().loc(v.Value.(int))
 	}
 }
 
 // lowerResults pins each return value to a result register
 func lowerResults(f *Func) {
 	// where the overflow results end up depends on how many argument leaves the signature has
-	seq := outgoingResults(f.paramLeaves())
+	seq := f.outgoingResults(f.paramLeaves())
 
 	for v := range f.UnorderedValues() {
 		if v.Op != OpResult {
@@ -97,12 +97,12 @@ func lowerCalls(f *Func) {
 
 		// arguments past the registers are written to the outgoing area at the bottom of this function's frame
 		for i, arg := range callArgs {
-			v.setArg(base+i, copyTo(f, v, arg, outgoingArgs.loc(i)))
+			v.setArg(base+i, copyTo(f, v, arg, f.outgoingArgs().loc(i)))
 		}
 
 		// the context register only has a meaning at the call itself, so pin it last.
 		if v.Op == OpClosureCall {
-			v.setArg(1, copyTo(f, v, v.Args[1], NewReg(register.ClosureContext)))
+			v.setArg(1, copyTo(f, v, v.Args[1], NewReg(f.Target.ClosureContext)))
 		}
 	}
 }
@@ -115,7 +115,7 @@ func lowerCallResults(f *Func) {
 		}
 
 		// call results store their index in the value slot
-		v.Loc = incomingResults(len(v.Args[0].CallArgs())).loc(v.Value.(int))
+		v.Loc = f.incomingResults(len(v.Args[0].CallArgs())).loc(v.Value.(int))
 
 		// move the value somewhere unconstrained before the next call needs the register back
 		copyOut(f, v)
@@ -127,30 +127,34 @@ type abiSeq struct {
 	mem  func(n int) Location // home of the nth leaf past the registers
 }
 
-var (
-	// the caller writes past rsp, and the callee reads them back past its saved rbp.
-	incomingArgs = abiSeq{regs: register.Args, mem: calleeView}
-	outgoingArgs = abiSeq{regs: register.Args, mem: callerView}
-)
+// incomingArgs is where f finds its own arguments; the ones past the registers are read back past its saved frame pointer.
+func (f *Func) incomingArgs() abiSeq {
+	return abiSeq{regs: f.Target.Args, mem: f.calleeView}
+}
+
+// outgoingArgs is where f leaves the arguments of a call it makes; the ones past the registers are written past the stack pointer.
+func (f *Func) outgoingArgs() abiSeq {
+	return abiSeq{regs: f.Target.Args, mem: f.callerView}
+}
 
 // outgoingResults is the callee's view of where it leaves the results of a call taking nArgs argument leaves.
-func outgoingResults(nArgs int) abiSeq {
-	return abiSeq{regs: register.Results, mem: shift(calleeView, outgoingArgs.overflow(nArgs))}
+func (f *Func) outgoingResults(nArgs int) abiSeq {
+	return abiSeq{regs: f.Target.Results, mem: shift(f.calleeView, f.outgoingArgs().overflow(nArgs))}
 }
 
 // incomingResults is the caller's view of those same slots.
-func incomingResults(nArgs int) abiSeq {
-	return abiSeq{regs: register.Results, mem: shift(callerView, outgoingArgs.overflow(nArgs))}
+func (f *Func) incomingResults(nArgs int) abiSeq {
+	return abiSeq{regs: f.Target.Results, mem: shift(f.callerView, f.outgoingArgs().overflow(nArgs))}
 }
 
-// calleeView addresses the nth slot of the region from inside the callee, past its saved rbp.
-func calleeView(n int) Location {
-	return NewFrame(incomingArgOffset(n))
+// calleeView addresses the nth slot of the region from inside the callee, past its saved frame pointer.
+func (f *Func) calleeView(n int) Location {
+	return f.frameLoc(incomingArgOffset(n))
 }
 
 // callerView addresses the nth slot of the same region from the caller, at the bottom of its frame.
-func callerView(n int) Location {
-	return NewOutgoing(n * stackSlotSize)
+func (f *Func) callerView(n int) Location {
+	return f.outgoingLoc(n * stackSlotSize)
 }
 
 // shift moves a view along by base slots.

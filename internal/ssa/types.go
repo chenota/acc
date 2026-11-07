@@ -68,7 +68,7 @@ func (v *Value) Clobbers() register.Mask {
 	if v.IsCall() {
 		// for now calls are considered to clobber all caller-saved registers
 		// TODO: make this more intelligent by only clobbering caller-saved registers that the callee actually uses.
-		return register.CallerSaved
+		return v.Block.Func.Target.CallerSaved
 	}
 
 	// idiv leaves its remainder in rdx
@@ -155,6 +155,7 @@ type Block struct {
 	Id     int
 	Kind   BlockKind
 	Values []*Value
+	Func   *Func
 
 	Successors   []*Block
 	Predecessors []*Block
@@ -211,6 +212,8 @@ type Func struct {
 	Blocks []*Block
 	Entry  *Block
 	Slots  []*Slot
+
+	Target *register.Target
 
 	Params  []*types.Type
 	Results []*types.Type
@@ -400,7 +403,7 @@ func (f *Func) insertValueAt(i int, op Op, t *types.Type, b *Block) *Value {
 }
 
 func (f *Func) newBlock() *Block {
-	b := &Block{Id: f.blockId}
+	b := &Block{Id: f.blockId, Func: f}
 	f.blockId += 1
 	f.Blocks = append(f.Blocks, b)
 	return b
@@ -437,7 +440,7 @@ func (f *Func) StackAdjustment() int {
 
 // savedRegBytes is the number of bytes the prologue pushes for callee-saved registers.
 func (f *Func) savedRegBytes() int {
-	return f.UsedRegisters().Intersect(register.CalleeSaved).Count() * 8
+	return f.SavedRegisters().Count() * 8
 }
 
 // localsSize is the size in bytes of the frame's slot area
@@ -456,7 +459,7 @@ func (f *Func) maxOutgoingSize() int {
 			continue
 		}
 		nArgs := len(v.CallArgs())
-		slots := outgoingArgs.overflow(nArgs) + incomingResults(nArgs).overflow(v.Type.LeafCount())
+		slots := f.outgoingArgs().overflow(nArgs) + f.incomingResults(nArgs).overflow(v.Type.LeafCount())
 		most = max(most, stackSlotSize*slots)
 	}
 	return most
@@ -482,6 +485,10 @@ func (f *Func) UsedRegisters() register.Mask {
 		}
 	}
 	return m
+}
+
+func (f *Func) SavedRegisters() register.Mask {
+	return f.UsedRegisters().Intersect(f.Target.CalleeSaved)
 }
 
 // nearestDominatingBlocks gives each used slot the nearest block dominating all of its uses.
@@ -602,12 +609,12 @@ func NewMem(base register.Register, offset int) Location {
 	}
 }
 
-// NewFrame addresses a slot in the current frame
-func NewFrame(offset int) Location {
-	return NewMem(register.RegBP, offset)
+// frameLoc addresses a slot in f's frame
+func (f *Func) frameLoc(offset int) Location {
+	return NewMem(f.Target.FramePointer, offset)
 }
 
-// NewOutgoing addresses a slot in this function's outgoing argument area
-func NewOutgoing(offset int) Location {
-	return NewMem(register.RegSP, offset)
+// outgoingLoc addresses a slot in f's outgoing argument area
+func (f *Func) outgoingLoc(offset int) Location {
+	return NewMem(f.Target.StackPointer, offset)
 }
