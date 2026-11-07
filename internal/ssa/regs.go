@@ -18,6 +18,7 @@ type regInfo struct {
 const anyReg = ^target.Mask(0)
 
 // regs reports how v is able to interact with the register file
+// TODO: might want to cache this
 func (v *Value) regs() regInfo {
 	t := v.Block.Func.Target
 
