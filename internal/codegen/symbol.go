@@ -3,7 +3,7 @@ package codegen
 import "github.com/chenota/acc/internal/buildcfg"
 
 func symbolPrefix() string {
-	switch buildcfg.TargetOS {
+	switch buildcfg.TargetOS() {
 	case buildcfg.OSDarwin:
 		// The Mach-O ABI underscore-prefixes C symbols.
 		return "_"
@@ -14,7 +14,7 @@ func symbolPrefix() string {
 }
 
 func localPrefix() string {
-	switch buildcfg.TargetOS {
+	switch buildcfg.TargetOS() {
 	case buildcfg.OSDarwin:
 		// Mach-O keeps L labels out of the symbol table
 		return "L"

@@ -14,7 +14,7 @@ func assemble(bin string, runtime string) *exec.Cmd {
 		runtime,
 	}
 
-	switch buildcfg.TargetOS {
+	switch buildcfg.TargetOS() {
 	case buildcfg.OSDarwin:
 		args = append(args, "-arch", clangArch(), "-o", bin)
 		return exec.Command("clang", args...)
@@ -25,7 +25,7 @@ func assemble(bin string, runtime string) *exec.Cmd {
 }
 
 func clangArch() string {
-	switch buildcfg.TargetArch {
+	switch buildcfg.TargetArch() {
 	case buildcfg.ArchARM64:
 		return "arm64"
 	default:

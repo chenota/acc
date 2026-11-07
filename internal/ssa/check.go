@@ -7,7 +7,7 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/chenota/acc/internal/register"
+	"github.com/chenota/acc/internal/target"
 	"github.com/chenota/acc/internal/types"
 )
 
@@ -259,7 +259,7 @@ func verifyUses(f *Func) error {
 
 // verifyAllocation replays what every register holds through f, and reports the first read that would find the wrong value
 func verifyAllocation(f *Func) error {
-	exits := make(map[*Block]map[register.Register]*Value)
+	exits := make(map[*Block]map[target.Register]*Value)
 	origins := computeOrigins(f)
 
 	// a block only trusts its predecessors replayed so far, so anything it wrongly trusts falls out as back edges catch up
@@ -330,7 +330,7 @@ func computeOrigins(f *Func) map[*Value]*Value {
 }
 
 // replayBlock is what each register holds as b ends
-func replayBlock(b *Block, exits map[*Block]map[register.Register]*Value, origins map[*Value]*Value) (map[register.Register]*Value, error) {
+func replayBlock(b *Block, exits map[*Block]map[target.Register]*Value, origins map[*Value]*Value) (map[target.Register]*Value, error) {
 	held, err := entryRegisters(b, exits, origins)
 	if err != nil {
 		return nil, err
@@ -369,8 +369,8 @@ func replayBlock(b *Block, exits map[*Block]map[register.Register]*Value, origin
 
 // entryRegisters is what b can count on each register holding as it starts: whatever every replayed predecessor leaves
 // there once the edge into b hands b's phis their operands
-func entryRegisters(b *Block, exits map[*Block]map[register.Register]*Value, origins map[*Value]*Value) (map[register.Register]*Value, error) {
-	var entry map[register.Register]*Value
+func entryRegisters(b *Block, exits map[*Block]map[target.Register]*Value, origins map[*Value]*Value) (map[target.Register]*Value, error) {
+	var entry map[target.Register]*Value
 	for _, p := range b.Predecessors {
 		exit, ok := exits[p]
 		if !ok {
@@ -403,14 +403,14 @@ func entryRegisters(b *Block, exits map[*Block]map[register.Register]*Value, ori
 	}
 
 	if entry == nil {
-		entry = make(map[register.Register]*Value)
+		entry = make(map[target.Register]*Value)
 	}
 	return entry, nil
 }
 
 // verifyReads checks that every operand v reads out of a register is still there, and that codegen can't overwrite an
 // operand before reading it
-func verifyReads(v *Value, held map[register.Register]*Value, origins map[*Value]*Value) error {
+func verifyReads(v *Value, held map[target.Register]*Value, origins map[*Value]*Value) error {
 	for _, a := range v.Args {
 		if err := verifyHeld(a, held, origins); err != nil {
 			return fmt.Errorf("operand of v%d: %w", v.Id, err)
@@ -420,7 +420,7 @@ func verifyReads(v *Value, held map[register.Register]*Value, origins map[*Value
 	switch {
 	case v.Op == OpDivide:
 		// idiv divides into rax and rdx, so its divisor has to come from anywhere else
-		if d := v.Args[1].Loc; d.Kind == LocRegister && (d.Reg == register.RegA || d.Reg == register.RegD) {
+		if d := v.Args[1].Loc; d.Kind == LocRegister && (d.Reg == target.RegA || d.Reg == target.RegD) {
 			return fmt.Errorf("divisor of v%d is in r%d, which idiv overwrites", v.Id, d.Reg)
 		}
 	case v.IsBinaryOp():
@@ -433,7 +433,7 @@ func verifyReads(v *Value, held map[register.Register]*Value, origins map[*Value
 	return nil
 }
 
-func verifyHeld(a *Value, held map[register.Register]*Value, origins map[*Value]*Value) error {
+func verifyHeld(a *Value, held map[target.Register]*Value, origins map[*Value]*Value) error {
 	if a.Loc.Kind != LocRegister {
 		return nil
 	}

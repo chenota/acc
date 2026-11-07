@@ -24,7 +24,7 @@ func BuildAndAllocate(program []*ir.Node, opts ...Option) ([]*Func, error) {
 	}
 
 	if m.Target == nil {
-		t, err := target.For(buildcfg.TargetArch, buildcfg.TargetOS)
+		t, err := target.For(buildcfg.TargetArch(), buildcfg.TargetOS())
 		if err != nil {
 			return nil, err
 		}

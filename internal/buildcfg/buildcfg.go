@@ -42,10 +42,16 @@ func (o OS) String() string {
 }
 
 var (
-	Target     string
-	TargetArch Arch
-	TargetOS   OS
+	targetName string
+	targetArch Arch
+	targetOS   OS
 )
+
+func Target() string { return targetName }
+
+func TargetArch() Arch { return targetArch }
+
+func TargetOS() OS { return targetOS }
 
 func Resolve(target string) error {
 	if target == "" {
@@ -54,18 +60,18 @@ func Resolve(target string) error {
 
 	switch target {
 	case "x64-linux":
-		TargetArch, TargetOS = ArchX64, OSLinux
+		targetArch, targetOS = ArchX64, OSLinux
 	case "x64-darwin":
-		TargetArch, TargetOS = ArchX64, OSDarwin
+		targetArch, targetOS = ArchX64, OSDarwin
 	case "arm64-linux":
-		TargetArch, TargetOS = ArchARM64, OSLinux
+		targetArch, targetOS = ArchARM64, OSLinux
 	case "arm64-darwin":
-		TargetArch, TargetOS = ArchARM64, OSDarwin
+		targetArch, targetOS = ArchARM64, OSDarwin
 	default:
 		return fmt.Errorf("unknown target %q: expected one of x64-linux, x64-darwin, arm64-linux, arm64-darwin", target)
 	}
 
-	Target = target
+	targetName = target
 	return nil
 }
 

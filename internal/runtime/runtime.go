@@ -20,9 +20,9 @@ var objects embed.FS
 
 // WriteObject spills the target's precompiled runtime object to a temporary file
 func WriteObject() (string, error) {
-	object, err := objects.ReadFile(fmt.Sprintf("c/runtime_%s.o", buildcfg.Target))
+	object, err := objects.ReadFile(fmt.Sprintf("c/runtime_%s.o", buildcfg.Target()))
 	if err != nil {
-		return "", fmt.Errorf("no runtime object for target %s: %w", buildcfg.Target, err)
+		return "", fmt.Errorf("no runtime object for target %s: %w", buildcfg.Target(), err)
 	}
 
 	tmpRuntime, err := os.CreateTemp("", "acc_gc_*.o")
