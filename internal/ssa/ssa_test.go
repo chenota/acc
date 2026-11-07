@@ -958,13 +958,19 @@ func requireResult(t *testing.T, b *Block, i int) *Value {
 
 func requireBuildSSA(t *testing.T, src string) []*Func {
 	t.Helper()
+	return requireBuildSSAFor(t, testTarget, src)
+}
+
+// requireBuildSSAFor builds and allocates src for tgt
+func requireBuildSSAFor(t *testing.T, tgt *target.Target, src string) []*Func {
+	t.Helper()
 	tokens, err := lexer.Tokenize(strings.NewReader(src))
 	require.NoError(t, err)
 	funcs, err := parser.ParseProgram(tokens)
 	require.NoError(t, err)
 	newFuncs, err := semantic.Analyze(funcs)
 	require.NoError(t, err)
-	result, err := BuildAndAllocate(newFuncs, WithTarget(testTarget))
+	result, err := BuildAndAllocate(newFuncs, WithTarget(tgt))
 	require.NoError(t, err)
 	return result
 }
@@ -2064,4 +2070,46 @@ func assertInArgRegisters(t *testing.T, values []*Value) {
 	for i, v := range values {
 		assert.Equal(t, NewReg(regs[i]), v.Loc)
 	}
+}
+
+func TestRegs_X64Divide(t *testing.T) {
+	funcs := requireBuildSSA(t, `
+		fun div (a int, b int) -> int { return a / b; }
+		fun main () -> int { return div(7, 2); }
+	`)
+
+	divs := findValues(requireFunc(t, funcs, "div").Entry.Values, OpDivide)
+	require.Len(t, divs, 1)
+	regs := divs[0].regs()
+
+	// the dividend comes in split across rax and rdx, and the divisor can be anywhere else
+	require.Len(t, regs.inputs, 3)
+	assert.Equal(t, target.NewMask(target.RegA), regs.inputs[0])
+	assert.Equal(t, testTarget.Allocatable.Without(target.NewMask(target.RegA, target.RegD)), regs.inputs[1])
+	assert.Equal(t, target.NewMask(target.RegD), regs.inputs[2])
+
+	// the quotient lands in rax and the remainder wipes out rdx
+	assert.Equal(t, target.NewMask(target.RegA), regs.output)
+	assert.Equal(t, target.NewMask(target.RegD), regs.clobbers)
+	assert.False(t, regs.twoAddress)
+}
+
+func TestRegs_CallClobbersCallerSaved(t *testing.T) {
+	src := `
+		fun callee (a int) -> int { return a; }
+		fun main () -> int { return callee(7); }
+	`
+
+	for _, tgt := range []*target.Target{target.X64SysV, target.ARM64AAPCS, target.ARM64Apple} {
+		call := requireCall(t, requireBuildSSAFor(t, tgt, src), "main")
+		regs := call.regs()
+
+		// a call leaves its results to OpCallResult, so it has no output of its own
+		assert.Equal(t, tgt.CallerSaved, regs.clobbers)
+		assert.Zero(t, regs.output)
+	}
+
+	// clobbers come from the calling convention, so they can name registers the allocator never hands out
+	call := requireCall(t, requireBuildSSAFor(t, target.ARM64AAPCS, src), "main")
+	assert.True(t, call.regs().clobbers.Contains(target.RegX16))
 }

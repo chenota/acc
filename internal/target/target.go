@@ -8,6 +8,8 @@ import (
 
 // Target describes a register file and calling conventions
 type Target struct {
+	Arch buildcfg.Arch
+
 	Allocatable Mask
 	CallerSaved Mask
 	CalleeSaved Mask
