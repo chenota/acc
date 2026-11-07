@@ -257,8 +257,15 @@ func verifyUses(f *Func) error {
 	return nil
 }
 
-// verifyAllocation replays what every register holds through f, and reports the first read that would find the wrong value
+// verifyAllocation checks that every value sits where its instruction can use it, then replays what every register
+// holds through f and reports the first read that would find the wrong value
 func verifyAllocation(f *Func) error {
+	for v := range f.OrderedValues() {
+		if err := verifyRegs(v); err != nil {
+			return err
+		}
+	}
+
 	exits := make(map[*Block]map[target.Register]*Value)
 	origins := computeOrigins(f)
 
@@ -408,8 +415,7 @@ func entryRegisters(b *Block, exits map[*Block]map[target.Register]*Value, origi
 	return entry, nil
 }
 
-// verifyReads checks that every operand v reads out of a register is still there, and that codegen can't overwrite an
-// operand before reading it
+// verifyReads checks that every operand v reads out of a register is still there
 func verifyReads(v *Value, held map[target.Register]*Value, origins map[*Value]*Value) error {
 	for _, a := range v.Args {
 		if err := verifyHeld(a, held, origins); err != nil {
@@ -417,16 +423,30 @@ func verifyReads(v *Value, held map[target.Register]*Value, origins map[*Value]*
 		}
 	}
 
-	switch {
-	case v.Op == OpDivide:
-		// idiv divides into rax and rdx, so its divisor has to come from anywhere else
-		if d := v.Args[1].Loc; d.Kind == LocRegister && (d.Reg == target.RegA || d.Reg == target.RegD) {
-			return fmt.Errorf("divisor of v%d is in r%d, which idiv overwrites", v.Id, d.Reg)
+	return nil
+}
+
+// verifyRegs checks the registers v and its operands landed in against what v's instruction demands of the register file
+func verifyRegs(v *Value) error {
+	regs := v.regs()
+
+	for i, a := range v.Args {
+		if a.Loc.Kind == LocRegister && !regs.inputs[i].Contains(a.Loc.Reg) {
+			return fmt.Errorf("operand %d of v%d is in r%d, which v%d can't read it from", i, v.Id, a.Loc.Reg, v.Id)
 		}
-	case v.IsBinaryOp():
-		// codegen moves the left operand into v before it reads the right one
-		if l, r := v.Args[0], v.Args[1]; l != r && r.Loc.Kind == LocRegister && r.Loc == v.Loc {
-			return fmt.Errorf("v%d shares r%d with its right operand v%d", v.Id, v.Loc.Reg, r.Id)
+	}
+
+	// a value with nothing to leave in a register can still be pinned to one, like a result to the register it returns in
+	if v.NeedsRegister() && v.Loc.Kind == LocRegister && !regs.output.Contains(v.Loc.Reg) {
+		return fmt.Errorf("v%d is in r%d, which it can't be written to", v.Id, v.Loc.Reg)
+	}
+
+	// codegen moves the first operand into v before it reads the rest, which would find v there instead
+	if regs.twoAddress && v.Loc.Kind == LocRegister {
+		for j := 1; j < len(v.Args); j++ {
+			if a := v.Args[j]; a != v.Args[0] && a.Loc == v.Loc {
+				return fmt.Errorf("v%d shares r%d with its operand v%d, which it overwrites before reading", v.Id, v.Loc.Reg, a.Id)
+			}
 		}
 	}
 
