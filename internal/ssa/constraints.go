@@ -9,62 +9,8 @@ import (
 // TODO: Apple arm64 ABI does stack arguments by natural alignment so this doesn't work there
 const stackSlotSize = 8
 
+// lowerConstraints pins everything that must be pinned, and otherwise leaves it up to the allocator
 func lowerConstraints(f *Func) error {
-	// the ABI pins what crosses a call boundary
-	lowerParams(f)
-	lowerClosurePtr(f)
-	lowerCalls(f)
-	lowerCallResults(f)
-	lowerResults(f)
-
-	// the instruction set pins whatever is left
-	lowerRegs(f)
-
-	return nil
-}
-
-// lowerClosurePtr reads the incoming closure object out of the register the caller left it in.
-func lowerClosurePtr(f *Func) {
-	for v := range f.UnorderedValues() {
-		if v.Op != OpClosurePtr {
-			continue
-		}
-		placeResult(f, v, NewReg(f.Target.ClosureContext))
-	}
-}
-
-// lowerParams reads each parameter out of wherever the caller left it.
-func lowerParams(f *Func) {
-	for v := range f.UnorderedValues() {
-		if v.Op != OpParam {
-			continue
-		}
-
-		// parameters store their index in the value slot
-		placeResult(f, v, f.incomingArgs().loc(v.Value.(int)))
-	}
-}
-
-// lowerResults pins each return value to a result register
-func lowerResults(f *Func) {
-	// where the overflow results end up depends on how many argument leaves the signature has
-	seq := f.outgoingResults(f.paramLeaves())
-
-	for v := range f.UnorderedValues() {
-		if v.Op != OpResult {
-			continue
-		}
-
-		// results store their index in the value slot
-		v.Loc = seq.loc(v.Value.(int))
-
-		// move the returned value into the place it names
-		placeOperand(f, v, 0, v.Loc)
-	}
-}
-
-// lowerRegs pins every operand and result that its instruction can only read or write in one register
-func lowerRegs(f *Func) {
 	for _, b := range f.Blocks {
 		for _, v := range slices.Clone(b.Values) {
 			// a phi's operands are read on the way out of its predecessors, which have nowhere to put a copy yet
@@ -72,22 +18,63 @@ func lowerRegs(f *Func) {
 				continue
 			}
 
-			regs := v.regs()
+			abi, regs := f.abi(v), v.regs()
 
-			for i, m := range regs.inputs {
-				if r, ok := m.Only(); ok {
-					placeOperand(f, v, i, NewReg(r))
-				} else if a := v.Args[i]; a.Loc.Kind == LocRegister && !m.Contains(a.Loc.Reg) {
-					// the allocator can meet any wider demand, unless the operand is stuck in a register v can't read
-					v.setArg(i, copyTo(f, v, a, Location{}))
+			for i, loc := range abi.operands {
+				if r, ok := regs.inputs[i].Only(); ok && loc.Kind == LocNone {
+					loc = NewReg(r)
+				}
+				if loc.Kind != LocNone {
+					placeOperand(f, v, i, loc)
 				}
 			}
 
-			if r, ok := regs.output.Only(); ok && v.Loc.Kind == LocNone {
-				placeResult(f, v, NewReg(r))
+			loc := abi.result
+			if r, ok := regs.output.Only(); ok && loc.Kind == LocNone {
+				loc = NewReg(r)
+			}
+			if loc.Kind != LocNone {
+				placeResult(f, v, loc)
 			}
 		}
 	}
+
+	return nil
+}
+
+// placement is where the calling convention puts a value's operands and result
+type placement struct {
+	operands []Location
+	result   Location
+}
+
+// abi is where the calling convention puts v's operands and result
+func (f *Func) abi(v *Value) placement {
+	p := placement{operands: make([]Location, len(v.Args))}
+
+	// parameters, results, and call results store their index in the value slot
+	switch v.Op {
+	case OpParam:
+		p.result = f.incomingArgs().loc(v.Value.(int))
+	case OpClosurePtr:
+		p.result = NewReg(f.Target.ClosureContext)
+	case OpCallResult:
+		p.result = f.incomingResults(len(v.Args[0].CallArgs())).loc(v.Value.(int))
+	case OpResult:
+		// where the overflow results end up depends on how many argument leaves the signature has
+		p.operands[0] = f.outgoingResults(f.paramLeaves()).loc(v.Value.(int))
+	case OpStaticCall, OpClosureCall:
+		// arguments past the registers are written to the outgoing area at the bottom of this function's frame
+		base := len(v.Args) - len(v.CallArgs())
+		for i := range v.CallArgs() {
+			p.operands[base+i] = f.outgoingArgs().loc(i)
+		}
+		if v.Op == OpClosureCall {
+			p.operands[1] = NewReg(f.Target.ClosureContext)
+		}
+	}
+
+	return p
 }
 
 // placeOperand has v read its ith operand from a copy made at loc just before v reads it
@@ -106,39 +93,6 @@ func placeResult(f *Func, v *Value, loc Location) {
 	// redirect before wiring up the arg so the copy does not point at itself
 	f.redirectUses(v, out)
 	out.setArgs(v)
-}
-
-func lowerCalls(f *Func) {
-	for v := range f.UnorderedValues() {
-		if !v.IsCall() {
-			continue
-		}
-
-		callArgs := v.CallArgs()
-		base := len(v.Args) - len(callArgs)
-
-		// arguments past the registers are written to the outgoing area at the bottom of this function's frame
-		for i := range callArgs {
-			placeOperand(f, v, base+i, f.outgoingArgs().loc(i))
-		}
-
-		// the context register only has a meaning at the call itself, so place it last to keep it right next to the call
-		if v.Op == OpClosureCall {
-			placeOperand(f, v, 1, NewReg(f.Target.ClosureContext))
-		}
-	}
-}
-
-// lowerCallResults reads each value a call hands back out of the register the ABI left it in.
-func lowerCallResults(f *Func) {
-	for v := range f.UnorderedValues() {
-		if v.Op != OpCallResult {
-			continue
-		}
-
-		// call results store their index in the value slot
-		placeResult(f, v, f.incomingResults(len(v.Args[0].CallArgs())).loc(v.Value.(int)))
-	}
 }
 
 type abiSeq struct {

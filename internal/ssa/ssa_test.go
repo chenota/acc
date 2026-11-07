@@ -675,10 +675,11 @@ func TestLowerResults_OverflowResultGoesToMemory(t *testing.T) {
 
 	// make takes no arguments, so the third leaf goes in the first slot of the caller's region
 	third := f.Entry.Control[2]
-	assert.Equal(t, OpResult, third.Op)
-	assert.Equal(t, LocMemory, third.Loc.Kind)
-	assert.Equal(t, target.RegBP, third.Loc.Reg)
-	assert.Equal(t, incomingArgOffset(0), third.Loc.Offset)
+	require.Equal(t, OpResult, third.Op)
+	require.Len(t, third.Args, 1)
+	assert.Equal(t, LocMemory, third.Args[0].Loc.Kind)
+	assert.Equal(t, target.RegBP, third.Args[0].Loc.Reg)
+	assert.Equal(t, incomingArgOffset(0), third.Args[0].Loc.Offset)
 }
 
 func TestLowerCallResults_OverflowResultReadFromMemory(t *testing.T) {
@@ -721,7 +722,11 @@ func TestLowerResults_OverflowResultSitsAboveOverflowArguments(t *testing.T) {
 	callee := requireFunc(t, funcs, "f")
 	require.Len(t, callee.Entry.Control, 3)
 
-	written := callee.Entry.Control[2]
+	// the copy feeding the result is what writes it there
+	result := callee.Entry.Control[2]
+	require.Equal(t, OpResult, result.Op)
+	require.Len(t, result.Args, 1)
+	written := result.Args[0]
 	assert.Equal(t, LocMemory, written.Loc.Kind)
 	assert.Equal(t, target.RegBP, written.Loc.Reg)
 	assert.Equal(t, incomingArgOffset(2), written.Loc.Offset)
@@ -940,8 +945,6 @@ func requireResult(t *testing.T, b *Block, i int) *Value {
 
 	require.Equal(t, OpResult, result.Op, "a returning block must control its results")
 	require.Equal(t, i, result.Value, "a result carries the index of the register it lands in")
-	require.Equal(t, LocRegister, result.Loc.Kind)
-	require.Equal(t, testTarget.Results[i], result.Loc.Reg)
 	require.False(t, result.NeedsRegister(), "a result names its register without occupying one")
 	require.Len(t, result.Args, 1)
 
