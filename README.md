@@ -485,18 +485,18 @@ With a string base for working with files we can implement a useful file API.
 
 Add in floating points to improve `acc`'s math capabilities.
 
-### Vertical Slice 20: Runtime in acc [Not Started]
+### Vertical Slice 20: Windows [Not Started]
+
+Support Windows on both architectures. Gross and yucky.
+
+### Vertical Slice 21: Runtime in acc [Not Started]
 
 Rewrite the C in `acc`. While I'm not going to bootstrap the entire compiler quite yet, I think this is a good foray into that sort of thing.
 
-### Vertical Slice 21: Assembler [Not Started]
+### Vertical Slice 22: Assembler [Not Started]
 
 Up until this point, `acc` has relied on gcc and clang to assemble and link its output. The first step towards getting rid of that dependency is having `acc` write its own object files, which the system linker can still link for now.
 
-### Vertical Slice 22: Linker [Not Started]
+### Vertical Slice 23: Linker [Not Started]
 
 With `acc` writing its own object files, the last step is linking them into executables `acc` no longer needs a C toolchain.
-
-### Vertical Slice 23: Windows [Not Started]
-
-Support x86 and ARM64 Windows. Yuck.
