@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chenota/acc/internal/buildcfg"
 	"github.com/chenota/acc/internal/lexer"
 	"github.com/chenota/acc/internal/parser"
 	"github.com/chenota/acc/internal/register"
@@ -18,6 +19,18 @@ func TestCodegen_PrologueEpilogue(t *testing.T) {
 	insts := requireGeneratesProgram(t, `fun main () -> int { return 0; }`)
 
 	assertContainsSeq(t, insts, "pushq", "movq", "popq", "ret")
+}
+
+func TestCodegen_Labels_ELF(t *testing.T) {
+	insts := requireGeneratesProgramFor(t, "x64-linux", `fun main () -> int { return 0; }`)
+
+	assertContainsSeq(t, insts, ".globl", "main:", ".Lmain.0:", ".Lmain.ret:")
+}
+
+func TestCodegen_Labels_MachO(t *testing.T) {
+	insts := requireGeneratesProgramFor(t, "x64-darwin", `fun main () -> int { return 0; }`)
+
+	assertContainsSeq(t, insts, ".globl", "_main:", "Lmain.0:", "Lmain.ret:")
 }
 
 func TestCodegen_ImmediateValue(t *testing.T) {
@@ -265,7 +278,7 @@ func TestCodegen_ReturnBlocks_ShareOneEpilogue(t *testing.T) {
 	// one ret per function, which the return block laid out last falls into and the other jumps to
 	assert.Len(t, rets, 2)
 	require.Len(t, jmps, 1)
-	assert.Equal(t, localPrefix+"f.ret", jmps[0].Dest.Value)
+	assert.Equal(t, localPrefix()+"f.ret", jmps[0].Dest.Value)
 }
 
 func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
@@ -398,6 +411,12 @@ func assertSavesCalleeBeforeStackAdjust(t *testing.T, insts []Inst) {
 }
 
 func requireGeneratesProgram(t *testing.T, src string) []Inst {
+	return requireGeneratesProgramFor(t, "x64-linux", src)
+}
+
+func requireGeneratesProgramFor(t *testing.T, target string, src string) []Inst {
+	require.NoError(t, buildcfg.Resolve(target))
+
 	tokens, err := lexer.Tokenize(strings.NewReader(src))
 	require.NoError(t, err)
 

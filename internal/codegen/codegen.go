@@ -608,7 +608,7 @@ func indirectTarget(v *ssa.Value) Arg {
 }
 
 func symbol(name string) string {
-	return symbolPrefix + name
+	return symbolPrefix() + name
 }
 
 func funcLabel(f *ssa.Func) string {
@@ -617,9 +617,9 @@ func funcLabel(f *ssa.Func) string {
 
 // blockLabel names a block, scoped to its function since block ids restart in each one
 func blockLabel(f *ssa.Func, b *ssa.Block) string {
-	return fmt.Sprintf("%s%s.%d", localPrefix, f.Name(), b.Id)
+	return fmt.Sprintf("%s%s.%d", localPrefix(), f.Name(), b.Id)
 }
 
 func epilogueLabel(f *ssa.Func) string {
-	return fmt.Sprintf("%s%s.ret", localPrefix, f.Name())
+	return fmt.Sprintf("%s%s.ret", localPrefix(), f.Name())
 }

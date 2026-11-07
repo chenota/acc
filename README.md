@@ -23,6 +23,11 @@ You can view information on how to run `acc` with
 acc --help
 ```
 
+`acc` compiles for your machine unless you pass `--target`, which takes one of `x64-linux`, `x64-darwin`, `arm64-linux`, or `arm64-darwin`:
+```shell
+acc --target x64-linux -S main.acc
+```
+
 ## Testing
 
 `acc` contains two types of tests: unit tests and program tests.
@@ -35,6 +40,11 @@ make test
 The program tests are a little more interesting; they actually use `acc` to compile a binary from source code, run it, and validate the output against a set of golden files. These tests are super helpful for making sure new features I introduce into the language don't introduce regressions elsewhere, and act as the final gate on whether or not I can say a vertical slice is complete. You can run them with
 ```shell
 make testp
+```
+
+The program tests compile for x64 on the current OS unless you pick a target to test with `TARGET`:
+```shell
+make testp TARGET=x64-linux
 ```
 
 ## Vertical Slices

@@ -10,7 +10,7 @@ import (
 	"github.com/chenota/acc/internal/runtime"
 )
 
-// Assemble assembles and links a list of x64 instructions into binary using GCC
+// Assemble assembles and links a list of instructions into a binary using the host's C toolchain
 func Assemble(instructions []string, w io.Writer) error {
 	tmpBinary, err := os.CreateTemp("", "acc_bin_*")
 	if err != nil {
@@ -34,7 +34,7 @@ func Assemble(instructions []string, w io.Writer) error {
 	cmd.Stdin = bytes.NewBufferString(strings.Join(instructions, "\n") + "\n")
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("gcc failed to assemble source: %w (stderr: %s)", err, stderr.String())
+		return fmt.Errorf("%s failed to assemble source: %w (stderr: %s)", cmd.Args[0], err, stderr.String())
 	}
 
 	// re-open the temporary file now that GCC has written to it

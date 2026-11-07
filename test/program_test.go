@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -89,7 +90,7 @@ func compileProgram(t *testing.T, accPath, mainFile string) string {
 	ctx, cancel := context.WithTimeout(t.Context(), compileTimeout)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, accPath, "-o", binaryPath, mainFile).CombinedOutput()
+	out, err := exec.CommandContext(ctx, accPath, "--target", target(), "-o", binaryPath, mainFile).CombinedOutput()
 	require.NoError(t, err, "failed to compile program:\n%s", out)
 
 	return binaryPath
@@ -146,6 +147,15 @@ func verifyStatus(t *testing.T, config testConfig, actualStatus int) {
 	assert.Equal(t, *config.Status, actualStatus, "actual status does not match expected status")
 }
 
+// target returns the target to compile test programs for
+func target() string {
+	if v := os.Getenv("TARGET"); v != "" {
+		return v
+	}
+	// TODO: expand for arm64 when that's more mature
+	return "x64-" + runtime.GOOS
+}
+
 func verboseFail() bool {
 	v := os.Getenv("VERBOSE_FAIL")
 	return v == "1" || v == "true"
@@ -181,7 +191,7 @@ func dumpAssembly(t *testing.T, accPath, mainFile string) {
 	ctx, cancel := context.WithTimeout(t.Context(), compileTimeout)
 	defer cancel()
 
-	if out, err := exec.CommandContext(ctx, accPath, "-S", "-o", tmpAsm.Name(), mainFile).CombinedOutput(); err != nil {
+	if out, err := exec.CommandContext(ctx, accPath, "--target", target(), "-S", "-o", tmpAsm.Name(), mainFile).CombinedOutput(); err != nil {
 		t.Logf("could not generate assembly for %s: %v\n%s", mainFile, err, out)
 		return
 	}

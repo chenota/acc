@@ -16,6 +16,7 @@ type app struct {
 	outputPath string
 	isAssembly bool
 	isStatic   bool
+	target     string
 }
 
 // NewRootCommand creates a self-contained Cobra command to run the app
@@ -34,6 +35,7 @@ func NewRootCommand() *cobra.Command {
 
 	cmd.Flags().StringVarP(&app.outputPath, "output", "o", "", "path to the output file")
 	cmd.Flags().BoolVarP(&app.isAssembly, "asm", "S", false, "output assembly instructions")
+	cmd.Flags().StringVar(&app.target, "target", "", "target to compile for")
 
 	return cmd
 }
@@ -54,6 +56,10 @@ func (a *app) run(cmd *cobra.Command, args []string) error {
 	defer input.Close()
 
 	var opts []compiler.Option
+
+	if a.target != "" {
+		opts = append(opts, compiler.WithTarget(a.target))
+	}
 
 	if a.isAssembly {
 		opts = append(opts, compiler.WithAssemblyOnly())

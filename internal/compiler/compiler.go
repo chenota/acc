@@ -6,6 +6,7 @@ import (
 
 	"github.com/chenota/acc/internal/asmtxt"
 	"github.com/chenota/acc/internal/assemble"
+	"github.com/chenota/acc/internal/buildcfg"
 	"github.com/chenota/acc/internal/codegen"
 	"github.com/chenota/acc/internal/lexer"
 	"github.com/chenota/acc/internal/parser"
@@ -20,6 +21,10 @@ func Compile(r FileDetail, w io.Writer, opts ...Option) error {
 
 	for _, o := range opts {
 		o(&config)
+	}
+
+	if err := buildcfg.Resolve(config.target); err != nil {
+		return err
 	}
 
 	tokens, err := lexer.Tokenize(r.Reader, lexer.WithFileName(r.Name))
