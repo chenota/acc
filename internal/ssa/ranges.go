@@ -127,7 +127,7 @@ func occupants(spans map[*Value]span, s span) iter.Seq2[*Value, target.Mask] {
 
 			// a call only clobbers registers at the instant it runs
 			if u.IsCall() && s.overlaps(span{Start: su.Start, End: su.Start + 1}) {
-				regs = regs.Union(u.Clobbers())
+				regs = regs.Union(u.regs().clobbers)
 			}
 
 			if regs.Count() > 0 && !yield(u, regs) {

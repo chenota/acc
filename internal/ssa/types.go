@@ -63,22 +63,6 @@ type Value struct {
 	Loc Location
 }
 
-// Clobbers reports the registers this value destroys when it executes.
-func (v *Value) Clobbers() target.Mask {
-	if v.IsCall() {
-		// for now calls are considered to clobber all caller-saved registers
-		// TODO: make this more intelligent by only clobbering caller-saved registers that the callee actually uses.
-		return v.Block.Func.Target.CallerSaved
-	}
-
-	// idiv leaves its remainder in rdx
-	if v.Op == OpDivide {
-		return target.NewMask(target.RegD)
-	}
-
-	return target.NewMask()
-}
-
 func (v *Value) IsCall() bool {
 	return v.Op == OpStaticCall || v.Op == OpClosureCall
 }

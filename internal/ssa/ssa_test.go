@@ -273,7 +273,7 @@ func TestLowerCalls_ResultAndClobbers(t *testing.T) {
 	assert.Same(t, call, callResults[0].Args[0], "a call result names the call it came from")
 
 	// and the call conservatively clobbers every caller-saved register
-	assert.Equal(t, testTarget.CallerSaved, call.Clobbers())
+	assert.Equal(t, testTarget.CallerSaved, call.regs().clobbers)
 }
 
 func TestLowerCalls_StackArgs(t *testing.T) {

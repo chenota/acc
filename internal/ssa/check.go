@@ -346,7 +346,7 @@ func replayBlock(b *Block, exits map[*Block]map[target.Register]*Value, origins 
 				return nil, err
 			}
 		}
-		for r := range v.Clobbers().All() {
+		for r := range v.regs().clobbers.All() {
 			delete(held, r)
 		}
 		if v.NeedsRegister() && v.Loc.Kind == LocRegister {
