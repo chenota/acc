@@ -16,21 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGenSsa_Basic(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { return 0; }`)
-
-	require.Len(t, funcs, 1)
-	f := funcs[0]
-	assert.Equal(t, "main", f.Name())
-
-	b := f.Blocks[0]
-	assert.Equal(t, BlockRet, b.Kind)
-
-	ret := requireReturned(t, b)
-	assert.Equal(t, OpLiteral, ret.Op)
-	assert.Equal(t, types.Int(), ret.Type)
-}
-
 // TestGenSsa_FoldsToLiteral covers the programs that collapse all the way down to a single constant
 func TestGenSsa_FoldsToLiteral(t *testing.T) {
 	tests := []struct {
@@ -39,6 +24,21 @@ func TestGenSsa_FoldsToLiteral(t *testing.T) {
 		src  string
 		want int32
 	}{
+		{
+			name: "literal",
+			src:  `fun main () -> int { return 0; }`,
+			want: 0,
+		},
+		{
+			name: "variable",
+			src:  `fun main () -> int { let x = 10; return x; }`,
+			want: 10,
+		},
+		{
+			name: "tuple field",
+			src:  `fun main () -> int { let t = (1, 2); return t.1; }`,
+			want: 2,
+		},
 		{
 			name: "binary operands fold",
 			src:  `fun main () -> int { return 1 + 1; }`,
@@ -96,9 +96,17 @@ func TestGenSsa_FoldsToLiteral(t *testing.T) {
 			}
 			f := requireFunc(t, requireBuildSSA(t, tt.src), name)
 
+			assert.Equal(t, BlockRet, f.Entry.Kind)
+
 			ret := requireReturned(t, f.Entry)
 			assert.Equal(t, OpLiteral, ret.Op)
+			assert.Equal(t, types.Int(), ret.Type)
 			assert.Equal(t, tt.want, ret.Value)
+
+			// mem2reg promotes everything, so no memory operations survive and layout has no slot left to keep
+			assert.Empty(t, findValues(f.Entry.Values, OpStaticLoad), "loads should be promoted away")
+			assert.Empty(t, findValues(f.Entry.Values, OpStaticStore), "stores should be promoted away")
+			assert.Empty(t, f.Slots, "promoted slots should be dropped")
 		})
 	}
 }
@@ -233,70 +241,13 @@ func TestGenSsa_Not_KeepsOperand(t *testing.T) {
 func TestUnaryFold_BranchConditionIsKept(t *testing.T) {
 	// debug is read by the not, which folds away, and by the branch, which doesn't
 	f := requireFunc(t, requireBuildSSA(t, `
-		fun f () -> int { let debug = false; let quiet = !debug; if debug { 1 } else { 2 } }
-		fun main () -> int { 0 }`), "f")
+		fun f () -> int { let debug = false; let quiet = !debug; if debug { 1 } else { 2 } }`), "f")
 	assert.Empty(t, findValues(f.Entry.Values, OpNot), "the not folds away")
 
 	require.Equal(t, BlockIf, f.Entry.Kind)
 	require.Len(t, f.Entry.Control, 1, "the branch keeps its condition")
 	assert.Equal(t, OpLiteral, f.Entry.Control[0].Op)
 	assert.Equal(t, false, f.Entry.Control[0].Value)
-}
-
-func TestGenSsa_Variable(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; return x; }`)
-
-	b := funcs[0].Blocks[0]
-
-	// mem2reg promotes x, so no memory operations survive
-	assert.Empty(t, findValues(b.Values, OpStaticLoad), "load should be promoted away")
-	assert.Empty(t, findValues(b.Values, OpStaticStore), "store should be promoted away")
-
-	// nothing names the slot any more, so layout drops it from the frame
-	assert.Empty(t, funcs[0].Slots, "promoted slot should be dropped")
-
-	// the stored value flows directly into the return
-	ret := requireReturned(t, b)
-	assert.Equal(t, OpLiteral, ret.Op)
-	assert.Equal(t, int32(10), ret.Value)
-}
-
-func TestGenSsa_TupleVariable(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { let t = (1, 2); return t.1; }`)
-
-	b := funcs[0].Blocks[0]
-
-	// mem2reg promotes each field of t, so no memory operations survive
-	assert.Empty(t, findValues(b.Values, OpStaticLoad), "loads should be promoted away")
-	assert.Empty(t, findValues(b.Values, OpStaticStore), "stores should be promoted away")
-
-	// nothing names the slot any more, so layout drops it from the frame
-	assert.Empty(t, funcs[0].Slots, "promoted slot should be dropped")
-}
-
-func TestLowerCalls_ArgRegisters(t *testing.T) {
-	funcs := requireBuildSSA(t, `
-		fun target (a int, b int, c int) -> int { return 0; }
-		fun main () -> int { return target(1, 2, 3); }
-	`)
-
-	call := requireCall(t, funcs, "main")
-
-	// a direct call names its target, so Args holds the arguments alone
-	require.Len(t, call.Args, 3)
-
-	callee := call.Callee()
-	require.NotNil(t, callee, "call should name its target")
-	assert.Equal(t, "target", callee.Name())
-
-	assert.Equal(t, LocRegister, call.Args[0].Loc.Kind)
-	assert.Equal(t, register.RegDI, call.Args[0].Loc.Reg)
-
-	assert.Equal(t, LocRegister, call.Args[1].Loc.Kind)
-	assert.Equal(t, register.RegSI, call.Args[1].Loc.Reg)
-
-	assert.Equal(t, LocRegister, call.Args[2].Loc.Kind)
-	assert.Equal(t, register.RegD, call.Args[2].Loc.Reg)
 }
 
 func TestLowerCalls_ResultAndClobbers(t *testing.T) {
@@ -325,38 +276,6 @@ func TestLowerCalls_ResultAndClobbers(t *testing.T) {
 	assert.Equal(t, register.CallerSaved, call.Clobbers())
 }
 
-func TestGenSsa_Params_PinnedToArgRegisters(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun target (a int, b int, c int) -> int { return 0; }`)
-
-	f := requireFunc(t, funcs, "target")
-	params := findValues(f.Entry.Values, OpParam)
-	require.Len(t, params, 3)
-
-	// each incoming parameter is pinned to its System V argument register, in order
-	assert.Equal(t, LocRegister, params[0].Loc.Kind)
-	assert.Equal(t, register.RegDI, params[0].Loc.Reg)
-
-	assert.Equal(t, LocRegister, params[1].Loc.Kind)
-	assert.Equal(t, register.RegSI, params[1].Loc.Reg)
-
-	assert.Equal(t, LocRegister, params[2].Loc.Kind)
-	assert.Equal(t, register.RegD, params[2].Loc.Reg)
-}
-
-func TestGenSsa_Param_FlowsToReturn(t *testing.T) {
-	// returning a parameter used to fail with "variable used before declared"
-	funcs := requireBuildSSA(t, `fun identity (x int) -> int { return x; }`)
-
-	f := requireFunc(t, funcs, "identity")
-
-	// the parameter is copied out of its argument register, then into the return register
-	ret := requireReturned(t, f.Entry)
-	require.Equal(t, OpCopy, ret.Op)
-
-	require.Len(t, ret.Args, 1)
-	assert.Equal(t, OpParam, ret.Args[0].Op)
-}
-
 func TestLowerCalls_StackArgs(t *testing.T) {
 	funcs := requireBuildSSA(t, `
 		fun target (a int, b int, c int, d int, e int, f int, g int, h int) -> int { return 0; }
@@ -368,11 +287,7 @@ func TestLowerCalls_StackArgs(t *testing.T) {
 	require.Len(t, call.Args, 8)
 
 	// the first six still go in the System V argument registers
-	assert.Equal(t, LocRegister, call.Args[0].Loc.Kind)
-	assert.Equal(t, register.RegDI, call.Args[0].Loc.Reg)
-
-	assert.Equal(t, LocRegister, call.Args[5].Loc.Kind)
-	assert.Equal(t, register.Reg9, call.Args[5].Loc.Reg)
+	assertInArgRegisters(t, call.Args[:6])
 
 	// the seventh and eighth are written into the outgoing area, lowest slot first
 	assert.Equal(t, LocMemory, call.Args[6].Loc.Kind)
@@ -393,9 +308,8 @@ func TestLowerParams_StackParams(t *testing.T) {
 	params := findValues(f.Entry.Values, OpParam)
 	require.Len(t, params, 8)
 
-	// the sixth parameter is the last one to arrive in a register
-	assert.Equal(t, LocRegister, params[5].Loc.Kind)
-	assert.Equal(t, register.Reg9, params[5].Loc.Reg)
+	// the first six are pinned to their System V argument registers, in order
+	assertInArgRegisters(t, params[:6])
 
 	// the rest arrive in the caller's frame, past the saved rbp and the return address
 	assert.Equal(t, LocMemory, params[6].Loc.Kind)
@@ -447,20 +361,12 @@ func TestLowerParams_TupleParamSplitsIntoLeaves(t *testing.T) {
 
 	// four items in tuple - 1 unit type that should get ignored
 	require.Len(t, params, 3)
-
-	assert.Equal(t, LocRegister, params[0].Loc.Kind)
-	assert.Equal(t, register.RegDI, params[0].Loc.Reg)
-
-	assert.Equal(t, LocRegister, params[1].Loc.Kind)
-	assert.Equal(t, register.RegSI, params[1].Loc.Reg)
-
-	assert.Equal(t, LocRegister, params[2].Loc.Kind)
-	assert.Equal(t, register.RegD, params[2].Loc.Reg)
+	assertInArgRegisters(t, params)
 
 	// each leaf carries its own atomic type, never the aggregate
-	assert.True(t, types.Equal(types.Int(), params[0].Type))
-	assert.True(t, types.Equal(types.Int(), params[1].Type))
-	assert.True(t, types.Equal(types.Int(), params[2].Type))
+	for _, p := range params {
+		assert.True(t, types.Equal(types.Int(), p.Type))
+	}
 }
 
 func TestLowerCalls_TupleArgSplitsIntoLeaves(t *testing.T) {
@@ -473,15 +379,7 @@ func TestLowerCalls_TupleArgSplitsIntoLeaves(t *testing.T) {
 
 	// the caller splits the argument the same way the callee expects to receive it
 	require.Len(t, call.Args, 3)
-
-	assert.Equal(t, LocRegister, call.Args[0].Loc.Kind)
-	assert.Equal(t, register.RegDI, call.Args[0].Loc.Reg)
-
-	assert.Equal(t, LocRegister, call.Args[1].Loc.Kind)
-	assert.Equal(t, register.RegSI, call.Args[1].Loc.Reg)
-
-	assert.Equal(t, LocRegister, call.Args[2].Loc.Kind)
-	assert.Equal(t, register.RegD, call.Args[2].Loc.Reg)
+	assertInArgRegisters(t, call.Args)
 }
 
 func TestGenSsa_Ref_KeepsAddressedSlotInFrame(t *testing.T) {
@@ -498,35 +396,21 @@ func TestGenSsa_Ref_KeepsAddressedSlotInFrame(t *testing.T) {
 	// the surviving slot gets a real home below rbp, not a register
 	assert.Equal(t, LocMemory, slot.Loc.Kind)
 	assert.Equal(t, register.RegBP, slot.Loc.Reg)
-}
-
-func TestGenSsa_Ref_MaterializesSlotAddress(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
-
-	f := requireFunc(t, funcs, "main")
-	addrs := findValues(f.Entry.Values, OpLocalAddr)
-	require.Len(t, addrs, 1)
 
 	// the address names the slot it points at and lands in a register
-	require.Len(t, f.Slots, 1)
-	assert.Same(t, f.Slots[0], addrs[0].Slot())
+	addrs := findValues(f.Entry.Values, OpLocalAddr)
+	require.Len(t, addrs, 1)
+	assert.Same(t, slot, addrs[0].Slot())
 	assert.True(t, types.Equal(types.Pointer(types.Int()), addrs[0].Type))
 	assert.Equal(t, LocRegister, addrs[0].Loc.Kind)
 	assert.Empty(t, addrs[0].Args, "a slot address takes no operand")
-}
-
-func TestGenSsa_Deref_LoadsThroughPointer(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
-
-	f := requireFunc(t, funcs, "main")
-
-	ret := requireReturned(t, f.Entry)
-	require.Equal(t, OpLoad, ret.Op)
 
 	// an indirect load carries its address as an operand and names no slot
+	ret := requireReturned(t, f.Entry)
+	require.Equal(t, OpLoad, ret.Op)
 	assert.Nil(t, ret.Slot())
 	require.Len(t, ret.Args, 1)
-	assert.Equal(t, OpLocalAddr, ret.Args[0].Op)
+	assert.Same(t, addrs[0], ret.Args[0])
 	assert.True(t, types.Equal(types.Int(), ret.Type))
 }
 
@@ -580,38 +464,30 @@ func TestGenSsa_RefOfDeref_ReusesPointer(t *testing.T) {
 }
 
 func TestGenSsa_UnitReturn_HasNoControlValue(t *testing.T) {
-	funcs := requireBuildSSA(t, `
-		fun f () { return; }
-		fun main () -> int { return 0; }
-	`)
+	tests := []struct {
+		name string
+		src  string
+	}{
+		{name: "bare return", src: `fun f () { return; }`},
+		{name: "falling off the end", src: `fun f () { }`},
+	}
 
-	f := requireFunc(t, funcs, "f")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := requireFunc(t, requireBuildSSA(t, tt.src), "f")
 
-	// a bare return still terminates the block, but there is no value to place in the return register
-	assert.Equal(t, BlockRet, f.Entry.Kind)
-	assert.Nil(t, f.Entry.Control)
-	assert.Empty(t, f.Entry.Values)
-}
-
-func TestGenSsa_UnitFunction_ImplicitReturn(t *testing.T) {
-	funcs := requireBuildSSA(t, `
-		fun f () { }
-		fun main () -> int { return 0; }
-	`)
-
-	f := requireFunc(t, funcs, "f")
-
-	// falling off the end terminates the block just like an explicit bare return does
-	assert.Equal(t, BlockRet, f.Entry.Kind)
-	assert.Nil(t, f.Entry.Control)
+			// the block still terminates, but there is no value to place in the return register
+			assert.Equal(t, BlockRet, f.Entry.Kind)
+			assert.Nil(t, f.Entry.Control)
+			assert.Empty(t, f.Entry.Values)
+		})
+	}
 }
 
 func TestGenSsa_UnitFunction_CallStatement(t *testing.T) {
 	funcs := requireBuildSSA(t, `
 		fun f () { return; }
-		fun g () { f(); return; }
-		fun main () -> int { return 0; }
-	`)
+		fun g () { f(); return; }`)
 
 	g := requireFunc(t, funcs, "g")
 	assert.Equal(t, BlockRet, g.Entry.Kind)
@@ -682,23 +558,71 @@ func TestHeapify_RewritesAnEscapingLocal(t *testing.T) {
 	assert.Nil(t, slotNamed(f, "x"))
 }
 
-func TestHeapify_AddressCycle(t *testing.T) {
-	funcs := requireBuildSSA(t, `
-		fun mk () -> fun () -> int {
-			let f = fun () -> int { return 1; };
-			let r = &f;
-			f = fun () -> int { let q = r; return 7; };
-			return f;
-		}
-		fun main () -> int { let g = mk(); return 2; }`)
+// TestHeapify_NothingIsLeftOnTheFrame covers functions where everything the closure reaches outlives the frame
+func TestHeapify_NothingIsLeftOnTheFrame(t *testing.T) {
+	tests := []struct {
+		name   string
+		fn     string
+		src    string
+		allocs int
+	}{
+		{
+			// the closure carries its own copy of x along, so only its environment moves
+			name:   "escaping environment",
+			fn:     "adderFactory",
+			allocs: 1,
+			src: `
+				fun adderFactory (x int) -> fun (int) -> int { return fun (y int) -> int { return x + y; }; }
+				fun main () -> int { let f = adderFactory(1); return 2; }`,
+		},
+		{
+			// the environment and g's slot point at each other, and both outlive the frame
+			name:   "escaping let rec",
+			fn:     "mk",
+			allocs: 2,
+			src: `
+				fun mk () -> fun () -> int { let rec g = fun () -> int { let h = g; return 5; }; return g; }
+				fun main () -> int { let f = mk(); return 2; }`,
+		},
+		{
+			// f holds a closure that holds r, which points back at f; f and the environment outlive the frame,
+			// while r is never written so the closure keeps a copy and r needs no storage of its own
+			// the first lambda captures nothing, so it has no environment to allocate
+			name:   "address cycle",
+			fn:     "mk",
+			allocs: 2,
+			src: `
+				fun mk () -> fun () -> int {
+					let f = fun () -> int { return 1; };
+					let r = &f;
+					f = fun () -> int { let q = r; return 7; };
+					return f;
+				}
+				fun main () -> int { let g = mk(); return 2; }`,
+		},
+		{
+			// g reaches its own environment through its box, so calling it leaks both the environment and g's box
+			name:   "closure leaking itself through a capture",
+			fn:     "mk",
+			allocs: 2,
+			src: `
+				fun mk (r *fun () -> int) {
+					let rec g = fun () -> int { *r = g; return 1; };
+					g();
+				}
+				fun main () -> int { let h = fun () -> int { return 0; }; mk(&h); return h(); }`,
+		},
+	}
 
-	f := requireFunc(t, funcs, "mk")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := requireFunc(t, requireBuildSSA(t, tt.src), tt.fn)
 
-	// f holds a closure that holds r, which points back at f; f and the environment outlive the frame,
-	// while r is never written so the closure keeps a copy and r needs no storage of its own
-	// the first lambda captures nothing, so it has no environment to allocate
-	assert.Len(t, findAllocations(f), 2)
-	assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
+			assert.Len(t, findAllocations(f), tt.allocs)
+			assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
+			assert.Empty(t, findValues(slices.Collect(f.UnorderedValues()), OpLocalAddr))
+		})
+	}
 }
 
 func TestHeapify_CopyIntoEscapingSlotStaysOnFrame(t *testing.T) {
@@ -715,8 +639,7 @@ func TestHeapify_CopyIntoEscapingSlotStaysOnFrame(t *testing.T) {
 
 func TestEscapeSummary_SelfRecursionAssumesTheWorst(t *testing.T) {
 	funcs := requireBuildSSA(t, `
-		fun f (p *int) -> *int { return f(p); }
-		fun main () -> int { return 0; }`)
+		fun f (p *int) -> *int { return f(p); }`)
 	f := requireFunc(t, funcs, "f")
 
 	// the call back into f can't use a summary that's still being computed, so p is handed to it as if it escapes
@@ -728,86 +651,13 @@ func TestEscapeSummary_SelfRecursionAssumesTheWorst(t *testing.T) {
 func TestEscapeSummary_MutualRecursionTerminates(t *testing.T) {
 	funcs := requireBuildSSA(t, `
 		fun even (p *int) -> *int { return odd(p); }
-		fun odd (p *int) -> *int { return even(p); }
-		fun main () -> int { return 0; }`)
+		fun odd (p *int) -> *int { return even(p); }`)
 
 	for _, name := range []string{"even", "odd"} {
 		f := requireFunc(t, funcs, name)
 		require.Len(t, f.escapes, 1, name)
 		assert.NotNil(t, f.escapes[0].heap, name)
 	}
-}
-
-func TestLowerResults_PinnedToResultRegister(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { return 7; }`)
-
-	f := requireFunc(t, funcs, "main")
-
-	// the block hands back exactly one value
-	require.Len(t, f.Entry.Control, 1)
-	result := f.Entry.Control[0]
-	assert.Equal(t, OpResult, result.Op)
-
-	// the result names the register the ABI returns in without occupying one itself
-	assert.Equal(t, LocRegister, result.Loc.Kind)
-	assert.Equal(t, register.Results[0], result.Loc.Reg)
-	assert.False(t, result.NeedsRegister())
-	assert.True(t, types.Equal(types.Int(), result.Type))
-
-	// a copy pinned to the same register puts the returned value there
-	require.Len(t, result.Args, 1)
-	move := result.Args[0]
-	assert.Equal(t, OpCopy, move.Op)
-	assert.Equal(t, LocRegister, move.Loc.Kind)
-	assert.Equal(t, register.Results[0], move.Loc.Reg)
-
-	require.Len(t, move.Args, 1)
-	assert.Equal(t, OpLiteral, move.Args[0].Op)
-	assert.Equal(t, int32(7), move.Args[0].Value)
-}
-
-func TestGenSsa_TupleReturn_SplitsIntoResultRegisters(t *testing.T) {
-	funcs := requireBuildSSA(t, `
-		fun make () -> (int, int) { return (20, 13); }
-		fun main () -> int { let r = make(); return r.0 + r.1; }
-	`)
-
-	f := requireFunc(t, funcs, "make")
-
-	// the callee hands back one value per leaf, in ABI order
-	require.Len(t, f.Entry.Control, 2)
-
-	first := requireResult(t, f.Entry, 0)
-	assert.True(t, types.Equal(types.Int(), first.Type))
-
-	second := requireResult(t, f.Entry, 1)
-	assert.True(t, types.Equal(types.Int(), second.Type))
-}
-
-func TestLowerCallResults_TupleResultSplitsIntoLeaves(t *testing.T) {
-	funcs := requireBuildSSA(t, `
-		fun make () -> (int, int) { return (20, 13); }
-		fun main () -> int { let r = make(); return r.0 + r.1; }
-	`)
-
-	main := requireFunc(t, funcs, "main")
-	call := requireCall(t, funcs, "main")
-
-	// the caller reads the result back out of the same registers the callee handed it over in
-	callResults := findValues(main.Entry.Values, OpCallResult)
-	require.Len(t, callResults, 2)
-
-	assert.Equal(t, 0, callResults[0].Value)
-	assert.Equal(t, LocRegister, callResults[0].Loc.Kind)
-	assert.Equal(t, register.Results[0], callResults[0].Loc.Reg)
-	require.Len(t, callResults[0].Args, 1)
-	assert.Same(t, call, callResults[0].Args[0])
-
-	assert.Equal(t, 1, callResults[1].Value)
-	assert.Equal(t, LocRegister, callResults[1].Loc.Kind)
-	assert.Equal(t, register.Results[1], callResults[1].Loc.Reg)
-	require.Len(t, callResults[1].Args, 1)
-	assert.Same(t, call, callResults[1].Args[0])
 }
 
 func TestLowerResults_OverflowResultGoesToMemory(t *testing.T) {
@@ -819,9 +669,9 @@ func TestLowerResults_OverflowResultGoesToMemory(t *testing.T) {
 	f := requireFunc(t, funcs, "make")
 	require.Len(t, f.Entry.Control, 3)
 
-	// the first two leaves ride back in the result registers
-	requireResult(t, f.Entry, 0)
-	requireResult(t, f.Entry, 1)
+	// the first two leaves ride back in the result registers, in ABI order
+	assert.True(t, types.Equal(types.Int(), requireResult(t, f.Entry, 0).Type))
+	assert.True(t, types.Equal(types.Int(), requireResult(t, f.Entry, 1).Type))
 
 	// make takes no arguments, so the third leaf goes in the first slot of the caller's region
 	third := f.Entry.Control[2]
@@ -838,19 +688,22 @@ func TestLowerCallResults_OverflowResultReadFromMemory(t *testing.T) {
 	`)
 
 	main := requireFunc(t, funcs, "main")
+	call := requireCall(t, funcs, "main")
 	callResults := findValues(main.Entry.Values, OpCallResult)
 	require.Len(t, callResults, 3)
 
-	assert.Equal(t, LocRegister, callResults[0].Loc.Kind)
-	assert.Equal(t, register.Results[0], callResults[0].Loc.Reg)
+	for i, result := range callResults {
+		assert.Equal(t, i, result.Value)
+		require.Len(t, result.Args, 1)
+		assert.Same(t, call, result.Args[0])
+	}
 
-	assert.Equal(t, LocRegister, callResults[1].Loc.Kind)
-	assert.Equal(t, register.Results[1], callResults[1].Loc.Reg)
+	// the caller reads the first two back out of the same registers the callee handed them over in
+	assert.Equal(t, NewReg(register.Results[0]), callResults[0].Loc)
+	assert.Equal(t, NewReg(register.Results[1]), callResults[1].Loc)
 
 	// the third comes back out of the bottom of the caller's own frame
-	assert.Equal(t, LocMemory, callResults[2].Loc.Kind)
-	assert.Equal(t, register.RegSP, callResults[2].Loc.Reg)
-	assert.Equal(t, 0, callResults[2].Loc.Offset)
+	assert.Equal(t, NewMem(register.RegSP, 0), callResults[2].Loc)
 
 	// which the caller has to reserve room for
 	assert.GreaterOrEqual(t, main.maxOutgoingSize(), stackSlotSize)
@@ -899,19 +752,6 @@ func TestUnoptimized_Nil(t *testing.T) {
 	assert.True(t, types.Equal(types.Int64(), literals[0].Type))
 }
 
-func TestGenSsa_LetRec_EscapingClosureIsHeapified(t *testing.T) {
-	funcs := requireBuildSSA(t, `
-		fun mk () -> fun () -> int { let rec g = fun () -> int { let h = g; return 5; }; return g; }
-		fun main () -> int { let f = mk(); return 2; }`)
-
-	f := requireFunc(t, funcs, "mk")
-
-	// the environment and g's slot point at each other, and both outlive the frame
-	assert.Len(t, findAllocations(f), 2)
-	assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
-	assert.Empty(t, findValues(f.Entry.Values, OpLocalAddr))
-}
-
 func TestHeapify_CalledClosureEnvironmentStaysOnFrame(t *testing.T) {
 	funcs := requireBuildSSA(t, `
 		fun mk () -> *int {
@@ -929,21 +769,6 @@ func TestHeapify_CalledClosureEnvironmentStaysOnFrame(t *testing.T) {
 	// what the environment points at is still fair game, and this callee hands x's box back out
 	requireAllocate(t, f)
 	assert.Nil(t, slotNamed(f, "x"))
-}
-
-func TestHeapify_ClosureLeakingItselfThroughCaptureIsHeapified(t *testing.T) {
-	funcs := requireBuildSSA(t, `
-		fun mk (r *fun () -> int) {
-			let rec g = fun () -> int { *r = g; return 1; };
-			g();
-		}
-		fun main () -> int { let h = fun () -> int { return 0; }; mk(&h); return h(); }`)
-
-	f := requireFunc(t, funcs, "mk")
-
-	// g reaches its own environment through its box, so calling it leaks both the environment and g's box
-	assert.Len(t, findAllocations(f), 2)
-	assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
 }
 
 func TestHeapify_VariableDeclaredInLoopIsAllocatedInLoop(t *testing.T) {
@@ -1117,6 +942,7 @@ func requireResult(t *testing.T, b *Block, i int) *Value {
 	require.Equal(t, i, result.Value, "a result carries the index of the register it lands in")
 	require.Equal(t, LocRegister, result.Loc.Kind)
 	require.Equal(t, register.Results[i], result.Loc.Reg)
+	require.False(t, result.NeedsRegister(), "a result names its register without occupying one")
 	require.Len(t, result.Args, 1)
 
 	// the result is a placeholder, so the copy pinned to its register is what places the value
@@ -1125,6 +951,7 @@ func requireResult(t *testing.T, b *Block, i int) *Value {
 	require.Equal(t, LocRegister, move.Loc.Kind)
 	require.Equal(t, register.Results[i], move.Loc.Reg)
 	require.Len(t, move.Args, 1)
+	require.True(t, types.Equal(move.Args[0].Type, result.Type), "a result carries the type of what it returns")
 
 	return move.Args[0]
 }
@@ -1201,7 +1028,7 @@ func slotNamed(f *Func, sym string) *Slot {
 	return nil
 }
 
-func TestGenSsa_Closure_EnvironmentLayout(t *testing.T) {
+func TestGenSsa_Closure_ImmutableCaptureIsCopied(t *testing.T) {
 	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; let f = fun (y int) -> int { return x + y; }; return x; }`)
 
 	f := requireFunc(t, funcs, "main")
@@ -1216,6 +1043,22 @@ func TestGenSsa_Closure_EnvironmentLayout(t *testing.T) {
 	require.Equal(t, OpLiteral, capture.Op)
 	assert.Equal(t, int32(10), capture.Value)
 	assert.Nil(t, slotNamed(f, "x"))
+
+	// the caller leaves the environment in the context register, so that is where it is read from
+	lambda := requireFunc(t, funcs, "main.func0")
+	ptr := requireClosurePtr(t, lambda)
+	assert.Equal(t, NewReg(register.ClosureContext), ptr.Loc)
+	assert.Empty(t, ptr.Args, "the context register is a location, not a computed value")
+	assert.Same(t, lambda.Entry.Values[0], ptr, "the environment must be read before any call can clobber it")
+
+	// x's value sits right at the front of the environment, one hop away
+	value := requireLoadFrom(t, lambda, ptr)
+	assert.Zero(t, value.Offset)
+	assert.True(t, types.Equal(types.Int(), value.Type))
+
+	adds := findValues(lambda.Entry.Values, OpAdd)
+	require.Len(t, adds, 1)
+	assert.Contains(t, adds[0].Args, value, "the captured value is what feeds the addition")
 }
 
 func TestGenSsa_Closure_MutatedCaptureIsBoxed(t *testing.T) {
@@ -1233,6 +1076,21 @@ func TestGenSsa_Closure_MutatedCaptureIsBoxed(t *testing.T) {
 	require.Equal(t, OpLocalAddr, capture.Op)
 	assert.Same(t, slotNamed(f, "x"), capture.Slot())
 	assert.True(t, types.Equal(types.Pointer(types.Int()), capture.Type))
+
+	// one hop to the box pointer sitting at the front of the environment
+	lambda := requireFunc(t, funcs, "main.func0")
+	box := requireLoadFrom(t, lambda, requireClosurePtr(t, lambda))
+	assert.Zero(t, box.Offset)
+	assert.True(t, types.Equal(types.Pointer(types.Int()), box.Type))
+
+	// and a second to x itself, which is what keeps a write on either side visible to both
+	value := requireLoadFrom(t, lambda, box)
+	assert.Zero(t, value.Offset)
+	assert.True(t, types.Equal(types.Int(), value.Type))
+
+	adds := findValues(lambda.Entry.Values, OpAdd)
+	require.Len(t, adds, 1)
+	assert.Contains(t, adds[0].Args, value, "the captured value is what feeds the addition")
 }
 
 func TestGenSsa_LetRec_SelfCaptureIsBoxed(t *testing.T) {
@@ -1247,105 +1105,37 @@ func TestGenSsa_LetRec_SelfCaptureIsBoxed(t *testing.T) {
 		"expected (*fun () -> int,), got %v", env.Type)
 }
 
-func TestGenSsa_Closure_PrologueReadsContextRegister(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; let f = fun (y int) -> int { return x + y; }; return x; }`)
+// TestGenSsa_Closure_NestedCaptureForwardsWhatItWasHanded covers a middle lambda that never had x on its frame
+func TestGenSsa_Closure_NestedCaptureForwardsWhatItWasHanded(t *testing.T) {
+	tests := []struct {
+		name  string
+		write string // what main does to x once the closures are built
+		want  *types.Type
+	}{
+		{name: "the value of an immutable capture", want: types.Int()},
+		{name: "the box of a mutated capture", write: `x = 11;`, want: types.Pointer(types.Int())},
+	}
 
-	lambda := requireFunc(t, funcs, "main.func0")
-	env := requireClosurePtr(t, lambda)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			funcs := requireBuildSSA(t, fmt.Sprintf(`fun main () -> int {
+				let x = 10;
+				let f = fun () -> int {
+					let g = fun () -> int { return x; };
+					return 2;
+				};
+				%s
+				return 3;
+			}`, tt.write))
 
-	// the caller leaves the environment in the context register, so that is where it is read from
-	assert.Equal(t, LocRegister, env.Loc.Kind)
-	assert.Equal(t, register.ClosureContext, env.Loc.Reg)
-	assert.Empty(t, env.Args, "the context register is a location, not a computed value")
-	assert.Same(t, lambda.Entry.Values[0], env, "the environment must be read before any call can clobber it")
-}
+			middle := requireFunc(t, funcs, "main.func0")
+			handed := requireLoadFrom(t, middle, requireClosurePtr(t, middle))
+			assert.True(t, types.Equal(tt.want, handed.Type))
 
-func TestGenSsa_Closure_ReadsImmutableCaptureFromEnvironment(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; let f = fun (y int) -> int { return x + y; }; return x; }`)
-
-	lambda := requireFunc(t, funcs, "main.func0")
-	env := requireClosurePtr(t, lambda)
-
-	// x's value sits right at the front of the environment, one hop away
-	value := requireLoadFrom(t, lambda, env)
-	assert.Zero(t, value.Offset)
-	assert.True(t, types.Equal(types.Int(), value.Type))
-
-	adds := findValues(lambda.Entry.Values, OpAdd)
-	require.Len(t, adds, 1)
-	assert.Contains(t, adds[0].Args, value, "the captured value is what feeds the addition")
-}
-
-func TestGenSsa_Closure_ReadsCaptureThroughItsBox(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int { let x = 10; let f = fun (y int) -> int { return x + y; }; x = 5; return x; }`)
-
-	lambda := requireFunc(t, funcs, "main.func0")
-	env := requireClosurePtr(t, lambda)
-
-	// one hop to the box pointer sitting at the front of the environment
-	box := requireLoadFrom(t, lambda, env)
-	assert.Zero(t, box.Offset)
-	assert.True(t, types.Equal(types.Pointer(types.Int()), box.Type))
-
-	// and a second to x itself, which is what keeps a write on either side visible to both
-	value := requireLoadFrom(t, lambda, box)
-	assert.Zero(t, value.Offset)
-	assert.True(t, types.Equal(types.Int(), value.Type))
-
-	adds := findValues(lambda.Entry.Values, OpAdd)
-	require.Len(t, adds, 1)
-	assert.Contains(t, adds[0].Args, value, "the captured value is what feeds the addition")
-}
-
-func TestGenSsa_Closure_EscapingEnvironmentIsHeapified(t *testing.T) {
-	funcs := requireBuildSSA(t, `
-		fun adderFactory (x int) -> fun (int) -> int { return fun (y int) -> int { return x + y; }; }
-		fun main () -> int { let f = adderFactory(1); return 2; }`)
-
-	f := requireFunc(t, funcs, "adderFactory")
-
-	// the closure outlives the frame, so its environment moves to the heap, carrying its own copy of x along
-	requireAllocate(t, f)
-	assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
-	assert.Empty(t, findValues(f.Entry.Values, OpLocalAddr))
-}
-
-func TestGenSsa_Closure_NestedCaptureForwardsTheValue(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int {
-		let x = 10;
-		let f = fun () -> int {
-			let g = fun () -> int { return x; };
-			return 2;
-		};
-		return 3;
-	}`)
-
-	// the middle lambda never had x on its frame, so it copies over the value it was handed
-	middle := requireFunc(t, funcs, "main.func0")
-	value := requireLoadFrom(t, middle, requireClosurePtr(t, middle))
-	assert.True(t, types.Equal(types.Int(), value.Type))
-
-	inner := requireStoredAt(t, middle, requireEnvSlot(t, middle), 0)
-	assert.Same(t, value, inner, "the inner environment must hold the value the middle one was handed")
-}
-
-func TestGenSsa_Closure_NestedCaptureForwardsTheSamePointer(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int {
-		let x = 10;
-		let f = fun () -> int {
-			let g = fun () -> int { return x; };
-			return 2;
-		};
-		x = 11;
-		return 3;
-	}`)
-
-	// the middle lambda never had x on its frame, so it passes along the pointer it was handed
-	middle := requireFunc(t, funcs, "main.func0")
-	box := requireLoadFrom(t, middle, requireClosurePtr(t, middle))
-
-	inner := requireStoredAt(t, middle, requireEnvSlot(t, middle), 0)
-	assert.Same(t, box, inner, "both environments must name the one box")
+			inner := requireStoredAt(t, middle, requireEnvSlot(t, middle), 0)
+			assert.Same(t, handed, inner, "the inner environment must hold what the middle one was handed")
+		})
+	}
 }
 
 func TestGenSsa_Closure_CaptureAtLeafCapIsCopied(t *testing.T) {
@@ -1463,12 +1253,19 @@ func TestGenSsa_ClosureCall_OperandOrder(t *testing.T) {
 
 	// the code pointer and the environment are the only operands ahead of the two ABI arguments
 	require.Len(t, call.Args, 4)
-	assert.Len(t, call.CallArgs(), 2, "the leading operands are not arguments")
+	require.Len(t, call.CallArgs(), 2, "the leading operands are not arguments")
+
+	// they travel out of band, so the arguments start at the first arg register
+	assertInArgRegisters(t, call.CallArgs())
 
 	// the first operand names the lifted lambda directly
 	code := throughCopies(call.Args[0])
 	require.Equal(t, OpLabelAddr, code.Op)
 	assert.Equal(t, "main.func0", code.Callee().Name())
+
+	// the callee reads its captures out of the context register, so the environment has to land there
+	assert.Equal(t, OpCopy, call.Args[1].Op, "the environment must be placed by a copy into its register")
+	assert.Equal(t, NewReg(register.ClosureContext), call.Args[1].Loc)
 
 	// the second is the environment, which the unknown target can't leak, so it stays on the frame
 	env := throughCopies(call.Args[1])
@@ -1478,42 +1275,6 @@ func TestGenSsa_ClosureCall_OperandOrder(t *testing.T) {
 	// the code pointer travels in the closure itself, so nothing loads it out of the environment
 	assert.Empty(t, findValues(f.Entry.Values, OpLoad),
 		"the code pointer must not be read through memory")
-}
-
-func TestLowerCalls_EnvironmentPinnedToContextRegister(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int {
-		let x = 10;
-		let f = fun (y int, z int) -> int { return x + y + z; };
-		return f(2, 3);
-	}`)
-
-	call := requireClosureCall(t, funcs, "main")
-
-	// the callee reads its captures out of the context register, so the environment has to land there
-	env := call.Args[1]
-	assert.Equal(t, OpCopy, env.Op, "the environment must be placed by a copy into its register")
-	assert.Equal(t, LocRegister, env.Loc.Kind)
-	assert.Equal(t, register.ClosureContext, env.Loc.Reg)
-}
-
-func TestLowerCalls_ClosureArgRegisters(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int {
-		let x = 10;
-		let f = fun (y int, z int) -> int { return x + y + z; };
-		return f(2, 3);
-	}`)
-
-	call := requireClosureCall(t, funcs, "main")
-
-	// the two leading operands travel out of band, so the arguments start at the first arg register
-	args := call.CallArgs()
-	require.Len(t, args, 2)
-
-	assert.Equal(t, LocRegister, args[0].Loc.Kind)
-	assert.Equal(t, register.Args[0], args[0].Loc.Reg)
-
-	assert.Equal(t, LocRegister, args[1].Loc.Kind)
-	assert.Equal(t, register.Args[1], args[1].Loc.Reg)
 }
 
 // requireClosureCall returns the single indirect call in the named function.
@@ -1533,7 +1294,13 @@ func TestGenSsa_DirectCall_BuildsNoEnvironment(t *testing.T) {
 	f := requireFunc(t, funcs, "main")
 
 	// naming a global as a call target is still a direct call, with nothing allocated for it
-	assert.Equal(t, "add", requireCall(t, funcs, "main").Callee().Name())
+	call := requireCall(t, funcs, "main")
+	require.NotNil(t, call.Callee(), "call should name its target")
+	assert.Equal(t, "add", call.Callee().Name())
+
+	// a direct call names its target, so Args holds the arguments alone
+	assert.Len(t, call.Args, 2)
+
 	assert.Empty(t, findValues(f.Entry.Values, OpClosureCall))
 	assert.Empty(t, findValues(f.Entry.Values, OpLabelAddr))
 	assert.Empty(t, f.Slots)
@@ -1547,7 +1314,8 @@ func TestSpill_EvictedLiteralIsRebuiltAtItsUse(t *testing.T) {
 		return t.0 + t.15;
 	}`)
 
-	values := requireFunc(t, funcs, "main").Entry.Values
+	f := requireFunc(t, funcs, "main")
+	values := f.Entry.Values
 
 	// every field is built before the first store, so more literals are live at once than there are registers;
 	// the ones that lose theirs are rebuilt in among the stores that need them
@@ -1568,22 +1336,9 @@ func TestSpill_EvictedLiteralIsRebuiltAtItsUse(t *testing.T) {
 			assert.NotEqual(t, OpLiteral, v.Args[0].Op, "a literal must never be spilled")
 		}
 	}
-}
 
-func TestSpill_RebuiltLiteralLeavesNoDeadOriginal(t *testing.T) {
-	funcs := requireBuildSSA(t, `fun main () -> int {
-		let t = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-		let p = &t;
-		*p = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
-		return t.0 + t.15;
-	}`)
-
-	f := requireFunc(t, funcs, "main")
-
-	// a literal rebuilt at every use leaves nothing reading its first definition, so that definition goes too
-	for _, v := range findValues(f.Entry.Values, OpLiteral) {
-		assert.True(t, f.hasUses(v), "literal %v is defined but never read", v.Value)
-	}
+	// and a literal rebuilt at every use leaves nothing reading its first definition, so that definition goes too
+	assert.Empty(t, slices.DeleteFunc(findValues(values, OpLiteral), f.hasUses))
 }
 
 // TestPruneUnreachable_EveryPathReturns covers conditionals that strand their merge block behind returns
@@ -1604,7 +1359,7 @@ func TestPruneUnreachable_EveryPathReturns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := requireFunc(t, requireBuildSSA(t, tt.src+` fun main () -> int { return 0; }`), "f")
+			f := requireFunc(t, requireBuildSSA(t, tt.src), "f")
 
 			reachable := blockIds(slices.Collect(f.OrderedBlocks()))
 			assert.ElementsMatch(t, reachable, blockIds(f.Blocks), "every remaining block is reachable")
@@ -1617,7 +1372,7 @@ func TestPruneUnreachable_EveryPathReturns(t *testing.T) {
 }
 
 func TestGenSsa_Conditional_BuildsDiamond(t *testing.T) {
-	f := requireFunc(t, requireBuildSSA(t, `fun f (c bool) -> int { if c { 1 } else { 2 } } fun main () -> int { 0 }`), "f")
+	f := requireFunc(t, requireBuildSSA(t, `fun f (c bool) -> int { if c { 1 } else { 2 } }`), "f")
 
 	branch := f.Entry
 	require.Equal(t, BlockIf, branch.Kind)
@@ -1636,13 +1391,28 @@ func TestGenSsa_Conditional_BuildsDiamond(t *testing.T) {
 	merge := then.Successors[0]
 	assert.Same(t, merge, els.Successors[0])
 	assert.Equal(t, BlockRet, merge.Kind)
-	assert.ElementsMatch(t, []int{then.Id, els.Id}, blockIds(merge.Predecessors))
+	require.Equal(t, []int{then.Id, els.Id}, blockIds(merge.Predecessors))
+
+	phi := requireReturned(t, merge)
+	require.Equal(t, OpPhi, phi.Op, "the merge block joins the value each arm leaves")
+	require.Len(t, phi.Args, 2)
+
+	// each operand lines up with the predecessor it comes in from
+	assert.Same(t, then, phi.Args[0].Block)
+	assert.Equal(t, OpLiteral, phi.Args[0].Op)
+	assert.Equal(t, int32(1), phi.Args[0].Value)
+	assert.Same(t, els, phi.Args[1].Block)
+	assert.Equal(t, OpLiteral, phi.Args[1].Op)
+	assert.Equal(t, int32(2), phi.Args[1].Value)
+
+	assert.Empty(t, findValues(then.Values, OpStaticStore), "the slot is promoted out of memory")
+	assert.Empty(t, findValues(els.Values, OpStaticStore), "the slot is promoted out of memory")
+	assert.Empty(t, findValues(merge.Values, OpStaticLoad), "the slot is promoted out of memory")
 }
 
 func TestGenSsa_Loop_BreakInConditionalExitsLoop(t *testing.T) {
 	f := requireFunc(t, requireBuildSSA(t, `
-		fun f (n int) -> int { let i = 0; loop { if i == n { break; }; i = i + 1; }; i }
-		fun main () -> int { 0 }`), "f")
+		fun f (n int) -> int { let i = 0; loop { if i == n { break; }; i = i + 1; }; i }`), "f")
 
 	require.Len(t, f.Entry.Successors, 1)
 	header := f.Entry.Successors[0]
@@ -1666,8 +1436,7 @@ func TestGenSsa_Loop_BreakInConditionalExitsLoop(t *testing.T) {
 
 func TestGenSsa_Loop_ContinueInConditionalTargetsHeader(t *testing.T) {
 	f := requireFunc(t, requireBuildSSA(t, `
-		fun f (n int) -> int { let i = 0; loop { i = i + 1; if i < n { continue; }; break; }; i }
-		fun main () -> int { 0 }`), "f")
+		fun f (n int) -> int { let i = 0; loop { i = i + 1; if i < n { continue; }; break; }; i }`), "f")
 
 	require.Len(t, f.Entry.Successors, 1)
 	header := f.Entry.Successors[0]
@@ -1683,43 +1452,15 @@ func TestGenSsa_Loop_BodyValueIsEvaluated(t *testing.T) {
 	// the body's unit value is discarded, but the call producing it still happens
 	f := requireFunc(t, requireBuildSSA(t, `
 		fun g () { }
-		fun f () { loop { g() }; }
-		fun main () -> int { 0 }`), "f")
+		fun f () { loop { g() }; }`), "f")
 
 	assert.Len(t, findValues(slices.Collect(f.OrderedValues()), OpStaticCall), 1)
-}
-
-func TestMem2Reg_SlotSharedBetweenBlocksBecomesAPhi(t *testing.T) {
-	f := requireFunc(t, requireBuildSSA(t, `fun f (c bool) -> int { if c { 1 } else { 2 } } fun main () -> int { 0 }`), "f")
-
-	// the first successor is the one taken when the condition holds
-	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
-	require.Len(t, then.Successors, 1)
-	merge := then.Successors[0]
-	require.Equal(t, []int{then.Id, els.Id}, blockIds(merge.Predecessors))
-
-	phi := requireReturned(t, merge)
-	require.Equal(t, OpPhi, phi.Op, "the merge block joins the value each arm leaves")
-	require.Len(t, phi.Args, 2)
-
-	// each operand lines up with the predecessor it comes in from
-	assert.Same(t, then, phi.Args[0].Block)
-	assert.Equal(t, OpLiteral, phi.Args[0].Op)
-	assert.Equal(t, int32(1), phi.Args[0].Value)
-	assert.Same(t, els, phi.Args[1].Block)
-	assert.Equal(t, OpLiteral, phi.Args[1].Op)
-	assert.Equal(t, int32(2), phi.Args[1].Value)
-
-	assert.Empty(t, findValues(then.Values, OpStaticStore), "the slot is promoted out of memory")
-	assert.Empty(t, findValues(els.Values, OpStaticStore), "the slot is promoted out of memory")
-	assert.Empty(t, findValues(merge.Values, OpStaticLoad), "the slot is promoted out of memory")
 }
 
 func TestMem2Reg_VariableReadAcrossABranchIsPromoted(t *testing.T) {
 	// neither arm assigns y, so every path reaching the read agrees on its value
 	f := requireFunc(t, requireBuildSSA(t, `
-		fun f (c bool, x int) -> int { let y = x * 3; if c { 1 } else { 2 }; y }
-		fun main () -> int { 0 }`), "f")
+		fun f (c bool, x int) -> int { let y = x * 3; if c { 1 } else { 2 }; y }`), "f")
 
 	assert.Nil(t, slotNamed(f, "y"), "y should be promoted out of the frame")
 	assert.Empty(t, findValues(slices.Collect(f.OrderedValues()), OpStaticLoad), "nothing is read back out of memory")
@@ -1733,8 +1474,7 @@ func TestMem2Reg_VariableReadAcrossABranchIsPromoted(t *testing.T) {
 func TestMem2Reg_VariableReassignedInsideOneArmIsPromoted(t *testing.T) {
 	// y changes in the then arm, but only that arm reads the new value
 	f := requireFunc(t, requireBuildSSA(t, `
-		fun f (c bool, x int) -> int { let y = x * 3; if c { y = y + 1; return y; }; 0 }
-		fun main () -> int { 0 }`), "f")
+		fun f (c bool, x int) -> int { let y = x * 3; if c { y = y + 1; return y; }; 0 }`), "f")
 
 	assert.Nil(t, slotNamed(f, "y"), "y should be promoted out of the frame")
 
@@ -1748,8 +1488,7 @@ func TestMem2Reg_VariableReassignedInsideOneArmIsPromoted(t *testing.T) {
 func TestMem2Reg_ArmThatReturnsLeavesNothingToMerge(t *testing.T) {
 	// only the else arm reaches the merge, so the conditional's value comes from it alone
 	f := requireFunc(t, requireBuildSSA(t, `
-		fun f (c bool) -> int { let x = if c { return 0; } else { 2 }; x }
-		fun main () -> int { 0 }`), "f")
+		fun f (c bool) -> int { let x = if c { return 0; } else { 2 }; x }`), "f")
 
 	assert.Empty(t, f.Slots, "the conditional's value and x should both be promoted")
 
@@ -1775,7 +1514,7 @@ func TestSpill_ValueReadAcrossABranchKeepsItsRegister(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := requireFunc(t, requireBuildSSA(t, tt.src+` fun main () -> int { 0 }`), "f")
+			f := requireFunc(t, requireBuildSSA(t, tt.src), "f")
 
 			subs := findValues(slices.Collect(f.OrderedValues()), OpSubtract)
 			require.Len(t, subs, 2)
@@ -1793,29 +1532,19 @@ func TestSpill_ValueEvictedInsideABranchIsStoredWhereItIsDefined(t *testing.T) {
 	f := requireFunc(t, requireBuildSSA(t, `
 		fun f (c bool, a int, b int, d int, e int, g int, h int, i int, j int, k int, l int, m int, n int) -> int {
 			a + (b + (d + (e + (g + (h + (i + (j + (k + (l + (m + (n + if c { a * b + (d * e + (g * h)) } else { 1 })))))))))))
-		}
-		fun main () -> int { 0 }`), "f")
+		}`), "f")
 	require.Len(t, f.Entry.Successors, 2)
 	then := f.Entry.Successors[0]
 
 	// the then arm is where registers run out, but a store there would only run on one path to the merge
-	assert.Empty(t, findForeignStores(then))
+	assert.Empty(t, findStoresWhere(then, func(v *Value) bool { return v.Args[0].Block != then }))
 
 	// so what it gives up is stored where it was defined, which runs whichever way the branch goes
-	assert.NotEmpty(t, findSpillStores(f.Entry))
-}
-
-func TestSpill_BranchConditionIsNotCarriedIntoTheArms(t *testing.T) {
-	// a through n wait out the branch, and the then arm needs more registers than they leave free
-	f := requireFunc(t, requireBuildSSA(t, `
-		fun f (c bool, a int, b int, d int, e int, g int, h int, i int, j int, k int, l int, m int, n int) -> int {
-			a + (b + (d + (e + (g + (h + (i + (j + (k + (l + (m + (n + if c { a * b + (d * e + (g * h)) } else { 1 })))))))))))
-		}
-		fun main () -> int { 0 }`), "f")
-	require.Equal(t, BlockIf, f.Entry.Kind)
-	require.Len(t, f.Entry.Control, 1)
+	assert.NotEmpty(t, findStoresWhere(f.Entry, func(v *Value) bool { return v.Slot().Sym == nil }))
 
 	// the condition is dead once the branch is taken, so the arms never hold it, let alone spill it
+	require.Equal(t, BlockIf, f.Entry.Kind)
+	require.Len(t, f.Entry.Control, 1)
 	assert.Empty(t, findStoresOf(f, f.Entry.Control[0]))
 }
 
@@ -1825,8 +1554,7 @@ func TestSpill_PressureBeforeABranchGivesUpTheValueReadLast(t *testing.T) {
 	f := requireFunc(t, requireBuildSSA(t, `
 		fun f (c bool, a int, b int, d int, e int, g int, h int, i int, j int, k int, l int, m int, n int, o int, p int, q int) -> int {
 			a + (b + (d + (e + (g + (h + (i + (j + (k + (l + (m + (n + (o + (p + (q + if c { 1 } else { 2 }))))))))))))))
-		}
-		fun main () -> int { 0 }`), "f")
+		}`), "f")
 
 	// counting through the branch, a's next read is the furthest away, so it's the one spilled
 	assert.Len(t, findStoresOf(f, requireParamCopy(t, f, 1)), 1)
@@ -1841,8 +1569,7 @@ func TestSpill_EvictedConditionIsReloadedForTheBranch(t *testing.T) {
 		fun f (c bool, a int, b int, d int, e int, g int, h int, i int, j int, k int, l int, m int, n int, o int, p int, q int) -> int {
 			let s = a * (b + (d * (e + (g * (h + (i * (j + (k * (l + (m * (n + (o * (p + q)))))))))))));
 			if c { s } else { 0 }
-		}
-		fun main () -> int { 0 }`), "f")
+		}`), "f")
 	require.Equal(t, BlockIf, f.Entry.Kind)
 	require.Len(t, f.Entry.Control, 1)
 
@@ -1860,8 +1587,7 @@ func TestRegalloc_ValueOnlyOneArmNeedsIgnoresACallInTheOther(t *testing.T) {
 	// x escapes, so the entry block allocates it and only the then arm still needs the pointer
 	f := requireFunc(t, requireBuildSSA(t, `
 		fun g () -> int { 0 }
-		fun f (c bool) -> *int { let x = 7; if c { return &x; } else { g(); return nil; } }
-		fun main () -> int { 0 }`), "f")
+		fun f (c bool) -> *int { let x = 7; if c { return &x; } else { g(); return nil; } }`), "f")
 	require.Len(t, f.Entry.Successors, 2)
 	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
 	require.NotEmpty(t, findValues(els.Values, OpStaticCall), "the else arm makes a call")
@@ -1883,8 +1609,7 @@ func TestSpill_EvictedPhiIsStoredAfterEveryPhi(t *testing.T) {
 			let y = 0;
 			if c { x = 1; y = 2; } else { x = 3; y = 4; };
 			y + (a + (b + (d + (e + (g + (h + (i + (j + (k + (l + (m + (n + x * 2))))))))))))
-		}
-		fun main () -> int { 0 }`), "f")
+		}`), "f")
 	require.Len(t, f.Entry.Successors, 2)
 	then := f.Entry.Successors[0]
 	require.Len(t, then.Successors, 1)
@@ -1914,8 +1639,7 @@ func TestSpill_PhisBeyondTheRegistersWaitInMemory(t *testing.T) {
 				k = 25; l = 26; m = 27; n = 28; o = 29; p = 30; q = 31; r = 32;
 			};
 			a + b + d + e + g + h + i + j + k + l + m + n + o + p + q + r
-		}
-		fun main () -> int { 0 }`), "f")
+		}`), "f")
 	require.Len(t, f.Entry.Successors, 2)
 	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
 	merge := requireReturnBlock(t, f)
@@ -1941,28 +1665,9 @@ func TestSpill_PhisBeyondTheRegistersWaitInMemory(t *testing.T) {
 	require.Len(t, elseStores, 1)
 	assert.Equal(t, OpLiteral, elseStores[0].Args[0].Op)
 	assert.Equal(t, int32(32), elseStores[0].Args[0].Value)
-}
 
-func TestSpill_LiteralRebuiltForAMemoryPhiLeavesNoDeadOriginal(t *testing.T) {
-	// every arm's literals outnumber the registers, so some are given up and rebuilt to be stored for a memory phi
-	f := requireFunc(t, requireBuildSSA(t, `
-		fun f (c bool) -> int {
-			let a = 0; let b = 0; let d = 0; let e = 0; let g = 0; let h = 0; let i = 0; let j = 0;
-			let k = 0; let l = 0; let m = 0; let n = 0; let o = 0; let p = 0; let q = 0; let r = 0;
-			if c {
-				a = 1; b = 2; d = 3; e = 4; g = 5; h = 6; i = 7; j = 8;
-				k = 9; l = 10; m = 11; n = 12; o = 13; p = 14; q = 15; r = 16;
-			} else {
-				a = 17; b = 18; d = 19; e = 20; g = 21; h = 22; i = 23; j = 24;
-				k = 25; l = 26; m = 27; n = 28; o = 29; p = 30; q = 31; r = 32;
-			};
-			a + b + d + e + g + h + i + j + k + l + m + n + o + p + q + r
-		}
-		fun main () -> int { 0 }`), "f")
-	require.Len(t, f.Entry.Successors, 2)
-	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
-
-	// once the memory phi is gone, nothing reads the literal it was handed, so that literal goes too
+	// every arm's literals outnumber the registers, so some are rebuilt to be stored for a memory phi;
+	// once that phi is gone, nothing reads the literal it was handed, so that literal goes too
 	assert.Empty(t, slices.DeleteFunc(findValues(then.Values, OpLiteral), f.hasUses))
 	assert.Empty(t, slices.DeleteFunc(findValues(els.Values, OpLiteral), f.hasUses))
 }
@@ -1976,8 +1681,7 @@ func TestRegalloc_PhiTakesTheRegisterItsOperandsShare(t *testing.T) {
 			let x = 0;
 			if c { x = 1; g(x); } else { x = 2; g(x); };
 			x
-		}
-		fun main () -> int { 0 }`), "f")
+		}`), "f")
 	require.Len(t, f.Entry.Successors, 2)
 	then := f.Entry.Successors[0]
 	require.Len(t, then.Successors, 1)
@@ -1993,65 +1697,61 @@ func TestRegalloc_PhiTakesTheRegisterItsOperandsShare(t *testing.T) {
 	assert.Equal(t, phi.Args[0].Loc, phi.Loc)
 }
 
-func TestGenSsa_And_EvaluatesRightOperandOnlyWhenLeftHolds(t *testing.T) {
-	f := requireFunc(t, requireBuildSSA(t, `fun g () -> bool { true } fun f (a bool) -> bool { a && g() } fun main () -> int { 0 }`), "f")
+// TestGenSsa_ShortCircuit_EvaluatesRightOperandOnOneArm relies on the first successor being taken when the condition holds
+func TestGenSsa_ShortCircuit_EvaluatesRightOperandOnOneArm(t *testing.T) {
+	tests := []struct {
+		op    string
+		right int // the successor that evaluates the right operand
+	}{
+		{op: "&&", right: 0},
+		{op: "||", right: 1},
+	}
 
-	branch := f.Entry
-	require.Equal(t, BlockIf, branch.Kind)
-	require.Len(t, branch.Successors, 2)
+	for _, tt := range tests {
+		t.Run(tt.op, func(t *testing.T) {
+			src := fmt.Sprintf(`fun g () -> bool { true } fun f (a bool) -> bool { a %s g() }`, tt.op)
+			branch := requireFunc(t, requireBuildSSA(t, src), "f").Entry
+			require.Equal(t, BlockIf, branch.Kind)
+			require.Len(t, branch.Successors, 2)
 
-	// the first successor is the one taken when the condition holds
-	then, els := branch.Successors[0], branch.Successors[1]
-	assert.Empty(t, findValues(branch.Values, OpStaticCall))
-	assert.Len(t, findValues(then.Values, OpStaticCall), 1)
-	assert.Empty(t, findValues(els.Values, OpStaticCall))
+			assert.Empty(t, findValues(branch.Values, OpStaticCall))
+			assert.Len(t, findValues(branch.Successors[tt.right].Values, OpStaticCall), 1)
+			assert.Empty(t, findValues(branch.Successors[1-tt.right].Values, OpStaticCall))
+		})
+	}
 }
 
-func TestGenSsa_Or_EvaluatesRightOperandOnlyWhenLeftFails(t *testing.T) {
-	f := requireFunc(t, requireBuildSSA(t, `fun g () -> bool { true } fun f (a bool) -> bool { a || g() } fun main () -> int { 0 }`), "f")
+// TestMem2Reg_ShortCircuit_JoinsRightOperandWithLiteral covers the phi merging the two ways out of && and ||
+func TestMem2Reg_ShortCircuit_JoinsRightOperandWithLiteral(t *testing.T) {
+	tests := []struct {
+		op      string
+		right   int  // the phi operand holding the right operand
+		literal bool // what the arm skipping the right operand leaves
+	}{
+		{op: "&&", right: 0, literal: false},
+		{op: "||", right: 1, literal: true},
+	}
 
-	branch := f.Entry
-	require.Equal(t, BlockIf, branch.Kind)
-	require.Len(t, branch.Successors, 2)
+	for _, tt := range tests {
+		t.Run(tt.op, func(t *testing.T) {
+			f := requireFunc(t, requireBuildSSA(t, fmt.Sprintf(`fun f (a bool, b bool) -> bool { a %s b }`, tt.op)), "f")
 
-	then, els := branch.Successors[0], branch.Successors[1]
-	assert.Empty(t, findValues(branch.Values, OpStaticCall))
-	assert.Empty(t, findValues(then.Values, OpStaticCall))
-	assert.Len(t, findValues(els.Values, OpStaticCall), 1)
-}
+			require.Len(t, f.Entry.Successors, 2)
+			then := f.Entry.Successors[0]
+			require.Len(t, then.Successors, 1)
 
-func TestMem2Reg_AndJoinsRightOperandWithFalse(t *testing.T) {
-	f := requireFunc(t, requireBuildSSA(t, `fun f (a bool, b bool) -> bool { a && b } fun main () -> int { 0 }`), "f")
+			phi := requireReturned(t, then.Successors[0])
+			require.Equal(t, OpPhi, phi.Op)
+			require.Len(t, phi.Args, 2)
 
-	require.Len(t, f.Entry.Successors, 2)
-	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
-	require.Len(t, then.Successors, 1)
+			assert.Same(t, requireParamCopy(t, f, 1), phi.Args[tt.right])
 
-	phi := requireReturned(t, then.Successors[0])
-	require.Equal(t, OpPhi, phi.Op)
-	require.Len(t, phi.Args, 2)
-
-	assert.Same(t, requireParamCopy(t, f, 1), phi.Args[0])
-	assert.Same(t, els, phi.Args[1].Block)
-	assert.Equal(t, OpLiteral, phi.Args[1].Op)
-	assert.Equal(t, false, phi.Args[1].Value)
-}
-
-func TestMem2Reg_OrJoinsTrueWithRightOperand(t *testing.T) {
-	f := requireFunc(t, requireBuildSSA(t, `fun f (a bool, b bool) -> bool { a || b } fun main () -> int { 0 }`), "f")
-
-	require.Len(t, f.Entry.Successors, 2)
-	then := f.Entry.Successors[0]
-	require.Len(t, then.Successors, 1)
-
-	phi := requireReturned(t, then.Successors[0])
-	require.Equal(t, OpPhi, phi.Op)
-	require.Len(t, phi.Args, 2)
-
-	assert.Same(t, then, phi.Args[0].Block)
-	assert.Equal(t, OpLiteral, phi.Args[0].Op)
-	assert.Equal(t, true, phi.Args[0].Value)
-	assert.Same(t, requireParamCopy(t, f, 1), phi.Args[1])
+			skipped := phi.Args[1-tt.right]
+			assert.Same(t, f.Entry.Successors[1-tt.right], skipped.Block)
+			assert.Equal(t, OpLiteral, skipped.Op)
+			assert.Equal(t, tt.literal, skipped.Value)
+		})
+	}
 }
 
 func TestSpill_ValueNothingReadsAgainIsNotStored(t *testing.T) {
@@ -2069,8 +1769,7 @@ func TestSpill_ValueNothingReadsAgainIsNotStored(t *testing.T) {
 				i = i + 1;
 			};
 			acc + a + s
-		}
-		fun main () -> int { 0 }`), "f")
+		}`), "f")
 
 	assert.Empty(t, findUnreadStores(f))
 }
@@ -2090,49 +1789,28 @@ func TestSpill_BackEdgeRestoresValueEvictedInTheBody(t *testing.T) {
 				i = i + 1;
 			};
 			s
-		}
-		fun main () -> int { 0 }`), "f")
+		}`), "f")
 
-	restores := findRestores(requireLatch(t, f))
+	latch := requireLatch(t, f)
+	restores := findRestores(latch)
 	require.Len(t, restores, 1)
 	restore := restores[0]
 
 	// it comes back from the slot it was stored in, to the register the header expects it in
 	require.Equal(t, OpStaticLoad, restore.Op)
 	assert.Equal(t, requireStoreTo(t, f, restore.Slot()).Args[0].Loc, restore.Loc)
-}
 
-func TestSpill_BackEdgeMovesPhisBeforeItsRestores(t *testing.T) {
-	// the same loop as above: s and i go around the back edge while another value has to be put back
-	f := requireFunc(t, requireBuildSSA(t, `
-		fun id (x int) -> int { x }
-		fun f () -> int {
-			let a = id(1); let b = id(2); let c = id(3); let d = id(4); let e = id(5); let g = id(6); let h = id(7);
-			let s = 0;
-			let i = 0;
-			loop {
-				if i == 3 { break; };
-				s = s + a + b + c + d + e + g + h;
-				s = s + id(0);
-				i = i + 1;
-			};
-			s
-		}
-		fun main () -> int { 0 }`), "f")
-	latch := requireLatch(t, f)
+	// s and i go around the same edge, so each phi has its operand in place as the latch starts,
+	// so the latch's body can write what the moves read
 	header := latch.Successors[0]
 	back := slices.Index(header.Predecessors, latch)
-
 	phis := header.Values[:header.phiIndex()]
 	require.Len(t, phis, 2)
-
-	// each phi has its operand in place as the latch starts, so the latch's body can write what the moves read
-	assert.Equal(t, OpPhi, phis[0].Args[back].Op)
-	assert.Same(t, latch, phis[0].Args[back].Block)
-	assert.Equal(t, phis[0].Loc, phis[0].Args[back].Loc)
-	assert.Equal(t, OpPhi, phis[1].Args[back].Op)
-	assert.Same(t, latch, phis[1].Args[back].Block)
-	assert.Equal(t, phis[1].Loc, phis[1].Args[back].Loc)
+	for _, phi := range phis {
+		assert.Equal(t, OpPhi, phi.Args[back].Op)
+		assert.Same(t, latch, phi.Args[back].Block)
+		assert.Equal(t, phi.Loc, phi.Args[back].Loc)
+	}
 }
 
 func TestSpill_BackEdgeRebuildsLiteralEvictedInTheBody(t *testing.T) {
@@ -2151,8 +1829,7 @@ func TestSpill_BackEdgeRebuildsLiteralEvictedInTheBody(t *testing.T) {
 				i = i + 1;
 			};
 			s + k
-		}
-		fun main () -> int { 0 }`), "f")
+		}`), "f")
 
 	restores := findRestores(requireLatch(t, f))
 	require.Len(t, restores, 1)
@@ -2177,8 +1854,7 @@ func TestSpill_MemoryPhiTakesItsOperandOnTheBackEdge(t *testing.T) {
 				i = i + 1;
 			};
 			a + b + d + e + g + h + j + k + l + m + o + p + q + r + s + u
-		}
-		fun main () -> int { 0 }`), "f")
+		}`), "f")
 	latch := requireLatch(t, f)
 	exit := requireReturnBlock(t, f)
 
@@ -2209,8 +1885,7 @@ func TestSpill_BackEdgeLoadsSpilledOperandIntoItsPhi(t *testing.T) {
 				i = i + a + b + c + d + e + g;
 			};
 			total
-		}
-		fun main () -> int { 0 }`), "f")
+		}`), "f")
 	latch := requireLatch(t, f)
 
 	operand := requireRestoredOperand(t, latch)
@@ -2231,8 +1906,7 @@ func TestSpill_BlockJumpingToItselfFinishesItsOwnEdge(t *testing.T) {
 				s = s + a + b + c + d + e + g + h;
 				s = s + id(0);
 			};
-		}
-		fun main () -> int { 0 }`), "f")
+		}`), "f")
 	latch := requireLatch(t, f)
 
 	// what the edge puts back gets a block of its own, between the body and itself
@@ -2333,31 +2007,14 @@ func requireLiteral(t *testing.T, b *Block, value any) *Value {
 
 // findStoresTo returns the stores in b that write to slot
 func findStoresTo(b *Block, slot *Slot) []*Value {
-	var result []*Value
-	for _, v := range findValues(b.Values, OpStaticStore) {
-		if v.Slot() == slot {
-			result = append(result, v)
-		}
-	}
-	return result
+	return findStoresWhere(b, func(v *Value) bool { return v.Slot() == slot })
 }
 
-// findSpillStores returns the stores in b to slots without a variable of their own
-func findSpillStores(b *Block) []*Value {
+// findStoresWhere returns the stores in b that match
+func findStoresWhere(b *Block, match func(*Value) bool) []*Value {
 	var result []*Value
 	for _, v := range findValues(b.Values, OpStaticStore) {
-		if v.Slot().Sym == nil {
-			result = append(result, v)
-		}
-	}
-	return result
-}
-
-// findForeignStores returns the stores in b of values defined in some other block
-func findForeignStores(b *Block) []*Value {
-	var result []*Value
-	for _, v := range findValues(b.Values, OpStaticStore) {
-		if v.Args[0].Block != b {
+		if match(v) {
 			result = append(result, v)
 		}
 	}
@@ -2394,4 +2051,14 @@ func requireParamCopy(t *testing.T, f *Func, i int) *Value {
 	}
 	require.Len(t, copies, 1)
 	return copies[0]
+}
+
+// assertInArgRegisters asserts that values sit in the System V argument registers, in order
+func assertInArgRegisters(t *testing.T, values []*Value) {
+	t.Helper()
+
+	regs := []register.Register{register.RegDI, register.RegSI, register.RegD, register.RegC, register.Reg8, register.Reg9}
+	for i, v := range values {
+		assert.Equal(t, NewReg(regs[i]), v.Loc)
+	}
 }
