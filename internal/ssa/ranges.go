@@ -3,7 +3,7 @@ package ssa
 import (
 	"iter"
 
-	"github.com/chenota/acc/internal/register"
+	"github.com/chenota/acc/internal/target"
 )
 
 type span struct {
@@ -90,8 +90,8 @@ func (r liveRanges) liveOnEntry(b *Block, v *Value) bool {
 }
 
 // blockedFor is every register v can't have, because something else occupies it somewhere v is live
-func (r liveRanges) blockedFor(v *Value) register.Mask {
-	var m register.Mask
+func (r liveRanges) blockedFor(v *Value) target.Mask {
+	var m target.Mask
 	for _, spans := range r {
 		if s, ok := spans[v]; ok {
 			for u, regs := range occupants(spans, s) {
@@ -106,8 +106,8 @@ func (r liveRanges) blockedFor(v *Value) register.Mask {
 }
 
 // blockedAt is every register something occupies across position p of b
-func (r liveRanges) blockedAt(b *Block, p int) register.Mask {
-	var m register.Mask
+func (r liveRanges) blockedAt(b *Block, p int) target.Mask {
+	var m target.Mask
 	for _, regs := range occupants(r[b], span{Start: p, End: p + 1}) {
 		m = m.Union(regs)
 	}
@@ -115,10 +115,10 @@ func (r liveRanges) blockedAt(b *Block, p int) register.Mask {
 }
 
 // occupants yields each value occupying registers at some point during s, along with the registers it occupies.
-func occupants(spans map[*Value]span, s span) iter.Seq2[*Value, register.Mask] {
-	return func(yield func(*Value, register.Mask) bool) {
+func occupants(spans map[*Value]span, s span) iter.Seq2[*Value, target.Mask] {
+	return func(yield func(*Value, target.Mask) bool) {
 		for u, su := range spans {
-			var regs register.Mask
+			var regs target.Mask
 
 			// a value occupies its register for its whole span
 			if u.Loc.Kind == LocRegister && s.overlaps(su) {

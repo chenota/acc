@@ -1,7 +1,7 @@
 package ssa
 
 import (
-	"github.com/chenota/acc/internal/register"
+	"github.com/chenota/acc/internal/target"
 )
 
 const stackSlotSize = 8
@@ -73,14 +73,14 @@ func lowerDivides(f *Func) {
 		dividend := v.Args[0]
 		divisor := v.Args[1]
 
-		lo := copyTo(f, v, dividend, NewReg(register.RegA))
+		lo := copyTo(f, v, dividend, NewReg(target.RegA))
 
 		hi := f.insertValueBefore(v, OpSignExtend, dividend.Type, v.Block)
 		hi.setArgs(lo)
-		hi.Loc = NewReg(register.RegD)
+		hi.Loc = NewReg(target.RegD)
 
 		v.setArgs(lo, divisor, hi)
-		v.Loc = NewReg(register.RegA)
+		v.Loc = NewReg(target.RegA)
 
 		copyOut(f, v)
 	}
@@ -123,7 +123,7 @@ func lowerCallResults(f *Func) {
 }
 
 type abiSeq struct {
-	regs []register.Register
+	regs []target.Register
 	mem  func(n int) Location // home of the nth leaf past the registers
 }
 

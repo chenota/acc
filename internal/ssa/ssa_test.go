@@ -9,8 +9,8 @@ import (
 
 	"github.com/chenota/acc/internal/lexer"
 	"github.com/chenota/acc/internal/parser"
-	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/semantic"
+	"github.com/chenota/acc/internal/target"
 	"github.com/chenota/acc/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -291,10 +291,10 @@ func TestLowerCalls_StackArgs(t *testing.T) {
 
 	// the seventh and eighth are written into the outgoing area, lowest slot first
 	assert.Equal(t, LocMemory, call.Args[6].Loc.Kind)
-	assert.Equal(t, register.RegSP, call.Args[6].Loc.Reg)
+	assert.Equal(t, target.RegSP, call.Args[6].Loc.Reg)
 
 	assert.Equal(t, LocMemory, call.Args[7].Loc.Kind)
-	assert.Equal(t, register.RegSP, call.Args[7].Loc.Reg)
+	assert.Equal(t, target.RegSP, call.Args[7].Loc.Reg)
 
 	assert.Less(t, call.Args[6].Loc.Offset, call.Args[7].Loc.Offset)
 }
@@ -313,10 +313,10 @@ func TestLowerParams_StackParams(t *testing.T) {
 
 	// the rest arrive in the caller's frame, past the saved rbp and the return address
 	assert.Equal(t, LocMemory, params[6].Loc.Kind)
-	assert.Equal(t, register.RegBP, params[6].Loc.Reg)
+	assert.Equal(t, target.RegBP, params[6].Loc.Reg)
 
 	assert.Equal(t, LocMemory, params[7].Loc.Kind)
-	assert.Equal(t, register.RegBP, params[7].Loc.Reg)
+	assert.Equal(t, target.RegBP, params[7].Loc.Reg)
 
 	// above rbp is the caller's frame; below it would collide with our own locals
 	assert.Positive(t, params[6].Loc.Offset)
@@ -395,7 +395,7 @@ func TestGenSsa_Ref_KeepsAddressedSlotInFrame(t *testing.T) {
 
 	// the surviving slot gets a real home below rbp, not a register
 	assert.Equal(t, LocMemory, slot.Loc.Kind)
-	assert.Equal(t, register.RegBP, slot.Loc.Reg)
+	assert.Equal(t, target.RegBP, slot.Loc.Reg)
 
 	// the address names the slot it points at and lands in a register
 	addrs := findValues(f.Entry.Values, OpLocalAddr)
@@ -677,7 +677,7 @@ func TestLowerResults_OverflowResultGoesToMemory(t *testing.T) {
 	third := f.Entry.Control[2]
 	assert.Equal(t, OpResult, third.Op)
 	assert.Equal(t, LocMemory, third.Loc.Kind)
-	assert.Equal(t, register.RegBP, third.Loc.Reg)
+	assert.Equal(t, target.RegBP, third.Loc.Reg)
 	assert.Equal(t, incomingArgOffset(0), third.Loc.Offset)
 }
 
@@ -703,7 +703,7 @@ func TestLowerCallResults_OverflowResultReadFromMemory(t *testing.T) {
 	assert.Equal(t, NewReg(testTarget.Results[1]), callResults[1].Loc)
 
 	// the third comes back out of the bottom of the caller's own frame
-	assert.Equal(t, NewMem(register.RegSP, 0), callResults[2].Loc)
+	assert.Equal(t, NewMem(target.RegSP, 0), callResults[2].Loc)
 
 	// which the caller has to reserve room for
 	assert.GreaterOrEqual(t, main.maxOutgoingSize(), stackSlotSize)
@@ -723,7 +723,7 @@ func TestLowerResults_OverflowResultSitsAboveOverflowArguments(t *testing.T) {
 
 	written := callee.Entry.Control[2]
 	assert.Equal(t, LocMemory, written.Loc.Kind)
-	assert.Equal(t, register.RegBP, written.Loc.Reg)
+	assert.Equal(t, target.RegBP, written.Loc.Reg)
 	assert.Equal(t, incomingArgOffset(2), written.Loc.Offset)
 
 	// the caller names that same slot from its own side of the call
@@ -733,7 +733,7 @@ func TestLowerResults_OverflowResultSitsAboveOverflowArguments(t *testing.T) {
 
 	read := callResults[2]
 	assert.Equal(t, LocMemory, read.Loc.Kind)
-	assert.Equal(t, register.RegSP, read.Loc.Reg)
+	assert.Equal(t, target.RegSP, read.Loc.Reg)
 	assert.Equal(t, 2*stackSlotSize, read.Loc.Offset)
 
 	// and reserves the two argument slots plus the result slot above them
@@ -970,7 +970,7 @@ func requireBuildSSA(t *testing.T, src string) []*Func {
 }
 
 // testTarget is the target unit tests compile for, whatever buildcfg resolved
-var testTarget = register.X64SysV
+var testTarget = target.X64SysV
 
 func findValues(values []*Value, op Op) []*Value {
 	var result []*Value
@@ -2060,7 +2060,7 @@ func requireParamCopy(t *testing.T, f *Func, i int) *Value {
 func assertInArgRegisters(t *testing.T, values []*Value) {
 	t.Helper()
 
-	regs := []register.Register{register.RegDI, register.RegSI, register.RegD, register.RegC, register.Reg8, register.Reg9}
+	regs := []target.Register{target.RegDI, target.RegSI, target.RegD, target.RegC, target.Reg8, target.Reg9}
 	for i, v := range values {
 		assert.Equal(t, NewReg(regs[i]), v.Loc)
 	}

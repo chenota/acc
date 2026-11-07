@@ -1,14 +1,14 @@
 package ssa
 
 import (
-	"github.com/chenota/acc/internal/register"
+	"github.com/chenota/acc/internal/target"
 	"github.com/chenota/acc/internal/types"
 )
 
 // Module is the flat namespace of top-level symbols the object file will contain.
 type Module struct {
 	Funcs  []*Func
-	Target *register.Target
+	Target *target.Target
 	byName map[string]*Func
 }
 

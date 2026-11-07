@@ -6,7 +6,7 @@ import (
 
 	"github.com/chenota/acc/internal/ir"
 	"github.com/chenota/acc/internal/iterutil"
-	"github.com/chenota/acc/internal/register"
+	"github.com/chenota/acc/internal/target"
 	"github.com/chenota/acc/internal/types"
 )
 
@@ -64,7 +64,7 @@ type Value struct {
 }
 
 // Clobbers reports the registers this value destroys when it executes.
-func (v *Value) Clobbers() register.Mask {
+func (v *Value) Clobbers() target.Mask {
 	if v.IsCall() {
 		// for now calls are considered to clobber all caller-saved registers
 		// TODO: make this more intelligent by only clobbering caller-saved registers that the callee actually uses.
@@ -73,10 +73,10 @@ func (v *Value) Clobbers() register.Mask {
 
 	// idiv leaves its remainder in rdx
 	if v.Op == OpDivide {
-		return register.NewMask(register.RegD)
+		return target.NewMask(target.RegD)
 	}
 
-	return register.NewMask()
+	return target.NewMask()
 }
 
 func (v *Value) IsCall() bool {
@@ -213,7 +213,7 @@ type Func struct {
 	Entry  *Block
 	Slots  []*Slot
 
-	Target *register.Target
+	Target *target.Target
 
 	Params  []*types.Type
 	Results []*types.Type
@@ -477,8 +477,8 @@ func (f *Func) paramLeaves() int {
 }
 
 // UsedRegisters returns the set of physical registers assigned to values in f.
-func (f *Func) UsedRegisters() register.Mask {
-	var m register.Mask
+func (f *Func) UsedRegisters() target.Mask {
+	var m target.Mask
 	for v := range f.UnorderedValues() {
 		if v.Loc.Kind == LocRegister {
 			m = m.Include(v.Loc.Reg)
@@ -487,7 +487,7 @@ func (f *Func) UsedRegisters() register.Mask {
 	return m
 }
 
-func (f *Func) SavedRegisters() register.Mask {
+func (f *Func) SavedRegisters() target.Mask {
 	return f.UsedRegisters().Intersect(f.Target.CalleeSaved)
 }
 
@@ -589,11 +589,11 @@ const (
 
 type Location struct {
 	Kind   LocationKind
-	Reg    register.Register // Reg is the value's register for LocRegister, or the base register it is addressed off of for LocMemory
-	Offset int               // Offset is the byte offset from Reg for LocMemory
+	Reg    target.Register // Reg is the value's register for LocRegister, or the base register it is addressed off of for LocMemory
+	Offset int             // Offset is the byte offset from Reg for LocMemory
 }
 
-func NewReg(reg register.Register) Location {
+func NewReg(reg target.Register) Location {
 	return Location{
 		Kind: LocRegister,
 		Reg:  reg,
@@ -601,7 +601,7 @@ func NewReg(reg register.Register) Location {
 }
 
 // NewMem addresses a location at a byte offset from a base register
-func NewMem(base register.Register, offset int) Location {
+func NewMem(base target.Register, offset int) Location {
 	return Location{
 		Kind:   LocMemory,
 		Reg:    base,

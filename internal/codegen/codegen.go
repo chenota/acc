@@ -6,13 +6,13 @@ import (
 	"slices"
 
 	"github.com/chenota/acc/internal/iterutil"
-	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/ssa"
+	"github.com/chenota/acc/internal/target"
 )
 
 var (
-	basePointer  = Arg{Kind: KRegister, Reg: register.RegBP, Value: 8}
-	stackPointer = Arg{Kind: KRegister, Reg: register.RegSP, Value: 8}
+	basePointer  = Arg{Kind: KRegister, Reg: target.RegBP, Value: 8}
+	stackPointer = Arg{Kind: KRegister, Reg: target.RegSP, Value: 8}
 )
 
 func GenerateProgram(program []*ssa.Func) ([]Inst, error) {
@@ -309,7 +309,7 @@ func generateLabelAddr(v *ssa.Value) Inst {
 }
 
 // register64 is the full 8-byte operand for a physical register.
-func register64(r register.Register) Arg {
+func register64(r target.Register) Arg {
 	return Arg{Kind: KRegister, Reg: r, Value: 8}
 }
 
@@ -384,7 +384,7 @@ func generateBop(v *ssa.Value, op string) []Inst {
 
 func generateDiv(v *ssa.Value) []Inst {
 	size := v.Type.Size()
-	eax := Arg{Kind: KRegister, Reg: register.RegA, Value: size}
+	eax := Arg{Kind: KRegister, Reg: target.RegA, Value: size}
 	return []Inst{
 		{Op: idivOp(size), Dest: toArg(v.Args[1])},
 		{Op: movOp(size), Src1: eax, Dest: toArg(v)},

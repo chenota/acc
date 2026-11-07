@@ -7,7 +7,7 @@ import (
 	"math"
 	"slices"
 
-	"github.com/chenota/acc/internal/register"
+	"github.com/chenota/acc/internal/target"
 )
 
 // allocate gives every value a register, spilling with the MIN algorithm wherever there aren't enough to go around.
@@ -85,15 +85,15 @@ type spiller struct {
 	f *Func
 
 	uses  nextUses // what's live at each block boundary, and how far away its next read is
-	avail map[*Value]register.Mask
+	avail map[*Value]target.Mask
 
 	// where each value holds its register, kept current as reloads are added
 	ranges liveRanges
 
-	holders map[register.Register]*Value
-	entries map[*Block]map[register.Register]*Value // what each block expects in its registers as it starts
+	holders map[target.Register]*Value
+	entries map[*Block]map[target.Register]*Value // what each block expects in its registers as it starts
 	exits   map[*Block]blockExit
-	regs    map[*Value]register.Register // the register each value lives in whenever it isn't spilled
+	regs    map[*Value]target.Register // the register each value lives in whenever it isn't spilled
 	slots   map[*Value]*Slot
 	dropped []*Value
 
@@ -102,7 +102,7 @@ type spiller struct {
 }
 
 type blockExit struct {
-	holders map[register.Register]*Value
+	holders map[target.Register]*Value
 	vals    []*Value // the block as the walk saw it, before spilling inserted anything
 }
 
@@ -112,10 +112,10 @@ func newSpiller(f *Func) *spiller {
 		f:       f,
 		uses:    uses,
 		ranges:  computeLiveRanges(f, uses),
-		avail:   make(map[*Value]register.Mask),
-		entries: make(map[*Block]map[register.Register]*Value),
+		avail:   make(map[*Value]target.Mask),
+		entries: make(map[*Block]map[target.Register]*Value),
 		exits:   make(map[*Block]blockExit),
-		regs:    make(map[*Value]register.Register),
+		regs:    make(map[*Value]target.Register),
 		slots:   make(map[*Value]*Slot),
 	}
 
@@ -131,9 +131,9 @@ func newSpiller(f *Func) *spiller {
 
 // enter returns the values that b's predecessors left in registers.
 // Based on Braun & Hack, "Register Spilling and Live-Range Splitting for SSA-Form Programs".
-func (s *spiller) enter(b *Block) map[register.Register]*Value {
+func (s *spiller) enter(b *Block) map[target.Register]*Value {
 	// TODO: pick a loop header's entry set from what the loop reads rather than inheriting it
-	var regs map[register.Register]*Value
+	var regs map[target.Register]*Value
 	for _, p := range b.Predecessors {
 		exit, ok := s.exits[p]
 		if !ok {
@@ -142,16 +142,16 @@ func (s *spiller) enter(b *Block) map[register.Register]*Value {
 
 		if regs == nil {
 			regs = maps.Clone(exit.holders)
-			maps.DeleteFunc(regs, func(_ register.Register, v *Value) bool { return !s.ranges.liveOnEntry(b, v) })
+			maps.DeleteFunc(regs, func(_ target.Register, v *Value) bool { return !s.ranges.liveOnEntry(b, v) })
 			continue
 		}
 
 		// a value only ever lives in one register, so it's resident in b if every predecessor left it there
-		maps.DeleteFunc(regs, func(r register.Register, v *Value) bool { return exit.holders[r] != v })
+		maps.DeleteFunc(regs, func(r target.Register, v *Value) bool { return exit.holders[r] != v })
 	}
 
 	if regs == nil {
-		regs = make(map[register.Register]*Value)
+		regs = make(map[target.Register]*Value)
 	}
 	return regs
 }
@@ -305,7 +305,7 @@ func (s *spiller) finishEdge(p, b *Block) error {
 		a := phi.Args[i]
 		return !waitsInSlot(phi) && spillable(a) && !s.resident(a)
 	}
-	missing := slices.DeleteFunc(slices.Sorted(maps.Keys(entry)), func(r register.Register) bool {
+	missing := slices.DeleteFunc(slices.Sorted(maps.Keys(entry)), func(r target.Register) bool {
 		return s.resident(entry[r]) || slices.Contains(phis, entry[r])
 	})
 	if len(missing) == 0 && !slices.ContainsFunc(phis, lost) {
@@ -359,7 +359,7 @@ func (s *spiller) saveOperand(p *Block, end int, phi *Value, i int) error {
 }
 
 // restore has edge put a back in r
-func (s *spiller) restore(edge *Block, a *Value, r register.Register) *Value {
+func (s *spiller) restore(edge *Block, a *Value, r target.Register) *Value {
 	v := s.reload(edge, len(edge.Values), a)
 	s.regs[v] = r
 	return v
@@ -378,8 +378,8 @@ func (s *spiller) resident(v *Value) bool {
 	return ok && s.holders[r] == v
 }
 
-func (s *spiller) used() register.Mask {
-	var m register.Mask
+func (s *spiller) used() target.Mask {
+	var m target.Mask
 	for r := range s.holders {
 		m = m.Include(r)
 	}
@@ -387,11 +387,11 @@ func (s *spiller) used() register.Mask {
 }
 
 // scratch is the set of registers nothing has been pinned to across position p of b.
-func (s *spiller) scratch(b *Block, p int) register.Mask {
+func (s *spiller) scratch(b *Block, p int) target.Mask {
 	return s.f.Target.Allocatable.Without(s.ranges.blockedAt(b, p))
 }
 
-func (s *spiller) makeRoom(b *Block, p int, m register.Mask, operands []*Value) {
+func (s *spiller) makeRoom(b *Block, p int, m target.Mask, operands []*Value) {
 	for m.Without(s.used()).Count() == 0 {
 		victim := s.pickVictim(b, p, m, operands)
 		if victim == nil {
@@ -401,7 +401,7 @@ func (s *spiller) makeRoom(b *Block, p int, m register.Mask, operands []*Value) 
 	}
 }
 
-func (s *spiller) pickVictim(b *Block, p int, m register.Mask, operands []*Value) *Value {
+func (s *spiller) pickVictim(b *Block, p int, m target.Mask, operands []*Value) *Value {
 	var victim *Value
 	var far int
 	for r := range m.Intersect(s.used()).All() {
@@ -430,7 +430,7 @@ func (s *spiller) pickVictim(b *Block, p int, m register.Mask, operands []*Value
 }
 
 // assign gives v a free register out of m for good, preferring one that saves a move
-func (s *spiller) assign(v *Value, m register.Mask) error {
+func (s *spiller) assign(v *Value, m target.Mask) error {
 	free := m.Without(s.used())
 
 	r, ok := preferCallerSaved(free, s.f.Target).One()
@@ -450,8 +450,8 @@ func (s *spiller) assign(v *Value, m register.Mask) error {
 }
 
 // preferences ranks the registers v would rather live in, most wanted first
-func (s *spiller) preferences(v *Value) []register.Register {
-	votes := make(map[register.Register]int)
+func (s *spiller) preferences(v *Value) []target.Register {
+	votes := make(map[target.Register]int)
 	vote := func(u *Value) {
 		if r, ok := s.regs[u]; ok {
 			votes[r] += 1
@@ -472,11 +472,11 @@ func (s *spiller) preferences(v *Value) []register.Register {
 	}
 
 	prefs := slices.Collect(maps.Keys(votes))
-	slices.SortFunc(prefs, func(a, b register.Register) int { return cmp.Or(votes[b]-votes[a], int(a)-int(b)) })
+	slices.SortFunc(prefs, func(a, b target.Register) int { return cmp.Or(votes[b]-votes[a], int(a)-int(b)) })
 	return prefs
 }
 
-func preferCallerSaved(m register.Mask, t *register.Target) register.Mask {
+func preferCallerSaved(m target.Mask, t *target.Target) target.Mask {
 	if callerSaved := m.Intersect(t.CallerSaved); callerSaved.Count() > 0 {
 		return callerSaved
 	}

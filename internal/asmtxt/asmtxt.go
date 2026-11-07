@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/chenota/acc/internal/codegen"
-	"github.com/chenota/acc/internal/register"
+	"github.com/chenota/acc/internal/target"
 )
 
 // Stringify transforms a list of instructions into AT&T strings
@@ -91,21 +91,21 @@ func argText(arg codegen.Arg) (string, error) {
 	return "", nil
 }
 
-var classicRegs = map[register.Register][]string{
-	register.RegA:  {"al", "ax", "eax", "rax"},
-	register.RegB:  {"bl", "bx", "ebx", "rbx"},
-	register.RegC:  {"cl", "cx", "ecx", "rcx"},
-	register.RegD:  {"dl", "dx", "edx", "rdx"},
-	register.RegSI: {"sil", "si", "esi", "rsi"},
-	register.RegDI: {"dil", "di", "edi", "rdi"},
-	register.RegSP: {"spl", "sp", "esp", "rsp"},
-	register.RegBP: {"bpl", "bp", "ebp", "rbp"},
+var classicRegs = map[target.Register][]string{
+	target.RegA:  {"al", "ax", "eax", "rax"},
+	target.RegB:  {"bl", "bx", "ebx", "rbx"},
+	target.RegC:  {"cl", "cx", "ecx", "rcx"},
+	target.RegD:  {"dl", "dx", "edx", "rdx"},
+	target.RegSI: {"sil", "si", "esi", "rsi"},
+	target.RegDI: {"dil", "di", "edi", "rdi"},
+	target.RegSP: {"spl", "sp", "esp", "rsp"},
+	target.RegBP: {"bpl", "bp", "ebp", "rbp"},
 }
 
-func registerString(reg register.Register, size int) (string, error) {
+func registerString(reg target.Register, size int) (string, error) {
 	var regStr string
 
-	if reg >= register.RegA && reg <= register.RegBP {
+	if reg >= target.RegA && reg <= target.RegBP {
 		switch size {
 		case 1:
 			regStr = classicRegs[reg][0]
@@ -118,7 +118,7 @@ func registerString(reg register.Register, size int) (string, error) {
 		default:
 			return "", fmt.Errorf("unsupported size %d for register %d", size, reg)
 		}
-	} else if reg >= register.Reg8 && reg <= register.Reg15 {
+	} else if reg >= target.Reg8 && reg <= target.Reg15 {
 		switch size {
 		case 1:
 			regStr = fmt.Sprintf("r%db", reg)

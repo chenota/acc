@@ -4,13 +4,13 @@ import (
 	"github.com/chenota/acc/internal/buildcfg"
 	"github.com/chenota/acc/internal/diagnostic"
 	"github.com/chenota/acc/internal/ir"
-	"github.com/chenota/acc/internal/register"
+	"github.com/chenota/acc/internal/target"
 )
 
 type Option func(m *Module)
 
 // WithTarget compiles for t instead of the target buildcfg resolved.
-func WithTarget(t *register.Target) Option {
+func WithTarget(t *target.Target) Option {
 	return func(m *Module) {
 		m.Target = t
 	}
@@ -24,7 +24,7 @@ func BuildAndAllocate(program []*ir.Node, opts ...Option) ([]*Func, error) {
 	}
 
 	if m.Target == nil {
-		t, err := register.For(buildcfg.TargetArch, buildcfg.TargetOS)
+		t, err := target.For(buildcfg.TargetArch, buildcfg.TargetOS)
 		if err != nil {
 			return nil, err
 		}

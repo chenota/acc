@@ -8,9 +8,9 @@ import (
 	"github.com/chenota/acc/internal/buildcfg"
 	"github.com/chenota/acc/internal/lexer"
 	"github.com/chenota/acc/internal/parser"
-	"github.com/chenota/acc/internal/register"
 	"github.com/chenota/acc/internal/semantic"
 	"github.com/chenota/acc/internal/ssa"
+	"github.com/chenota/acc/internal/target"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -51,9 +51,9 @@ func TestCodegen_Call_ArgsInRegisters(t *testing.T) {
 		fun main () -> int { return target(1, 2, 3); }
 	`)
 
-	assertWritesRegBeforeCall(t, insts, register.RegDI)
-	assertWritesRegBeforeCall(t, insts, register.RegSI)
-	assertWritesRegBeforeCall(t, insts, register.RegD)
+	assertWritesRegBeforeCall(t, insts, target.RegDI)
+	assertWritesRegBeforeCall(t, insts, target.RegSI)
+	assertWritesRegBeforeCall(t, insts, target.RegD)
 }
 
 func TestCodegen_RedundantMoves(t *testing.T) {
@@ -83,7 +83,7 @@ func TestCodegen_LocalAddr_LeaqSlotIntoRegister(t *testing.T) {
 
 	// the frame slot is the source and a register receives the address it forms
 	assert.Equal(t, KMemory, lea.Src1.Kind)
-	assert.Equal(t, register.RegBP, lea.Src1.Reg)
+	assert.Equal(t, target.RegBP, lea.Src1.Reg)
 	assert.Equal(t, KRegister, lea.Dest.Kind)
 }
 
@@ -91,7 +91,7 @@ func TestCodegen_AddressedLocal_LivesInFrameSlot(t *testing.T) {
 	insts := requireGeneratesProgram(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
 
 	// taking a's address keeps it in memory, so the initializer is written to its slot
-	assertContainsMemDest(t, insts, "movl", register.RegBP, -4)
+	assertContainsMemDest(t, insts, "movl", target.RegBP, -4)
 
 	// and the prologue reserves room for the slot
 	assertContainsOpWithArgs(t, insts, "subq", KImmediate, KUndefined, KRegister)
@@ -185,8 +185,8 @@ func TestCodegen_Comparison_LeftOperandIsDest(t *testing.T) {
 	// AT&T cmp computes dest - src, so setl reads a < b only when a is the destination; with nothing else live, each
 	// parameter is compared right where it arrived
 	cmp := requireOnlyOp(t, insts, "cmpl")
-	assert.Equal(t, register.RegDI, cmp.Dest.Reg, "left operand is compared as the destination")
-	assert.Equal(t, register.RegSI, cmp.Src1.Reg, "right operand is compared as the source")
+	assert.Equal(t, target.RegDI, cmp.Dest.Reg, "left operand is compared as the destination")
+	assert.Equal(t, target.RegSI, cmp.Src1.Reg, "right operand is compared as the source")
 }
 
 func TestCodegen_BoolLiteral_MovesByteImmediate(t *testing.T) {
@@ -334,7 +334,7 @@ func requireOnlyImmediateSrc(t *testing.T, insts []Inst, op string) Inst {
 }
 
 // assertContainsMemSrc looks for an instruction reading memory at offset(reg).
-func assertContainsMemSrc(t *testing.T, insts []Inst, op string, reg register.Register, offset int) {
+func assertContainsMemSrc(t *testing.T, insts []Inst, op string, reg target.Register, offset int) {
 	t.Helper()
 	for _, inst := range insts {
 		if inst.Op == op && isMem(inst.Src1, reg, offset) {
@@ -345,7 +345,7 @@ func assertContainsMemSrc(t *testing.T, insts []Inst, op string, reg register.Re
 }
 
 // assertContainsMemDest looks for an instruction writing memory at offset(reg).
-func assertContainsMemDest(t *testing.T, insts []Inst, op string, reg register.Register, offset int) {
+func assertContainsMemDest(t *testing.T, insts []Inst, op string, reg target.Register, offset int) {
 	t.Helper()
 	for _, inst := range insts {
 		if inst.Op == op && isMem(inst.Dest, reg, offset) {
@@ -367,11 +367,11 @@ func assertContainsCallTo(t *testing.T, insts []Inst, sym string) {
 }
 
 // isMem reports whether arg addresses memory at offset(reg).
-func isMem(arg Arg, reg register.Register, offset int) bool {
+func isMem(arg Arg, reg target.Register, offset int) bool {
 	return arg.Kind == KMemory && arg.Reg == reg && arg.Value == offset
 }
 
-func assertWritesRegBeforeCall(t *testing.T, insts []Inst, reg register.Register) {
+func assertWritesRegBeforeCall(t *testing.T, insts []Inst, reg target.Register) {
 	t.Helper()
 	var written bool
 	for _, inst := range insts {
@@ -398,10 +398,10 @@ func assertSavesCalleeBeforeStackAdjust(t *testing.T, insts []Inst) {
 	t.Helper()
 	firstPush, firstSub := -1, -1
 	for i, inst := range insts {
-		if firstPush < 0 && inst.Op == "pushq" && inst.Dest.Kind == KRegister && register.X64SysV.CalleeSaved.Contains(inst.Dest.Reg) {
+		if firstPush < 0 && inst.Op == "pushq" && inst.Dest.Kind == KRegister && target.X64SysV.CalleeSaved.Contains(inst.Dest.Reg) {
 			firstPush = i
 		}
-		if firstSub < 0 && inst.Op == "subq" && inst.Dest.Kind == KRegister && inst.Dest.Reg == register.RegSP {
+		if firstSub < 0 && inst.Op == "subq" && inst.Dest.Kind == KRegister && inst.Dest.Reg == target.RegSP {
 			firstSub = i
 		}
 	}

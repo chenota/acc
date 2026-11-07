@@ -1,4 +1,4 @@
-package register
+package target
 
 const (
 	RegA Register = iota

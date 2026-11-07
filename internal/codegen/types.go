@@ -1,6 +1,6 @@
 package codegen
 
-import "github.com/chenota/acc/internal/register"
+import "github.com/chenota/acc/internal/target"
 
 type Inst struct {
 	Op   string
@@ -24,7 +24,7 @@ const (
 type Arg struct {
 	Kind ArgKind
 
-	Reg register.Register
+	Reg target.Register
 
 	Value any
 }
