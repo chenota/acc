@@ -6,6 +6,7 @@ import (
 	"github.com/chenota/acc/internal/target"
 )
 
+// TODO: Apple arm64 ABI does stack arguments by natural alignment so this doesn't work there
 const stackSlotSize = 8
 
 func lowerConstraints(f *Func) error {
