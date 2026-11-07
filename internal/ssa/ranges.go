@@ -77,7 +77,7 @@ func computeLiveRanges(f *Func, uses nextUses) liveRanges {
 // readEnd is how long v's jth operand has to keep its register when v sits at position p
 func readEnd(v *Value, j, p int) int {
 	// the right operand of a bop is live alongside the result so they don't get mapped to the same place
-	if v.IsBinaryOp() && j == 1 {
+	if v.regs().twoAddress && j >= 1 {
 		return p + 1
 	}
 	return p
