@@ -2129,3 +2129,59 @@ func TestBlockedAt_DivideClobbersRdxAsItRuns(t *testing.T) {
 	ranges := computeLiveRanges(f, computeNextUses(f))
 	assert.True(t, ranges.blockedAt(f.Entry, p).Contains(target.RegD))
 }
+
+// requireOnly returns the single value with op in the named function's entry block
+func requireOnly(t *testing.T, funcs []*Func, name string, op Op) *Value {
+	t.Helper()
+	vals := findValues(requireFunc(t, funcs, name).Entry.Values, op)
+	require.Len(t, vals, 1)
+	return vals[0]
+}
+
+// withX64Regs swaps op's entry in the x64 register table for the rest of the test
+func withX64Regs(t *testing.T, op Op, info regInfo) {
+	old, had := x64Regs[op]
+	x64Regs[op] = info
+	t.Cleanup(func() {
+		if had {
+			x64Regs[op] = old
+		} else {
+			delete(x64Regs, op)
+		}
+	})
+}
+
+func TestAllocate_ResultLandsWhereItsInstructionWritesIt(t *testing.T) {
+	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{anyReg}, output: target.NewMask(target.Reg12)})
+
+	neg := requireOnly(t, requireBuildSSA(t, `fun neg (a int) -> int { return -a; }`), "neg", OpNegate)
+
+	assert.Equal(t, NewReg(target.Reg12), neg.Loc)
+}
+
+func TestAllocate_OperandLandsWhereItsReaderReadsIt(t *testing.T) {
+	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{target.NewMask(target.Reg13)}})
+
+	neg := requireOnly(t, requireBuildSSA(t, `fun neg (a int) -> int { return -a; }`), "neg", OpNegate)
+
+	assert.Equal(t, NewReg(target.Reg13), neg.Args[0].Loc)
+}
+
+func TestAllocate_ReloadLandsWhereItsReaderReadsIt(t *testing.T) {
+	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{target.NewMask(target.Reg13)}})
+
+	// a is read last, so it's the one that waits out the pressure in a slot and comes back just for the negate
+	f := requireFunc(t, requireBuildSSA(t, `
+		fun id (x int) -> int { x }
+		fun f () -> int {
+			let a = id(1); let b = id(2); let c = id(3); let d = id(4); let e = id(5); let g = id(6);
+			let h = id(7); let i = id(8); let j = id(9); let k = id(10); let l = id(11); let m = id(12);
+			let n = id(13); let o = id(14); let p = id(15); let q = id(16);
+			let s = b + c + d + e + g + h + i + j + k + l + m + n + o + p + q;
+			-a + s
+		}`), "f")
+
+	neg := requireOnly(t, []*Func{f}, "f", OpNegate)
+	require.Equal(t, OpStaticLoad, neg.Args[0].Op, "a should be reloaded for the negate")
+	assert.Equal(t, NewReg(target.Reg13), neg.Args[0].Loc)
+}

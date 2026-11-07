@@ -122,7 +122,7 @@ func newSpiller(f *Func) *spiller {
 	// TODO: recompute these as spilling shortens ranges, since the ranges from before the walk rule out more than they need to
 	for v := range f.UnorderedValues() {
 		if spillable(v) {
-			s.avail[v] = f.Target.Allocatable.Without(s.ranges.blockedFor(v))
+			s.avail[v] = v.allowed().Without(s.ranges.blockedFor(v))
 		}
 	}
 
@@ -192,9 +192,10 @@ func (s *spiller) reloadControl(b *Block) error {
 	return nil
 }
 
-// assignAt gives v, already wired into whatever reads it, a register free at position p of b
+// assignAt gives v, already wired into whatever reads it, a register free at position p of b that its readers can read
+// it from
 func (s *spiller) assignAt(b *Block, p int, v *Value, keep []*Value) error {
-	m := s.scratch(b, p)
+	m := s.scratch(b, p).Intersect(v.allowed())
 	s.makeRoom(b, p, m, keep)
 	return s.assign(v, m)
 }

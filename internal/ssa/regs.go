@@ -58,6 +58,22 @@ func (v *Value) regs() regInfo {
 	return resolved
 }
 
+// allowed is every register v can live in
+func (v *Value) allowed() target.Mask {
+	// start with all available regs it can be written to
+	m := v.regs().output
+	for _, u := range v.users {
+		inputs := u.regs().inputs
+		for i, a := range u.Args {
+			if a == v {
+				// restrict to only registers its users can read from
+				m = m.Intersect(inputs[i])
+			}
+		}
+	}
+	return m
+}
+
 var (
 	rax = target.NewMask(target.RegA)
 	rdx = target.NewMask(target.RegD)
