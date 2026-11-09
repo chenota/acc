@@ -35,7 +35,11 @@ func GenerateProgram(program []*ssa.Func) ([]Inst, error) {
 	}
 
 	for _, f := range program {
-		insts = append(insts, generateFunction(f)...)
+		fn, err := generateFunction(f)
+		if err != nil {
+			return nil, err
+		}
+		insts = append(insts, fn...)
 	}
 
 	// remove all redundant mov instructions
@@ -44,7 +48,7 @@ func GenerateProgram(program []*ssa.Func) ([]Inst, error) {
 	return insts, nil
 }
 
-func generateFunction(f *ssa.Func) []Inst {
+func generateFunction(f *ssa.Func) ([]Inst, error) {
 	var insts []Inst
 
 	insts = append(insts,
@@ -86,7 +90,11 @@ func generateFunction(f *ssa.Func) []Inst {
 		if i+1 < len(blocks) {
 			next = blocks[i+1]
 		}
-		insts = append(insts, generateBlock(f, b, next)...)
+		block, err := generateBlock(f, b, next)
+		if err != nil {
+			return nil, err
+		}
+		insts = append(insts, block...)
 	}
 
 	// every return block ends up here
@@ -112,17 +120,21 @@ func generateFunction(f *ssa.Func) []Inst {
 
 	insts = append(insts, Inst{Op: "ret"})
 
-	return insts
+	return insts, nil
 }
 
-func generateBlock(f *ssa.Func, b *ssa.Block, next *ssa.Block) []Inst {
+func generateBlock(f *ssa.Func, b *ssa.Block, next *ssa.Block) ([]Inst, error) {
 	insts := []Inst{label(blockLabel(f, b))}
 
 	for _, v := range b.Values {
-		insts = append(insts, generateValue(v)...)
+		vi, err := generateValue(v)
+		if err != nil {
+			return nil, err
+		}
+		insts = append(insts, vi...)
 	}
 
-	return append(insts, generateTerminator(f, b, next)...)
+	return append(insts, generateTerminator(f, b, next)...), nil
 }
 
 // generateTerminator gives control to b's successors
@@ -195,7 +207,8 @@ func jumpUnlessNext(f *ssa.Func, target *ssa.Block, next *ssa.Block) []Inst {
 	return []Inst{{Op: "jmp", Dest: text(blockLabel(f, target))}}
 }
 
-func generateValue(v *ssa.Value) []Inst {
+// generateValue emits v's instructions
+func generateValue(v *ssa.Value) ([]Inst, error) {
 	var insts []Inst
 
 	switch v.Op {
@@ -245,9 +258,13 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateClosureCall(v))
 	case ssa.OpLabelAddr:
 		insts = append(insts, generateLabelAddr(v))
+	case ssa.OpParam, ssa.OpResult, ssa.OpCallResult, ssa.OpClosurePtr, ssa.OpUnit, ssa.OpPhi:
+		// placeholders values
+	default:
+		return nil, fmt.Errorf("no code generator for op %s", v.Op)
 	}
 
-	return insts
+	return insts, nil
 }
 
 func generateLocalAddr(v *ssa.Value) Inst {

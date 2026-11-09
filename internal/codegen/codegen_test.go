@@ -415,6 +415,13 @@ func requireGeneratesProgram(t *testing.T, src string) []Inst {
 }
 
 func requireGeneratesProgramFor(t *testing.T, target string, src string) []Inst {
+	p, err := GenerateProgram(requireBuildSSAFor(t, target, src))
+	require.NoError(t, err)
+
+	return p
+}
+
+func requireBuildSSAFor(t *testing.T, target string, src string) []*ssa.Func {
 	require.NoError(t, buildcfg.Resolve(target))
 
 	tokens, err := lexer.Tokenize(strings.NewReader(src))
@@ -429,8 +436,5 @@ func requireGeneratesProgramFor(t *testing.T, target string, src string) []Inst 
 	ssaFuncs, err := ssa.BuildAndAllocate(allFuncs)
 	require.NoError(t, err)
 
-	p, err := GenerateProgram(ssaFuncs)
-	require.NoError(t, err)
-
-	return p
+	return ssaFuncs
 }
