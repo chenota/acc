@@ -1,9 +1,6 @@
 package ssa
 
-import (
-	"github.com/chenota/acc/internal/buildcfg"
-	"github.com/chenota/acc/internal/target"
-)
+import "github.com/chenota/acc/internal/target"
 
 // regInfo indicates what registers are available for an operation
 type regInfo struct {
@@ -21,14 +18,7 @@ const anyReg = ^target.Mask(0)
 // TODO: might want to cache this
 func (v *Value) regs() regInfo {
 	t := v.Block.Func.Target
-
-	var info regInfo
-	switch t.Arch {
-	case buildcfg.ArchX64:
-		info = x64Regs[v.Op]
-	default:
-		info = arm64Regs[v.Op]
-	}
+	info := v.Op.info().reg
 
 	resolved := regInfo{
 		inputs:     make([]target.Mask, len(v.Args)),
@@ -74,34 +64,3 @@ func (v *Value) allowed() target.Mask {
 	}
 	return m
 }
-
-var (
-	rax = target.NewMask(target.RegA)
-	rdx = target.NewMask(target.RegD)
-)
-
-// opRegs lists any default usage register info about each op
-type opRegs map[Op]regInfo
-
-var x64Regs = opRegs{
-	OpAdd:      {twoAddress: true},
-	OpSubtract: {twoAddress: true},
-	OpMultiply: {twoAddress: true},
-	OpNegate:   {twoAddress: true},
-	OpNot:      {twoAddress: true},
-
-	/*
-		NOTE TO SELF:
-
-		idiv divides rdx:rax by the divisor (arbitrary register), and leaves the quotient in rax and the remainder in rdx.
-		In codegen, this makes it important to sign-extend rax into rdx before dividing.
-	*/
-
-	OpDivide: {
-		inputs:   []target.Mask{rax, anyReg.Without(rax.Union(rdx))},
-		output:   rax,
-		clobbers: rdx,
-	},
-}
-
-var arm64Regs = opRegs{}

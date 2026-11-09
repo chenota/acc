@@ -10,41 +10,6 @@ import (
 	"github.com/chenota/acc/internal/types"
 )
 
-type Op int
-
-const (
-	OpUnknown Op = iota
-	OpLiteral
-	OpLoad
-	OpStaticLoad // reads the frame slot named in Value
-	OpStore
-	OpStaticStore // writes Args[0] to the frame slot named in Value
-	OpAdd
-	OpSubtract
-	OpMultiply
-	OpDivide
-	OpEqual
-	OpNotEqual
-	OpLess
-	OpLessEqual
-	OpGreater
-	OpGreaterEqual
-	OpNegate
-	OpNot
-	OpCopy
-	OpStaticCall  // direct call to the function in Value
-	OpParam       // incoming function argument - more of a placeholder for a location than an acutal value in its own right
-	OpResult      // outgoing function result - the mirror of OpParam
-	OpCallResult  // incoming call result
-	OpLocalAddr   // address bound to a static stack slot
-	OpFieldAddr   // address at Offset from the pointer in Args[0]
-	OpClosurePtr  // incoming environment pointer the caller left in the context register
-	OpClosureCall // indirect call to the code pointer in Args[0], with its environment in Args[1] and ABI arguments after
-	OpUnit
-	OpLabelAddr // address bound to a label
-	OpPhi
-)
-
 type Value struct {
 	Id    int
 	Op    Op

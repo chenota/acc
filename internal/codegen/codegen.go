@@ -213,13 +213,13 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateStore(v))
 	case ssa.OpLoad:
 		insts = append(insts, generateLoad(v))
-	case ssa.OpAdd:
+	case ssa.OpX64ADD:
 		insts = append(insts, generateBop(v, addOp(v.Type.Size()))...)
-	case ssa.OpSubtract:
+	case ssa.OpX64SUB:
 		insts = append(insts, generateBop(v, subOp(v.Type.Size()))...)
-	case ssa.OpMultiply:
+	case ssa.OpX64IMUL:
 		insts = append(insts, generateBop(v, mulOp(v.Type.Size()))...)
-	case ssa.OpDivide:
+	case ssa.OpX64IDIV:
 		insts = append(insts, generateDiv(v)...)
 	case ssa.OpEqual:
 		insts = append(insts, generateCompare(v, "sete")...)
@@ -233,9 +233,9 @@ func generateValue(v *ssa.Value) []Inst {
 		insts = append(insts, generateCompare(v, "setg")...)
 	case ssa.OpGreaterEqual:
 		insts = append(insts, generateCompare(v, "setge")...)
-	case ssa.OpNegate:
+	case ssa.OpX64NEG:
 		insts = append(insts, generateNegate(v)...)
-	case ssa.OpNot:
+	case ssa.OpX64XORconst:
 		insts = append(insts, generateNot(v)...)
 	case ssa.OpCopy:
 		insts = append(insts, generateCopy(v))
@@ -333,7 +333,7 @@ func generateNegate(v *ssa.Value) []Inst {
 	}
 }
 
-// generateNot flips the low bit
+// generateNot xors its operand with the constant lowering left in v
 func generateNot(v *ssa.Value) []Inst {
 	return []Inst{
 		{
@@ -343,7 +343,7 @@ func generateNot(v *ssa.Value) []Inst {
 		},
 		{
 			Op:   xorOp(v.Type.Size()),
-			Src1: immediate(1),
+			Src1: immediate(v.Value.(int32)),
 			Dest: toArg(v),
 		},
 	}

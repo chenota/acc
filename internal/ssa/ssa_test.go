@@ -232,17 +232,56 @@ func TestGenSsa_Not_KeepsOperand(t *testing.T) {
 	f := requireFunc(t, requireBuildSSA(t, `fun f (a bool) -> bool { return !a; }`), "f")
 
 	not := requireReturned(t, f.Entry)
-	assert.Equal(t, OpNot, not.Op)
+	assert.Equal(t, OpX64XORconst, not.Op)
 	assert.Equal(t, types.Bool(), not.Type)
 	require.Len(t, not.Args, 1)
 	assert.Equal(t, OpParam, throughCopies(not.Args[0]).Op)
+}
+
+// TestLower_ArithmeticBecomesMachineOp covers each generic arithmetic op reaching allocation as its target's own op
+func TestLower_ArithmeticBecomesMachineOp(t *testing.T) {
+	tests := []struct {
+		name   string
+		target *target.Target
+		src    string
+		want   Op
+	}{
+		{"x64 add", target.X64SysV, `fun f (a int, b int) -> int { return a + b; }`, OpX64ADD},
+		{"x64 subtract", target.X64SysV, `fun f (a int, b int) -> int { return a - b; }`, OpX64SUB},
+		{"x64 multiply", target.X64SysV, `fun f (a int, b int) -> int { return a * b; }`, OpX64IMUL},
+		{"x64 divide", target.X64SysV, `fun f (a int, b int) -> int { return a / b; }`, OpX64IDIV},
+		{"x64 negate", target.X64SysV, `fun f (a int) -> int { return -a; }`, OpX64NEG},
+		{"x64 not", target.X64SysV, `fun f (a bool) -> bool { return !a; }`, OpX64XORconst},
+		{"arm64 add", target.ARM64AAPCS, `fun f (a int, b int) -> int { return a + b; }`, OpARM64ADD},
+		{"arm64 subtract", target.ARM64AAPCS, `fun f (a int, b int) -> int { return a - b; }`, OpARM64SUB},
+		{"arm64 multiply", target.ARM64AAPCS, `fun f (a int, b int) -> int { return a * b; }`, OpARM64MUL},
+		{"arm64 divide", target.ARM64AAPCS, `fun f (a int, b int) -> int { return a / b; }`, OpARM64SDIV},
+		{"arm64 negate", target.ARM64AAPCS, `fun f (a int) -> int { return -a; }`, OpARM64NEG},
+		{"arm64 not", target.ARM64AAPCS, `fun f (a bool) -> bool { return !a; }`, OpARM64EORconst},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := requireFunc(t, requireBuildSSAFor(t, tt.target, tt.src), "f")
+
+			// a pinned result reaches the return through the copy that frees its register
+			assert.Equal(t, tt.want, throughCopies(requireReturned(t, f.Entry)).Op)
+		})
+	}
+}
+
+// TestLower_NotFlipsTheLowBit covers a not lowering to an xor with 1, which negates a bool
+func TestLower_NotFlipsTheLowBit(t *testing.T) {
+	f := requireFunc(t, requireBuildSSA(t, `fun f (a bool) -> bool { return !a; }`), "f")
+
+	assert.Equal(t, int32(1), requireReturned(t, f.Entry).Value)
 }
 
 func TestUnaryFold_BranchConditionIsKept(t *testing.T) {
 	// debug is read by the not, which folds away, and by the branch, which doesn't
 	f := requireFunc(t, requireBuildSSA(t, `
 		fun f () -> int { let debug = false; let quiet = !debug; if debug { 1 } else { 2 } }`), "f")
-	assert.Empty(t, findValues(f.Entry.Values, OpNot), "the not folds away")
+	assert.Empty(t, findValues(f.Entry.Values, OpX64XORconst), "the not folds away")
 
 	require.Equal(t, BlockIf, f.Entry.Kind)
 	require.Len(t, f.Entry.Control, 1, "the branch keeps its condition")
@@ -952,7 +991,7 @@ func requireResult(t *testing.T, b *Block, i int) *Value {
 	move := result.Args[0]
 	require.Equal(t, OpCopy, move.Op, "a result must be placed by a copy into its register")
 	require.Equal(t, LocRegister, move.Loc.Kind)
-	require.Equal(t, testTarget.Results[i], move.Loc.Reg)
+	require.Equal(t, b.Func.Target.Results[i], move.Loc.Reg)
 	require.Len(t, move.Args, 1)
 	require.True(t, types.Equal(move.Args[0].Type, result.Type), "a result carries the type of what it returns")
 
@@ -1068,7 +1107,7 @@ func TestGenSsa_Closure_ImmutableCaptureIsCopied(t *testing.T) {
 	assert.Zero(t, value.Offset)
 	assert.True(t, types.Equal(types.Int(), value.Type))
 
-	adds := findValues(lambda.Entry.Values, OpAdd)
+	adds := findValues(lambda.Entry.Values, OpX64ADD)
 	require.Len(t, adds, 1)
 	assert.Contains(t, adds[0].Args, value, "the captured value is what feeds the addition")
 }
@@ -1100,7 +1139,7 @@ func TestGenSsa_Closure_MutatedCaptureIsBoxed(t *testing.T) {
 	assert.Zero(t, value.Offset)
 	assert.True(t, types.Equal(types.Int(), value.Type))
 
-	adds := findValues(lambda.Entry.Values, OpAdd)
+	adds := findValues(lambda.Entry.Values, OpX64ADD)
 	require.Len(t, adds, 1)
 	assert.Contains(t, adds[0].Args, value, "the captured value is what feeds the addition")
 }
@@ -1479,7 +1518,7 @@ func TestMem2Reg_VariableReadAcrossABranchIsPromoted(t *testing.T) {
 
 	merge := f.Entry.Successors[0].Successors[0]
 	ret := requireReturned(t, merge)
-	assert.Equal(t, OpMultiply, ret.Op)
+	assert.Equal(t, OpX64IMUL, ret.Op)
 	assert.Same(t, f.Entry, ret.Block, "the merge reads the value worked out before the branch")
 }
 
@@ -1492,9 +1531,9 @@ func TestMem2Reg_VariableReassignedInsideOneArmIsPromoted(t *testing.T) {
 
 	then := f.Entry.Successors[0]
 	ret := requireReturned(t, then)
-	require.Equal(t, OpAdd, ret.Op)
+	require.Equal(t, OpX64ADD, ret.Op)
 	require.Len(t, ret.Args, 2)
-	assert.Equal(t, OpMultiply, ret.Args[0].Op, "the arm reads the value stored before the branch")
+	assert.Equal(t, OpX64IMUL, ret.Args[0].Op, "the arm reads the value stored before the branch")
 }
 
 func TestMem2Reg_ArmThatReturnsLeavesNothingToMerge(t *testing.T) {
@@ -1528,7 +1567,7 @@ func TestSpill_ValueReadAcrossABranchKeepsItsRegister(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := requireFunc(t, requireBuildSSA(t, tt.src), "f")
 
-			subs := findValues(slices.Collect(f.OrderedValues()), OpSubtract)
+			subs := findValues(slices.Collect(f.OrderedValues()), OpX64SUB)
 			require.Len(t, subs, 2)
 			require.Same(t, f.Entry, subs[0].Block, "x - 1 is worked out before the branch")
 			require.NotSame(t, f.Entry, subs[1].Block, "the other subtract has to wait for the branch")
@@ -1659,7 +1698,7 @@ func TestSpill_PhisBeyondTheRegistersWaitInMemory(t *testing.T) {
 	assert.LessOrEqual(t, len(findValues(merge.Values, OpPhi)), testTarget.Allocatable.Count(), "only as many phis as there are registers")
 
 	sum := requireReturned(t, merge)
-	require.Equal(t, OpAdd, sum.Op)
+	require.Equal(t, OpX64ADD, sum.Op)
 	require.Len(t, sum.Args, 2)
 
 	// r is read last, so it's one of the phis that waits in memory, and the merge reads it back from its slot
@@ -1871,7 +1910,7 @@ func TestSpill_MemoryPhiTakesItsOperandOnTheBackEdge(t *testing.T) {
 	exit := requireReturnBlock(t, f)
 
 	sum := requireReturned(t, exit)
-	require.Equal(t, OpAdd, sum.Op)
+	require.Equal(t, OpX64ADD, sum.Op)
 	require.Len(t, sum.Args, 2)
 	last := sum.Args[1]
 	require.Equal(t, OpStaticLoad, last.Op)
@@ -1880,7 +1919,7 @@ func TestSpill_MemoryPhiTakesItsOperandOnTheBackEdge(t *testing.T) {
 	require.Len(t, latch.Predecessors, 1)
 	stores := findStoresTo(latch.Predecessors[0], last.Slot())
 	require.Len(t, stores, 1)
-	assert.Equal(t, OpAdd, stores[0].Args[0].Op)
+	assert.Equal(t, OpX64ADD, stores[0].Args[0].Op)
 }
 
 func TestSpill_BackEdgeLoadsSpilledOperandIntoItsPhi(t *testing.T) {
@@ -1904,7 +1943,7 @@ func TestSpill_BackEdgeLoadsSpilledOperandIntoItsPhi(t *testing.T) {
 
 	assert.Equal(t, OpStaticLoad, operand.Op)
 	assert.Same(t, latch, operand.Block)
-	assert.Equal(t, OpAdd, requireStoreTo(t, f, operand.Slot()).Args[0].Op)
+	assert.Equal(t, OpX64ADD, requireStoreTo(t, f, operand.Slot()).Args[0].Op)
 }
 
 func TestSpill_BlockJumpingToItselfFinishesItsOwnEdge(t *testing.T) {
@@ -2081,7 +2120,7 @@ func TestRegs_X64Divide(t *testing.T) {
 		fun main () -> int { return div(7, 2); }
 	`)
 
-	divs := findValues(requireFunc(t, funcs, "div").Entry.Values, OpDivide)
+	divs := findValues(requireFunc(t, funcs, "div").Entry.Values, OpX64IDIV)
 	require.Len(t, divs, 1)
 	regs := divs[0].regs()
 
@@ -2123,7 +2162,7 @@ func TestBlockedAt_DivideClobbersRdxAsItRuns(t *testing.T) {
 	`)
 
 	f := requireFunc(t, funcs, "div")
-	divs := findValues(f.Entry.Values, OpDivide)
+	divs := findValues(f.Entry.Values, OpX64IDIV)
 	require.Len(t, divs, 1)
 	p := f.Entry.indexOf(divs[0])
 
@@ -2140,16 +2179,12 @@ func requireOnly(t *testing.T, funcs []*Func, name string, op Op) *Value {
 	return vals[0]
 }
 
-// withX64Regs swaps op's entry in the x64 register table for the rest of the test
-func withX64Regs(t *testing.T, op Op, info regInfo) {
-	old, had := x64Regs[op]
-	x64Regs[op] = info
+// withRegs swaps op's register info in the op table for the rest of the test
+func withRegs(t *testing.T, op Op, info regInfo) {
+	old := op.info().reg
+	op.info().reg = info
 	t.Cleanup(func() {
-		if had {
-			x64Regs[op] = old
-		} else {
-			delete(x64Regs, op)
-		}
+		op.info().reg = old
 	})
 }
 
@@ -2157,25 +2192,25 @@ func withX64Regs(t *testing.T, op Op, info regInfo) {
 var twoCalleeSaved = target.NewMask(target.Reg13, target.Reg14)
 
 func TestAllocate_ResultLandsWhereItsInstructionWritesIt(t *testing.T) {
-	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{anyReg}, output: twoCalleeSaved})
+	withRegs(t, OpX64NEG, regInfo{twoAddress: true, inputs: []target.Mask{anyReg}, output: twoCalleeSaved})
 
-	neg := requireOnly(t, requireBuildSSA(t, `fun neg (a int) -> int { return -a; }`), "neg", OpNegate)
+	neg := requireOnly(t, requireBuildSSA(t, `fun neg (a int) -> int { return -a; }`), "neg", OpX64NEG)
 
 	require.Equal(t, LocRegister, neg.Loc.Kind)
 	assert.True(t, twoCalleeSaved.Contains(neg.Loc.Reg), "expected r13 or r14, got r%d", neg.Loc.Reg)
 }
 
 func TestAllocate_OperandLandsWhereItsReaderReadsIt(t *testing.T) {
-	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{twoCalleeSaved}})
+	withRegs(t, OpX64NEG, regInfo{twoAddress: true, inputs: []target.Mask{twoCalleeSaved}})
 
-	neg := requireOnly(t, requireBuildSSA(t, `fun neg (a int) -> int { return -a; }`), "neg", OpNegate)
+	neg := requireOnly(t, requireBuildSSA(t, `fun neg (a int) -> int { return -a; }`), "neg", OpX64NEG)
 
 	require.Equal(t, LocRegister, neg.Args[0].Loc.Kind)
 	assert.True(t, twoCalleeSaved.Contains(neg.Args[0].Loc.Reg), "expected r13 or r14, got r%d", neg.Args[0].Loc.Reg)
 }
 
 func TestAllocate_ReloadLandsWhereItsReaderReadsIt(t *testing.T) {
-	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{twoCalleeSaved}})
+	withRegs(t, OpX64NEG, regInfo{twoAddress: true, inputs: []target.Mask{twoCalleeSaved}})
 
 	// a is read last, so it's the one that waits out the pressure in a slot and comes back just for the negate
 	f := requireFunc(t, requireBuildSSA(t, `
@@ -2188,16 +2223,16 @@ func TestAllocate_ReloadLandsWhereItsReaderReadsIt(t *testing.T) {
 			-a + s
 		}`), "f")
 
-	neg := requireOnly(t, []*Func{f}, "f", OpNegate)
+	neg := requireOnly(t, []*Func{f}, "f", OpX64NEG)
 	require.Equal(t, OpStaticLoad, neg.Args[0].Op, "a should be reloaded for the negate")
 	require.Equal(t, LocRegister, neg.Args[0].Loc.Kind)
 	assert.True(t, twoCalleeSaved.Contains(neg.Args[0].Loc.Reg), "expected r13 or r14, got r%d", neg.Args[0].Loc.Reg)
 }
 
 func TestLowerRegs_PinsSingleRegisterOperand(t *testing.T) {
-	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{target.NewMask(target.Reg13)}})
+	withRegs(t, OpX64NEG, regInfo{twoAddress: true, inputs: []target.Mask{target.NewMask(target.Reg13)}})
 
-	neg := requireOnly(t, requireBuildSSA(t, `fun neg (a int) -> int { return -a; }`), "neg", OpNegate)
+	neg := requireOnly(t, requireBuildSSA(t, `fun neg (a int) -> int { return -a; }`), "neg", OpX64NEG)
 
 	// the operand is copied into place right before the negate rather than left to the allocator
 	assert.Equal(t, OpCopy, neg.Args[0].Op)
@@ -2205,9 +2240,9 @@ func TestLowerRegs_PinsSingleRegisterOperand(t *testing.T) {
 }
 
 func TestLowerRegs_PinsSingleRegisterResult(t *testing.T) {
-	withX64Regs(t, OpNegate, regInfo{twoAddress: true, inputs: []target.Mask{anyReg}, output: target.NewMask(target.Reg12)})
+	withRegs(t, OpX64NEG, regInfo{twoAddress: true, inputs: []target.Mask{anyReg}, output: target.NewMask(target.Reg12)})
 
-	neg := requireOnly(t, requireBuildSSA(t, `fun neg (a int) -> int { return -a; }`), "neg", OpNegate)
+	neg := requireOnly(t, requireBuildSSA(t, `fun neg (a int) -> int { return -a; }`), "neg", OpX64NEG)
 
 	// the result only holds r12 for as long as it takes to copy it somewhere less contested
 	assert.Equal(t, NewReg(target.Reg12), neg.Loc)
@@ -2216,7 +2251,7 @@ func TestLowerRegs_PinsSingleRegisterResult(t *testing.T) {
 }
 
 func TestLowerRegs_X64DividePinsDividendAndQuotientToRax(t *testing.T) {
-	div := requireOnly(t, requireBuildSSA(t, divideSrc), "div", OpDivide)
+	div := requireOnly(t, requireBuildSSA(t, divideSrc), "div", OpX64IDIV)
 	require.Len(t, div.Args, 2)
 
 	// the dividend is copied into rax right before the divide
@@ -2231,7 +2266,7 @@ func TestLowerRegs_X64DividePinsDividendAndQuotientToRax(t *testing.T) {
 
 func TestLowerRegs_ARM64DivideIsUnpinned(t *testing.T) {
 	f := requireFunc(t, requireBuildSSAFor(t, target.ARM64AAPCS, divideSrc), "div")
-	div := requireOnly(t, []*Func{f}, "div", OpDivide)
+	div := requireOnly(t, []*Func{f}, "div", OpARM64SDIV)
 
 	// sdiv reads and writes any register, so it reads the parameters' copies without another copy in between
 	require.Len(t, div.Args, 2)

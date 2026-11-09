@@ -77,6 +77,9 @@ type stage struct {
 // allocateStage is the stage that hands out registers
 const allocateStage = "allocate"
 
+// lowerStage is the stage that swaps generic ops for machine ops
+const lowerStage = "lower"
+
 // stagesBeforeEscape tidy up a freshly built body; escape analysis needs these to run before it
 var stagesBeforeEscape = []stage{
 	// immediately prune unreachable blocks to prevent panics
@@ -92,6 +95,7 @@ var stagesAfterEscape = []stage{
 	{"quickFold", quickFold},
 	{"associativeFold", associativeFold},
 	{"negSquash", negSquash},
+	{lowerStage, lower},
 	{"lowerConstraints", lowerConstraints},
 	{allocateStage, allocate},
 	{"layoutFrame", layoutFrame},
