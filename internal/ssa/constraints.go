@@ -63,13 +63,15 @@ func (f *Func) abi(v *Value) placement {
 	case OpResult:
 		// where the overflow results end up depends on how many argument leaves the signature has
 		p.operands[0] = f.outgoingResults(f.paramLeaves()).loc(v.Value.(int))
-	case OpStaticCall, OpClosureCall:
+	}
+
+	if v.IsCall() {
 		// arguments past the registers are written to the outgoing area at the bottom of this function's frame
 		base := len(v.Args) - len(v.CallArgs())
 		for i := range v.CallArgs() {
 			p.operands[base+i] = f.outgoingArgs().loc(i)
 		}
-		if v.Op == OpClosureCall {
+		if v.Op.info().closureCall {
 			p.operands[1] = NewReg(f.Target.ClosureContext)
 		}
 	}

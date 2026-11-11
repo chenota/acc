@@ -7,7 +7,7 @@ type Op int
 const (
 	OpUnknown Op = iota
 
-	// generic ops, which mean the same thing on every target
+	// high-level and target-agnostic ops
 
 	OpLiteral
 	OpLoad
@@ -39,6 +39,8 @@ const (
 	OpLabelAddr // address bound to a label
 	OpPhi
 
+	// x64 ops
+
 	OpX64ADD
 	OpX64SUB
 	OpX64IMUL
@@ -51,6 +53,8 @@ const (
 	OpX64SETLE    // compares Args[0] with Args[1], true when signed less or equal
 	OpX64SETG     // compares Args[0] with Args[1], true when signed greater
 	OpX64SETGE    // compares Args[0] with Args[1], true when signed greater or equal
+
+	// arm64 ops
 
 	OpARM64ADD
 	OpARM64SUB
@@ -70,6 +74,11 @@ const (
 type opInfo struct {
 	name string
 	reg  regInfo
+
+	call             bool
+	closureCall      bool // code pointer and environment come before its arguments
+	rematerializable bool // can be recomputed rather than being spilled
+	noResult         bool
 }
 
 var (
@@ -80,11 +89,11 @@ var (
 var opcodeTable = [...]opInfo{
 	OpUnknown: {name: "Unknown"},
 
-	OpLiteral:      {name: "Literal"},
+	OpLiteral:      {name: "Literal", rematerializable: true},
 	OpLoad:         {name: "Load"},
 	OpStaticLoad:   {name: "StaticLoad"},
-	OpStore:        {name: "Store"},
-	OpStaticStore:  {name: "StaticStore"},
+	OpStore:        {name: "Store", noResult: true},
+	OpStaticStore:  {name: "StaticStore", noResult: true},
 	OpAdd:          {name: "Add"},
 	OpSubtract:     {name: "Subtract"},
 	OpMultiply:     {name: "Multiply"},
@@ -98,16 +107,16 @@ var opcodeTable = [...]opInfo{
 	OpNegate:       {name: "Negate"},
 	OpNot:          {name: "Not"},
 	OpCopy:         {name: "Copy"},
-	OpStaticCall:   {name: "StaticCall"},
+	OpStaticCall:   {name: "StaticCall", call: true, noResult: true},
 	OpParam:        {name: "Param"},
-	OpResult:       {name: "Result"},
+	OpResult:       {name: "Result", noResult: true},
 	OpCallResult:   {name: "CallResult"},
-	OpLocalAddr:    {name: "LocalAddr"},
+	OpLocalAddr:    {name: "LocalAddr", rematerializable: true},
 	OpFieldAddr:    {name: "FieldAddr"},
 	OpClosurePtr:   {name: "ClosurePtr"},
-	OpClosureCall:  {name: "ClosureCall"},
+	OpClosureCall:  {name: "ClosureCall", call: true, closureCall: true, noResult: true},
 	OpUnit:         {name: "Unit"},
-	OpLabelAddr:    {name: "LabelAddr"},
+	OpLabelAddr:    {name: "LabelAddr", rematerializable: true},
 	OpPhi:          {name: "Phi"},
 
 	OpX64ADD:  {name: "X64ADD", reg: regInfo{twoAddress: true}},

@@ -28,12 +28,12 @@ type Value struct {
 }
 
 func (v *Value) IsCall() bool {
-	return v.Op == OpStaticCall || v.Op == OpClosureCall
+	return v.Op.info().call
 }
 
 // CallArgs returns the operands of a call that are ABI arguments
 func (v *Value) CallArgs() []*Value {
-	if v.Op == OpClosureCall {
+	if v.Op.info().closureCall {
 		// code pointer and env come before arguments
 		return v.Args[2:]
 	}
@@ -67,15 +67,11 @@ func (v *Value) IsAssociativeOp() bool {
 
 // NeedsRegister reports whether a value produces a result that occupies a physical register.
 func (v *Value) NeedsRegister() bool {
-	return !(v.Op == OpStore ||
-		v.Op == OpStaticStore ||
-		v.Op == OpResult ||
-		v.IsCall() ||
-		v.Type.IsSingleton())
+	return !(v.Op.info().noResult || v.Type.IsSingleton())
 }
 
 func (v *Value) Rematerializable() bool {
-	return v.Op == OpLiteral || v.Op == OpLabelAddr || v.Op == OpLocalAddr
+	return v.Op.info().rematerializable
 }
 
 // Slot is the frame slot this value reads or writes, or nil if it does not touch one.
