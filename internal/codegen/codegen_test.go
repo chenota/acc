@@ -48,14 +48,6 @@ func TestGenerateAssembly_Directives(t *testing.T) {
 	assert.True(t, strings.HasPrefix(asm, "\t.text\n\t.globl main\nmain:\n"))
 }
 
-func TestGenerateAssembly_NoGeneratorForArch(t *testing.T) {
-	funcs := requireBuildSSAFor(t, target.ARM64AAPCS, `fun main () -> int { return 0; }`)
-
-	_, err := GenerateAssembly(funcs, WithTarget(buildcfg.ArchARM64, buildcfg.OSLinux))
-
-	assert.ErrorContains(t, err, "no code generator for arm64")
-}
-
 func TestCodegen_Call_ArgsInRegisters(t *testing.T) {
 	asm := requireGeneratesAssembly(t, `
 		fun target (a int, b int, c int) -> int { return 0; }
@@ -293,6 +285,38 @@ func TestCodegen_ReturnBlocks_ShareOneEpilogue(t *testing.T) {
 	assert.Equal(t, "jmp .Lf.ret", requireOnly(t, asm, "jmp"))
 }
 
+func TestCodegen_ARM64_PrologueEpilogue(t *testing.T) {
+	asm := requireGeneratesARM64(t, `fun main () -> int { return 0; }`)
+
+	assertContainsSeq(t, asm, "stp x29, x30, [sp, #-16]!", "mov x29, sp", "mov sp, x29", "ldp x29, x30, [sp], #16", "ret")
+}
+
+func TestCodegen_ARM64_Labels(t *testing.T) {
+	asm := requireGeneratesARM64(t, `fun main () -> int { return 0; }`)
+
+	assert.True(t, strings.HasPrefix(asm, "\t.text\n\t.globl main\nmain:\n"))
+	assert.Equal(t, []string{"main", ".Lmain.0", ".Lmain.ret"}, labels(asm))
+}
+
+func TestCodegen_ARM64_ResultInX0(t *testing.T) {
+	asm := requireGeneratesARM64(t, `fun main () -> int { return 42; }`)
+
+	assert.Contains(t, instructions(asm), "movz w0, #42")
+}
+
+func TestCodegen_ARM64_WideConstant_BuiltInPieces(t *testing.T) {
+	// 70000 is 0x11170, too wide for one 16-bit immediate
+	asm := requireGeneratesARM64(t, `fun main () -> int { return 70000; }`)
+
+	assertContainsSeq(t, asm, "movz w0, #4464", "movk w0, #1, lsl #16")
+}
+
+func TestCodegen_ARM64_NegativeConstant_BuiltFromOnes(t *testing.T) {
+	asm := requireGeneratesARM64(t, `fun main () -> int { return -1; }`)
+
+	assert.Contains(t, instructions(asm), "movn w0, #0")
+}
+
 func TestX64Inst_String(t *testing.T) {
 	tests := []struct {
 		name string
@@ -311,6 +335,30 @@ func TestX64Inst_String(t *testing.T) {
 		{name: "jump to label", inst: X64Inst{Op: X64JMP, Dst: x64Sym(".Lmain.ret")}, want: "jmp .Lmain.ret"},
 		{name: "indirect call", inst: X64Inst{Op: X64CALL, Dst: X64Operand{Kind: X64Indirect, Reg: target.Reg11}}, want: "call *%r11"},
 		{name: "rip relative", inst: X64Inst{Op: X64LEA, Size: 8, Src: X64Operand{Kind: X64RipRel, Sym: "f"}, Dst: x64Reg(target.RegC)}, want: "leaq f(%rip), %rcx"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.inst.String())
+		})
+	}
+}
+
+func TestARM64Inst_String(t *testing.T) {
+	tests := []struct {
+		name string
+		inst ARM64Inst
+		want string
+	}{
+		{name: "no operands", inst: ARM64Inst{Op: ARM64RET}, want: "ret"},
+		{name: "word register", inst: ARM64Inst{Op: ARM64MOV, Size: 4, Args: [3]ARM64Operand{arm64Reg(target.RegX0), arm64Reg(target.RegX19)}}, want: "mov w0, w19"},
+		{name: "stack pointer", inst: ARM64Inst{Op: ARM64SUB, Size: 8, Args: [3]ARM64Operand{arm64Reg(target.RegXSP), arm64Reg(target.RegXSP), arm64Imm(32)}}, want: "sub sp, sp, #32"},
+		{name: "shifted immediate", inst: ARM64Inst{Op: ARM64MOVK, Size: 4, Args: [3]ARM64Operand{arm64Reg(target.RegX3), arm64ShiftedImm(1, 16)}}, want: "movk w3, #1, lsl #16"},
+		{name: "memory base is full width", inst: ARM64Inst{Op: ARM64LDR, Size: 4, Args: [3]ARM64Operand{arm64Reg(target.RegX1), {Kind: ARM64Mem, Reg: target.RegX29, Offset: -12}}}, want: "ldr w1, [x29, #-12]"},
+		{name: "byte store", inst: ARM64Inst{Op: ARM64STR, Size: 1, Args: [3]ARM64Operand{arm64Reg(target.RegX2), {Kind: ARM64Mem, Reg: target.RegX16}}}, want: "strb w2, [x16]"},
+		{name: "pre-index", inst: ARM64Inst{Op: ARM64STP, Size: 8, Args: [3]ARM64Operand{arm64Reg(target.RegX29), arm64Reg(target.RegX30), {Kind: ARM64PreIdx, Reg: target.RegXSP, Offset: -16}}}, want: "stp x29, x30, [sp, #-16]!"},
+		{name: "post-index", inst: ARM64Inst{Op: ARM64LDP, Size: 8, Args: [3]ARM64Operand{arm64Reg(target.RegX29), arm64Reg(target.RegX30), {Kind: ARM64PostIdx, Reg: target.RegXSP, Offset: 16}}}, want: "ldp x29, x30, [sp], #16"},
+		{name: "branch to label", inst: ARM64Inst{Op: ARM64B, Args: [3]ARM64Operand{arm64Sym(".Lmain.ret")}}, want: "b .Lmain.ret"},
 	}
 
 	for _, tt := range tests {
@@ -435,6 +483,14 @@ func assertNoSelfMoves(t *testing.T, asm string) {
 func requireGeneratesAssembly(t *testing.T, src string) string {
 	t.Helper()
 	return requireGeneratesAssemblyFor(t, buildcfg.OSLinux, src)
+}
+
+// requireGeneratesARM64 generates arm64 Linux assembly for src
+func requireGeneratesARM64(t *testing.T, src string) string {
+	t.Helper()
+	asm, err := GenerateAssembly(requireBuildSSAFor(t, target.ARM64AAPCS, src), WithTarget(buildcfg.ArchARM64, buildcfg.OSLinux))
+	require.NoError(t, err)
+	return asm
 }
 
 // requireGeneratesAssemblyFor generates testTarget's assembly for src, naming symbols the way os expects

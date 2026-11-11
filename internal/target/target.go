@@ -13,6 +13,9 @@ type Target struct {
 	Allocatable Mask
 	CallerSaved Mask
 	CalleeSaved Mask
+	// Registers the allocator never hands out, which codegen may clobber within an instruction sequence but never
+	// rely on across a call
+	Scratch []Register
 
 	Args           []Register
 	Results        []Register

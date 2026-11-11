@@ -7,6 +7,7 @@ import (
 
 	"github.com/chenota/acc/internal/buildcfg"
 	"github.com/chenota/acc/internal/ssa"
+	"github.com/chenota/acc/internal/target"
 )
 
 type config struct {
@@ -37,6 +38,12 @@ func GenerateAssembly(program []*ssa.Func, opts ...Option) (string, error) {
 			return "", err
 		}
 		return p.String(), nil
+	case buildcfg.ArchARM64:
+		p, err := generateARM64(program, symbols{os: c.os})
+		if err != nil {
+			return "", err
+		}
+		return p.String(), nil
 	default:
 		return "", fmt.Errorf("no code generator for %s", c.arch)
 	}
@@ -54,8 +61,9 @@ type arch[I fmt.Stringer] interface {
 // emitter appends instructions to the block a function is currently laying out.
 type emitter[I fmt.Stringer] struct {
 	symbols
-	fn  *Func[I]
-	cur *Block[I]
+	target *target.Target // the target the function was allocated for
+	fn     *Func[I]
+	cur    *Block[I]
 }
 
 func (e *emitter[I]) emit(insts ...I) {
@@ -85,7 +93,7 @@ func generate[I fmt.Stringer](a arch[I], s symbols, program []*ssa.Func) (*Progr
 }
 
 func generateFunction[I fmt.Stringer](a arch[I], s symbols, f *ssa.Func) (*Func[I], error) {
-	e := &emitter[I]{symbols: s, fn: &Func[I]{Name: s.funcLabel(f), Global: true}}
+	e := &emitter[I]{symbols: s, target: f.Target, fn: &Func[I]{Name: s.funcLabel(f), Global: true}}
 
 	// the prologue runs on entry under the function's own symbol
 	e.startBlock("")

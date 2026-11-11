@@ -40,7 +40,6 @@ const (
 var ARM64AAPCS = &Target{
 	Arch: buildcfg.ArchARM64,
 
-	// x16 and x17 are left for codegen's scratch since linker veneers can clobber them across a call anyway
 	Allocatable: NewMask(
 		RegX0, RegX1, RegX2, RegX3, RegX4, RegX5, RegX6, RegX7,
 		RegX8, RegX9, RegX10, RegX11, RegX12, RegX13, RegX14, RegX15,
@@ -52,6 +51,8 @@ var ARM64AAPCS = &Target{
 		RegX16, RegX17, RegX18,
 	),
 	CalleeSaved: NewMask(RegX19, RegX20, RegX21, RegX22, RegX23, RegX24, RegX25, RegX26, RegX27, RegX28),
+	// IP0 and IP1, which linker veneers may clobber at any call anyway
+	Scratch: []Register{RegX16, RegX17},
 
 	Args:    []Register{RegX0, RegX1, RegX2, RegX3, RegX4, RegX5, RegX6, RegX7},
 	Results: []Register{RegX0, RegX1},
@@ -71,7 +72,6 @@ var ARM64Apple = &Target{
 
 	Arch: buildcfg.ArchARM64,
 
-	// x16 and x17 are left for codegen's scratch since linker veneers can clobber them across a call anyway
 	Allocatable: NewMask(
 		RegX0, RegX1, RegX2, RegX3, RegX4, RegX5, RegX6, RegX7,
 		RegX8, RegX9, RegX10, RegX11, RegX12, RegX13, RegX14, RegX15,
@@ -83,6 +83,8 @@ var ARM64Apple = &Target{
 		RegX16, RegX17,
 	),
 	CalleeSaved: NewMask(RegX19, RegX20, RegX21, RegX22, RegX23, RegX24, RegX25, RegX26, RegX27, RegX28),
+	// IP0 and IP1, which linker veneers may clobber at any call anyway
+	Scratch: []Register{RegX16, RegX17},
 
 	Args:    []Register{RegX0, RegX1, RegX2, RegX3, RegX4, RegX5, RegX6, RegX7},
 	Results: []Register{RegX0, RegX1},
