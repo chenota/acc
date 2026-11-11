@@ -1,0 +1,8 @@
+fun shrink (a int, b int) -> int {
+    a /= b;
+    return a;
+}
+
+fun main () -> int {
+    return shrink(10, 0);
+}
