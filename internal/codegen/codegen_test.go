@@ -352,6 +352,53 @@ func TestCodegen_ARM64_Divide_TrapIsLaidOutAfterTheDivide(t *testing.T) {
 	assertContainsSeq(t, asm, div, stop)
 }
 
+func TestCodegen_ARM64_Call_BranchesWithLink(t *testing.T) {
+	asm := requireGeneratesARM64(t, `
+		fun target (a int) -> int { return a; }
+		fun main () -> int { return target(1); }
+	`)
+
+	// the argument goes in the first argument register before the call
+	assertContainsSeq(t, asm, "movz w0, #1", "bl target")
+}
+
+func TestCodegen_ARM64_Negate_IntoWordRegister(t *testing.T) {
+	asm := requireGeneratesARM64(t, `
+		fun f (a int) -> int { return -a; }
+		fun main () -> int { return 0; }
+	`)
+
+	// a arrives in w0, which is also where the result leaves from
+	assert.Contains(t, instructions(asm), "neg w0, w0")
+}
+
+func TestCodegen_ARM64_Comparison_ComparesAtOperandWidth(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		cmp  string
+		cset string
+	}{
+		{name: "int", src: `fun f (a int, b int) -> bool { return a < b; }`, cmp: `^cmp w0, w1$`, cset: "cset w0, lt"},
+		{name: "pointer", src: `fun f (p *int) -> bool { return p == nil; }`, cmp: `^cmp x0, x\d+$`, cset: "cset w0, eq"},
+		{name: "bool", src: `fun f (a bool, b bool) -> bool { return a != b; }`, cmp: `^cmp w0, w1$`, cset: "cset w0, ne"},
+		{name: "less equal", src: `fun f (a int, b int) -> bool { return a <= b; }`, cmp: `^cmp w0, w1$`, cset: "cset w0, le"},
+		{name: "greater", src: `fun f (a int, b int) -> bool { return a > b; }`, cmp: `^cmp w0, w1$`, cset: "cset w0, gt"},
+		{name: "greater equal", src: `fun f (a int, b int) -> bool { return a >= b; }`, cmp: `^cmp w0, w1$`, cset: "cset w0, ge"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			asm := requireGeneratesARM64(t, tt.src+` fun main () -> int { return 0; }`)
+
+			// the left operand comes first, at its own width, while the result is always a word
+			cmp := requireOnly(t, asm, "cmp")
+			assert.Regexp(t, tt.cmp, cmp)
+			assertContainsSeq(t, asm, cmp, tt.cset)
+		})
+	}
+}
+
 func TestX64Inst_String(t *testing.T) {
 	tests := []struct {
 		name string
@@ -396,6 +443,8 @@ func TestARM64Inst_String(t *testing.T) {
 		{name: "branch to label", inst: ARM64Inst{Op: ARM64B, Args: [3]ARM64Operand{arm64Sym(".Lmain.ret")}}, want: "b .Lmain.ret"},
 		{name: "three registers", inst: ARM64Inst{Op: ARM64SDIV, Size: 4, Args: [3]ARM64Operand{arm64Reg(target.RegX2), arm64Reg(target.RegX0), arm64Reg(target.RegX1)}}, want: "sdiv w2, w0, w1"},
 		{name: "trap", inst: ARM64Inst{Op: ARM64BRK, Args: [3]ARM64Operand{arm64Imm(0)}}, want: "brk #0"},
+		{name: "condition", inst: ARM64Inst{Op: ARM64CSET, Size: 4, Args: [3]ARM64Operand{arm64Reg(target.RegX5), arm64Cond(ARM64GE)}}, want: "cset w5, ge"},
+		{name: "branch with link", inst: ARM64Inst{Op: ARM64BL, Args: [3]ARM64Operand{arm64Sym("f")}}, want: "bl f"},
 	}
 
 	for _, tt := range tests {

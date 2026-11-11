@@ -22,6 +22,9 @@ const (
 	ARM64SUB
 	ARM64MUL
 	ARM64SDIV
+	ARM64NEG
+	ARM64CMP
+	ARM64CSET // 1 when the condition holds and 0 otherwise
 	ARM64LDR
 	ARM64STR
 	ARM64LDP
@@ -29,6 +32,7 @@ const (
 	ARM64B
 	ARM64CBZ
 	ARM64CBNZ
+	ARM64BL
 	ARM64RET
 	ARM64BRK
 )
@@ -42,6 +46,9 @@ var arm64Mnemonics = map[ARM64Op]string{
 	ARM64SUB:  "sub",
 	ARM64MUL:  "mul",
 	ARM64SDIV: "sdiv",
+	ARM64NEG:  "neg",
+	ARM64CMP:  "cmp",
+	ARM64CSET: "cset",
 	ARM64LDR:  "ldr",
 	ARM64STR:  "str",
 	ARM64LDP:  "ldp",
@@ -49,8 +56,30 @@ var arm64Mnemonics = map[ARM64Op]string{
 	ARM64B:    "b",
 	ARM64CBZ:  "cbz",
 	ARM64CBNZ: "cbnz",
+	ARM64BL:   "bl",
 	ARM64RET:  "ret",
 	ARM64BRK:  "brk",
+}
+
+// ARM64CondCode is a condition on the flags that the last comparison set
+type ARM64CondCode int
+
+const (
+	ARM64EQ ARM64CondCode = iota
+	ARM64NE
+	ARM64LT // signed less
+	ARM64LE // signed less or equal
+	ARM64GT // signed greater
+	ARM64GE // signed greater or equal
+)
+
+var arm64CondNames = map[ARM64CondCode]string{
+	ARM64EQ: "eq",
+	ARM64NE: "ne",
+	ARM64LT: "lt",
+	ARM64LE: "le",
+	ARM64GT: "gt",
+	ARM64GE: "ge",
 }
 
 type ARM64Inst struct {
@@ -69,6 +98,7 @@ const (
 	ARM64PreIdx  // Offset bytes from the address in Reg, written back to Reg before the access
 	ARM64PostIdx // the address in Reg, which moves Offset bytes after the access
 	ARM64Sym
+	ARM64Cond
 )
 
 type ARM64Operand struct {
@@ -78,6 +108,7 @@ type ARM64Operand struct {
 	Shift  int
 	Offset int
 	Sym    string
+	Cond   ARM64CondCode
 }
 
 // String renders the instruction in GNU syntax.
@@ -124,6 +155,8 @@ func (o ARM64Operand) text(size int) string {
 		return fmt.Sprintf("[%s], #%d", arm64RegName(o.Reg, 8), o.Offset)
 	case ARM64Sym:
 		return o.Sym
+	case ARM64Cond:
+		return arm64CondNames[o.Cond]
 	}
 	return ""
 }
@@ -279,6 +312,15 @@ var arm64BinaryOps = map[ssa.Op]ARM64Op{
 	ssa.OpARM64SDIV: ARM64SDIV,
 }
 
+var arm64SetConds = map[ssa.Op]ARM64CondCode{
+	ssa.OpARM64CSETEQ: ARM64EQ,
+	ssa.OpARM64CSETNE: ARM64NE,
+	ssa.OpARM64CSETLT: ARM64LT,
+	ssa.OpARM64CSETLE: ARM64LE,
+	ssa.OpARM64CSETGT: ARM64GT,
+	ssa.OpARM64CSETGE: ARM64GE,
+}
+
 func (arm64) value(e *emitter[ARM64Inst], v *ssa.Value) error {
 	size := v.Type.Size()
 
@@ -293,6 +335,16 @@ func (arm64) value(e *emitter[ARM64Inst], v *ssa.Value) error {
 		arm64Copy(e, size, ssa.NewMem(s.Loc.Reg, s.Loc.Offset+v.Offset), v.Args[0].Loc)
 	case ssa.OpARM64ADD, ssa.OpARM64SUB, ssa.OpARM64MUL, ssa.OpARM64SDIV:
 		e.emit(ARM64Inst{Op: arm64BinaryOps[v.Op], Size: arm64RegSize(size), Args: [3]ARM64Operand{arm64Reg(v.Loc.Reg), arm64Reg(v.Args[0].Loc.Reg), arm64Reg(v.Args[1].Loc.Reg)}})
+	case ssa.OpARM64NEG:
+		e.emit(ARM64Inst{Op: ARM64NEG, Size: arm64RegSize(size), Args: [3]ARM64Operand{arm64Reg(v.Loc.Reg), arm64Reg(v.Args[0].Loc.Reg)}})
+	case ssa.OpARM64CSETEQ, ssa.OpARM64CSETNE, ssa.OpARM64CSETLT, ssa.OpARM64CSETLE, ssa.OpARM64CSETGT, ssa.OpARM64CSETGE:
+		e.emit(
+			// borrow the cmp's width from the operands
+			ARM64Inst{Op: ARM64CMP, Size: arm64RegSize(v.Args[0].Type.Size()), Args: [3]ARM64Operand{arm64Reg(v.Args[0].Loc.Reg), arm64Reg(v.Args[1].Loc.Reg)}},
+			ARM64Inst{Op: ARM64CSET, Size: arm64RegSize(size), Args: [3]ARM64Operand{arm64Reg(v.Loc.Reg), arm64Cond(arm64SetConds[v.Op])}},
+		)
+	case ssa.OpARM64BL:
+		e.emit(ARM64Inst{Op: ARM64BL, Args: [3]ARM64Operand{arm64Sym(e.funcLabel(v.Callee()))}})
 	case ssa.OpARM64BRK:
 		e.emit(ARM64Inst{Op: ARM64BRK, Args: [3]ARM64Operand{arm64Imm(0)}})
 	case ssa.OpCopy:
@@ -438,6 +490,10 @@ func arm64ShiftedImm(v int64, shift int) ARM64Operand {
 
 func arm64Sym(name string) ARM64Operand {
 	return ARM64Operand{Kind: ARM64Sym, Sym: name}
+}
+
+func arm64Cond(c ARM64CondCode) ARM64Operand {
+	return ARM64Operand{Kind: ARM64Cond, Cond: c}
 }
 
 // arm64MovElim eliminates moves of a register onto itself
