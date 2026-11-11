@@ -884,7 +884,7 @@ func TestLowerResults_OverflowResultGoesToMemory(t *testing.T) {
 	require.Len(t, third.Args, 1)
 	assert.Equal(t, LocMemory, third.Args[0].Loc.Kind)
 	assert.Equal(t, target.RegBP, third.Args[0].Loc.Reg)
-	assert.Equal(t, f.incomingArgOffset(0), third.Args[0].Loc.Offset)
+	assert.Equal(t, testTarget.FrameRecordSize, third.Args[0].Loc.Offset)
 }
 
 func TestLowerCallResults_OverflowResultReadFromMemory(t *testing.T) {
@@ -912,7 +912,7 @@ func TestLowerCallResults_OverflowResultReadFromMemory(t *testing.T) {
 	assert.Equal(t, NewMem(target.RegSP, 0), callResults[2].Loc)
 
 	// which the caller has to reserve room for
-	assert.GreaterOrEqual(t, main.maxOutgoingSize(), stackSlotSize)
+	assert.GreaterOrEqual(t, main.maxOutgoingSize(), 8)
 }
 
 func TestLowerResults_OverflowResultSitsAboveOverflowArguments(t *testing.T) {
@@ -934,7 +934,7 @@ func TestLowerResults_OverflowResultSitsAboveOverflowArguments(t *testing.T) {
 	written := result.Args[0]
 	assert.Equal(t, LocMemory, written.Loc.Kind)
 	assert.Equal(t, target.RegBP, written.Loc.Reg)
-	assert.Equal(t, callee.incomingArgOffset(2), written.Loc.Offset)
+	assert.Equal(t, testTarget.FrameRecordSize+16, written.Loc.Offset)
 
 	// the caller names that same slot from its own side of the call
 	main := requireFunc(t, funcs, "main")
@@ -944,10 +944,102 @@ func TestLowerResults_OverflowResultSitsAboveOverflowArguments(t *testing.T) {
 	read := callResults[2]
 	assert.Equal(t, LocMemory, read.Loc.Kind)
 	assert.Equal(t, target.RegSP, read.Loc.Reg)
-	assert.Equal(t, 2*stackSlotSize, read.Loc.Offset)
+	assert.Equal(t, 16, read.Loc.Offset)
 
 	// and reserves the two argument slots plus the result slot above them
-	assert.GreaterOrEqual(t, main.maxOutgoingSize(), 3*stackSlotSize)
+	assert.GreaterOrEqual(t, main.maxOutgoingSize(), 24)
+}
+
+func TestLowerCalls_StackArgsLayoutPerTarget(t *testing.T) {
+	// the eight ints fill the arm64 argument registers, so the mixed-width tail goes on the stack
+	src := `
+		fun f (a int, b int, c int, d int, e int, g int, h int, i int, w bool, x int, p *int, z bool) -> int { return 0; }
+		fun main () -> int { return f(1, 2, 3, 4, 5, 6, 7, 8, true, 9, nil, false); }
+	`
+
+	tests := []struct {
+		name    string
+		target  *target.Target
+		offsets [4]int
+		size    int
+	}{
+		// every stack argument takes a whole 8-byte slot
+		{"aapcs", target.ARM64AAPCS, [4]int{0, 8, 16, 24}, 32},
+		// each one packs in at its own size and alignment
+		{"apple", target.ARM64Apple, [4]int{0, 4, 8, 16}, 17},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			funcs := requireBuildSSAFor(t, tt.target, src)
+
+			// the caller writes them upward from its stack pointer
+			call := requireCall(t, funcs, "main")
+			require.Len(t, call.Args, 12)
+			assert.Equal(t, NewMem(tt.target.StackPointer, tt.offsets[0]), call.Args[8].Loc)
+			assert.Equal(t, NewMem(tt.target.StackPointer, tt.offsets[1]), call.Args[9].Loc)
+			assert.Equal(t, NewMem(tt.target.StackPointer, tt.offsets[2]), call.Args[10].Loc)
+			assert.Equal(t, NewMem(tt.target.StackPointer, tt.offsets[3]), call.Args[11].Loc)
+
+			// the callee reads the same bytes back from past its frame record
+			params := findValues(requireFunc(t, funcs, "f").Entry.Values, OpParam)
+			require.Len(t, params, 12)
+			base := tt.target.FrameRecordSize
+			assert.Equal(t, NewMem(tt.target.FramePointer, base+tt.offsets[0]), params[8].Loc)
+			assert.Equal(t, NewMem(tt.target.FramePointer, base+tt.offsets[1]), params[9].Loc)
+			assert.Equal(t, NewMem(tt.target.FramePointer, base+tt.offsets[2]), params[10].Loc)
+			assert.Equal(t, NewMem(tt.target.FramePointer, base+tt.offsets[3]), params[11].Loc)
+
+			// and the caller reserves room for all of it
+			assert.Equal(t, tt.size, requireFunc(t, funcs, "main").maxOutgoingSize())
+		})
+	}
+}
+
+func TestLowerResults_OverflowResultsLayoutPerTarget(t *testing.T) {
+	// one bool spills past the argument registers and two results spill past the result registers
+	src := `
+		fun f (a int, b int, c int, d int, e int, g int, h int, i int, w bool) -> (int, int, bool, int) {
+			return (a, b, w, i);
+		}
+		fun main () -> int { let r = f(1, 2, 3, 4, 5, 6, 7, 8, true); return if r.2 { r.0 + r.1 + r.3 } else { 0 }; }
+	`
+
+	tests := []struct {
+		name    string
+		target  *target.Target
+		offsets [2]int
+		size    int
+	}{
+		// the results start a slot above the lone stack argument
+		{"aapcs", target.ARM64AAPCS, [2]int{8, 16}, 24},
+		// the bool result packs right after the bool argument, and the int aligns up past it
+		{"apple", target.ARM64Apple, [2]int{1, 4}, 8},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			funcs := requireBuildSSAFor(t, tt.target, src)
+
+			// the callee writes them above its incoming arguments
+			callee := requireFunc(t, funcs, "f")
+			require.Len(t, callee.Entry.Control, 4)
+			base := tt.target.FrameRecordSize
+			require.Len(t, callee.Entry.Control[2].Args, 1)
+			require.Len(t, callee.Entry.Control[3].Args, 1)
+			assert.Equal(t, NewMem(tt.target.FramePointer, base+tt.offsets[0]), callee.Entry.Control[2].Args[0].Loc)
+			assert.Equal(t, NewMem(tt.target.FramePointer, base+tt.offsets[1]), callee.Entry.Control[3].Args[0].Loc)
+
+			// the caller reads them back from the same bytes above its outgoing arguments
+			main := requireFunc(t, funcs, "main")
+			callResults := findValues(main.Entry.Values, OpCallResult)
+			require.Len(t, callResults, 4)
+			assert.Equal(t, NewMem(tt.target.StackPointer, tt.offsets[0]), callResults[2].Loc)
+			assert.Equal(t, NewMem(tt.target.StackPointer, tt.offsets[1]), callResults[3].Loc)
+
+			assert.Equal(t, tt.size, main.maxOutgoingSize())
+		})
+	}
 }
 
 func TestUnoptimized_Nil(t *testing.T) {

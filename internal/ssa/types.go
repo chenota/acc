@@ -374,7 +374,7 @@ func (f *Func) Name() string {
 // FrameSize is how many bytes the frame takes up below the frame record
 func (f *Func) FrameSize() int {
 	region := max(f.savedRegBytes(), f.localsSize()) + f.maxOutgoingSize()
-	return (region + 15) &^ 15
+	return roundUp(region, 16)
 }
 
 // savedRegBytes is the number of bytes the saved registers take up at the top of the frame.
@@ -397,22 +397,9 @@ func (f *Func) maxOutgoingSize() int {
 		if !v.IsCall() {
 			continue
 		}
-		nArgs := len(v.CallArgs())
-		slots := f.outgoingArgs().overflow(nArgs) + f.incomingResults(nArgs).overflow(v.Type.LeafCount())
-		most = max(most, stackSlotSize*slots)
+		most = max(most, f.locationsAsCaller(v).stackBytes)
 	}
 	return most
-}
-
-// paramLeaves is how many leaves the signature's parameters flatten into
-func (f *Func) paramLeaves() int {
-	var n int
-	for v := range f.UnorderedValues() {
-		if v.Op == OpParam {
-			n += 1
-		}
-	}
-	return n
 }
 
 // UsedRegisters returns the set of physical registers assigned to values in f.
@@ -570,4 +557,8 @@ func (f *Func) frameLoc(offset int) Location {
 // outgoingLoc addresses a slot in f's outgoing argument area
 func (f *Func) outgoingLoc(offset int) Location {
 	return NewMem(f.Target.StackPointer, offset)
+}
+
+func roundUp(x, align int) int {
+	return (x + align - 1) &^ (align - 1)
 }

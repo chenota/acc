@@ -36,5 +36,6 @@ var X64SysV = &Target{
 	FramePointer: RegBP,
 	LinkRegister: NoRegister,
 
-	FrameRecordSize: 16,
+	FrameRecordSize:  16,
+	StackArgSlotSize: 8,
 }

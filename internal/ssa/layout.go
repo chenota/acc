@@ -14,9 +14,7 @@ func layoutFrame(f *Func) error {
 	// start locals below callee-saved reigsters
 	offset := f.savedRegBytes()
 	for _, s := range f.Slots {
-		align := s.Type.Align()
-		offset += s.Type.Size()
-		offset = (offset + align - 1) &^ (align - 1)
+		offset = roundUp(offset+s.Type.Size(), s.Type.Align())
 		s.Loc = f.frameLoc(-offset)
 	}
 

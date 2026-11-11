@@ -24,6 +24,8 @@ type Target struct {
 
 	// How far above the frame pointer the caller's outgoing records start
 	FrameRecordSize int
+	// The fewest bytes a stack argument takes up and aligns to; 1 packs them at their natural size and alignment
+	StackArgSlotSize int
 }
 
 func For(arch buildcfg.Arch, os buildcfg.OS) (*Target, error) {
