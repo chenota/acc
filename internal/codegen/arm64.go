@@ -20,6 +20,8 @@ const (
 	ARM64MOVK                // a 16-bit immediate, keeping the rest
 	ARM64ADD
 	ARM64SUB
+	ARM64MUL
+	ARM64SDIV
 	ARM64LDR
 	ARM64STR
 	ARM64LDP
@@ -28,6 +30,7 @@ const (
 	ARM64CBZ
 	ARM64CBNZ
 	ARM64RET
+	ARM64BRK
 )
 
 var arm64Mnemonics = map[ARM64Op]string{
@@ -37,6 +40,8 @@ var arm64Mnemonics = map[ARM64Op]string{
 	ARM64MOVK: "movk",
 	ARM64ADD:  "add",
 	ARM64SUB:  "sub",
+	ARM64MUL:  "mul",
+	ARM64SDIV: "sdiv",
 	ARM64LDR:  "ldr",
 	ARM64STR:  "str",
 	ARM64LDP:  "ldp",
@@ -45,6 +50,7 @@ var arm64Mnemonics = map[ARM64Op]string{
 	ARM64CBZ:  "cbz",
 	ARM64CBNZ: "cbnz",
 	ARM64RET:  "ret",
+	ARM64BRK:  "brk",
 }
 
 type ARM64Inst struct {
@@ -266,6 +272,13 @@ func (arm64) move(e *emitter[ARM64Inst], m move) {
 	}
 }
 
+var arm64BinaryOps = map[ssa.Op]ARM64Op{
+	ssa.OpARM64ADD:  ARM64ADD,
+	ssa.OpARM64SUB:  ARM64SUB,
+	ssa.OpARM64MUL:  ARM64MUL,
+	ssa.OpARM64SDIV: ARM64SDIV,
+}
+
 func (arm64) value(e *emitter[ARM64Inst], v *ssa.Value) error {
 	size := v.Type.Size()
 
@@ -278,6 +291,10 @@ func (arm64) value(e *emitter[ARM64Inst], v *ssa.Value) error {
 	case ssa.OpStaticStore:
 		s := v.Slot()
 		arm64Copy(e, size, ssa.NewMem(s.Loc.Reg, s.Loc.Offset+v.Offset), v.Args[0].Loc)
+	case ssa.OpARM64ADD, ssa.OpARM64SUB, ssa.OpARM64MUL, ssa.OpARM64SDIV:
+		e.emit(ARM64Inst{Op: arm64BinaryOps[v.Op], Size: arm64RegSize(size), Args: [3]ARM64Operand{arm64Reg(v.Loc.Reg), arm64Reg(v.Args[0].Loc.Reg), arm64Reg(v.Args[1].Loc.Reg)}})
+	case ssa.OpARM64BRK:
+		e.emit(ARM64Inst{Op: ARM64BRK, Args: [3]ARM64Operand{arm64Imm(0)}})
 	case ssa.OpCopy:
 		arm64Copy(e, size, v.Loc, v.Args[0].Loc)
 	case ssa.OpParam, ssa.OpResult, ssa.OpCallResult, ssa.OpClosurePtr, ssa.OpUnit, ssa.OpPhi:

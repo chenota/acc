@@ -317,6 +317,41 @@ func TestCodegen_ARM64_NegativeConstant_BuiltFromOnes(t *testing.T) {
 	assert.Contains(t, instructions(asm), "movn w0, #0")
 }
 
+func TestCodegen_ARM64_Arithmetic_ThreeRegisterWord(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{name: "add", src: `fun f (a int, b int) -> int { return a + b; }`, want: "add w0, w0, w1"},
+		{name: "subtract", src: `fun f (a int, b int) -> int { return a - b; }`, want: "sub w0, w0, w1"},
+		{name: "multiply", src: `fun f (a int, b int) -> int { return a * b; }`, want: "mul w0, w0, w1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			asm := requireGeneratesARM64(t, tt.src+` fun main () -> int { return 0; }`)
+
+			// with nothing else live, the parameters are read where they arrived (a in w0, b in w1), left operand first
+			assert.Contains(t, instructions(asm), tt.want)
+		})
+	}
+}
+
+func TestCodegen_ARM64_Divide_TrapIsLaidOutAfterTheDivide(t *testing.T) {
+	asm := requireGeneratesARM64(t, `
+		fun div (a int) -> int { return a / 3; }
+		fun main () -> int { return 0; }
+	`)
+
+	stop := requireOnly(t, asm, "brk")
+	div := requireOnly(t, asm, "sdiv")
+
+	assert.Regexp(t, `^sdiv w\d+, w0, w\d+$`, div, "the dividend is the first source")
+	// a nonzero divisor runs straight on into the divide, and only a zero one jumps away to stop the program
+	assertContainsSeq(t, asm, div, stop)
+}
+
 func TestX64Inst_String(t *testing.T) {
 	tests := []struct {
 		name string
@@ -359,6 +394,8 @@ func TestARM64Inst_String(t *testing.T) {
 		{name: "pre-index", inst: ARM64Inst{Op: ARM64STP, Size: 8, Args: [3]ARM64Operand{arm64Reg(target.RegX29), arm64Reg(target.RegX30), {Kind: ARM64PreIdx, Reg: target.RegXSP, Offset: -16}}}, want: "stp x29, x30, [sp, #-16]!"},
 		{name: "post-index", inst: ARM64Inst{Op: ARM64LDP, Size: 8, Args: [3]ARM64Operand{arm64Reg(target.RegX29), arm64Reg(target.RegX30), {Kind: ARM64PostIdx, Reg: target.RegXSP, Offset: 16}}}, want: "ldp x29, x30, [sp], #16"},
 		{name: "branch to label", inst: ARM64Inst{Op: ARM64B, Args: [3]ARM64Operand{arm64Sym(".Lmain.ret")}}, want: "b .Lmain.ret"},
+		{name: "three registers", inst: ARM64Inst{Op: ARM64SDIV, Size: 4, Args: [3]ARM64Operand{arm64Reg(target.RegX2), arm64Reg(target.RegX0), arm64Reg(target.RegX1)}}, want: "sdiv w2, w0, w1"},
+		{name: "trap", inst: ARM64Inst{Op: ARM64BRK, Args: [3]ARM64Operand{arm64Imm(0)}}, want: "brk #0"},
 	}
 
 	for _, tt := range tests {
