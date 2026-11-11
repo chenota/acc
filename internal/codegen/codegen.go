@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/chenota/acc/internal/iterutil"
 	"github.com/chenota/acc/internal/ssa"
 	"github.com/chenota/acc/internal/target"
 )
@@ -68,13 +67,13 @@ func generateFunction(f *ssa.Func) ([]Inst, error) {
 		},
 	)
 
-	// Save the callee-saved registers this function uses above the local frame.
-	saved := f.SavedRegisters().All()
-	for reg := range saved {
-		insts = append(insts, Inst{Op: "pushq", Dest: register64(reg)})
+	saved := f.SavedRegisters()
+	for _, s := range saved {
+		insts = append(insts, Inst{Op: "pushq", Dest: register64(s.Reg)})
 	}
 
-	stackAdjust := f.StackAdjustment()
+	// the pushes already claimed the top of the frame
+	stackAdjust := f.FrameSize() - 8*len(saved)
 	if stackAdjust > 0 {
 		insts = append(insts, Inst{
 			Op:   "subq",
@@ -109,8 +108,8 @@ func generateFunction(f *ssa.Func) ([]Inst, error) {
 	}
 
 	// restore in reverse order so each pop mirrors its push
-	for reg := range iterutil.Reverse(saved) {
-		insts = append(insts, Inst{Op: "popq", Dest: register64(reg)})
+	for _, s := range slices.Backward(saved) {
+		insts = append(insts, Inst{Op: "popq", Dest: register64(s.Reg)})
 	}
 
 	insts = append(insts, Inst{

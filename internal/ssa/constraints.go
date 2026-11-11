@@ -124,7 +124,7 @@ func (f *Func) incomingResults(nArgs int) abiSeq {
 
 // calleeView addresses the nth slot of the region from inside the callee, past its saved frame pointer.
 func (f *Func) calleeView(n int) Location {
-	return f.frameLoc(incomingArgOffset(n))
+	return f.frameLoc(f.incomingArgOffset(n))
 }
 
 // callerView addresses the nth slot of the same region from the caller, at the bottom of its frame.
@@ -150,10 +150,9 @@ func (s abiSeq) overflow(n int) int {
 	return max(0, n-len(s.regs))
 }
 
-// incomingArgOffset returns the rbp-relative offset of the nth incoming stack argument.
-func incomingArgOffset(n int) int {
-	// 16 to account for saved rbp + return address
-	return 16 + n*stackSlotSize
+// incomingArgOffset returns the frame-pointer-relative offset of the nth incoming stack argument.
+func (f *Func) incomingArgOffset(n int) int {
+	return f.Target.FrameRecordSize + n*stackSlotSize
 }
 
 // copyTo inserts a copy of arg pinned to loc just before v.

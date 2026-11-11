@@ -446,15 +446,49 @@ func TestLayoutFrame_ReservesOutgoingArea(t *testing.T) {
 
 	main := requireFunc(t, funcs, "main")
 
-	// two arguments spill to the stack, so the adjustment folds in their two eightbyte slots
-	assert.GreaterOrEqual(t, main.StackAdjustment(), 16)
+	// two arguments spill to the stack, so the frame folds in their two eightbyte slots
+	assert.GreaterOrEqual(t, main.FrameSize(), 16)
 
-	// the whole frame stays 16-byte aligned so rsp is aligned at the call
-	pushBytes := main.SavedRegisters().Count() * 8
-	assert.Equal(t, 0, (pushBytes+main.StackAdjustment())%16)
+	// the whole frame stays 16-byte aligned so the stack pointer is aligned at the call
+	assert.Equal(t, 0, main.FrameSize()%16)
 
-	// target makes no calls and has no locals, so it subtracts nothing
-	assert.Equal(t, 0, requireFunc(t, funcs, "target").StackAdjustment())
+	// target makes no calls, has no locals, and saves nothing, so it needs no frame
+	assert.Equal(t, 0, requireFunc(t, funcs, "target").FrameSize())
+}
+
+func TestLayoutFrame_SavedRegistersSitBetweenFrameRecordAndLocals(t *testing.T) {
+	// a outlives the call, so it needs a callee-saved register, and x's address keeps it in a slot
+	src := `
+		fun sink (v int) -> int { return v; }
+		fun main () -> int { let a = 3; let x = 4; let p = &x; return sink(*p) + a; }
+	`
+
+	tests := []struct {
+		name   string
+		target *target.Target
+	}{
+		{"x64", target.X64SysV},
+		{"arm64", target.ARM64AAPCS},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			main := requireFunc(t, requireBuildSSAFor(t, tt.target, src), "main")
+			saved := main.SavedRegisters()
+			require.NotEmpty(t, saved)
+			require.Len(t, main.Slots, 1)
+
+			// the first saved register sits right below the frame pointer, and the rest pack downward
+			assert.Equal(t, NewMem(tt.target.FramePointer, -8), saved[0].Loc)
+			assert.Equal(t, NewMem(tt.target.FramePointer, -8*len(saved)), saved[len(saved)-1].Loc)
+			assert.True(t, tt.target.CalleeSaved.Contains(saved[0].Reg))
+
+			// locals start below the saved registers, and the frame covers both
+			assert.Equal(t, tt.target.FramePointer, main.Slots[0].Loc.Reg)
+			assert.LessOrEqual(t, main.Slots[0].Loc.Offset, -8*len(saved)-main.Slots[0].Type.Size())
+			assert.GreaterOrEqual(t, main.FrameSize(), -main.Slots[0].Loc.Offset)
+		})
+	}
 }
 
 func TestMaxOutgoingSize_WidestCallWins(t *testing.T) {
@@ -794,7 +828,7 @@ func TestLowerResults_OverflowResultGoesToMemory(t *testing.T) {
 	require.Len(t, third.Args, 1)
 	assert.Equal(t, LocMemory, third.Args[0].Loc.Kind)
 	assert.Equal(t, target.RegBP, third.Args[0].Loc.Reg)
-	assert.Equal(t, incomingArgOffset(0), third.Args[0].Loc.Offset)
+	assert.Equal(t, f.incomingArgOffset(0), third.Args[0].Loc.Offset)
 }
 
 func TestLowerCallResults_OverflowResultReadFromMemory(t *testing.T) {
@@ -844,7 +878,7 @@ func TestLowerResults_OverflowResultSitsAboveOverflowArguments(t *testing.T) {
 	written := result.Args[0]
 	assert.Equal(t, LocMemory, written.Loc.Kind)
 	assert.Equal(t, target.RegBP, written.Loc.Reg)
-	assert.Equal(t, incomingArgOffset(2), written.Loc.Offset)
+	assert.Equal(t, callee.incomingArgOffset(2), written.Loc.Offset)
 
 	// the caller names that same slot from its own side of the call
 	main := requireFunc(t, funcs, "main")

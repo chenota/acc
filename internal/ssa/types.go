@@ -370,16 +370,15 @@ func (f *Func) Name() string {
 	return f.name
 }
 
-// StackAdjustment is the number of bytes the function prologue must subtract from rsp.
-func (f *Func) StackAdjustment() int {
-	pushBytes := f.savedRegBytes()
-	region := max(pushBytes, f.localsSize()) + f.maxOutgoingSize()
-	return ((region + 15) &^ 15) - pushBytes
+// FrameSize is how many bytes the frame takes up below the frame record
+func (f *Func) FrameSize() int {
+	region := max(f.savedRegBytes(), f.localsSize()) + f.maxOutgoingSize()
+	return (region + 15) &^ 15
 }
 
-// savedRegBytes is the number of bytes the prologue pushes for callee-saved registers.
+// savedRegBytes is the number of bytes the saved registers take up at the top of the frame.
 func (f *Func) savedRegBytes() int {
-	return f.SavedRegisters().Count() * 8
+	return f.usedCalleeSaved().Count() * 8 // 8 bytes per register
 }
 
 // localsSize is the size in bytes of the frame's slot area
@@ -426,8 +425,22 @@ func (f *Func) UsedRegisters() target.Mask {
 	return m
 }
 
-func (f *Func) SavedRegisters() target.Mask {
+func (f *Func) usedCalleeSaved() target.Mask {
 	return f.UsedRegisters().Intersect(f.Target.CalleeSaved)
+}
+
+type SavedRegister struct {
+	Reg target.Register // a callee-saved register
+	Loc Location        // where the function prologue puts it
+}
+
+// SavedRegisters are the callee-saved registers f uses, in order going downwards from the frame record
+func (f *Func) SavedRegisters() []SavedRegister {
+	var saved []SavedRegister
+	for r := range f.usedCalleeSaved().All() {
+		saved = append(saved, SavedRegister{Reg: r, Loc: f.frameLoc(-(len(saved) + 1) * 8)}) // 8 bytes per register
+	}
+	return saved
 }
 
 // nearestDominatingBlocks gives each used slot the nearest block dominating all of its uses.

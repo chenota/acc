@@ -21,6 +21,9 @@ type Target struct {
 	StackPointer Register
 	FramePointer Register
 	LinkRegister Register
+
+	// How far above the frame pointer the caller's outgoing records start
+	FrameRecordSize int
 }
 
 func For(arch buildcfg.Arch, os buildcfg.OS) (*Target, error) {

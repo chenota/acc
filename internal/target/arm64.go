@@ -61,6 +61,8 @@ var ARM64AAPCS = &Target{
 	StackPointer: RegXSP,
 	FramePointer: RegX29,
 	LinkRegister: RegX30,
+
+	FrameRecordSize: 16,
 }
 
 var ARM64Apple = &Target{
@@ -89,4 +91,6 @@ var ARM64Apple = &Target{
 	StackPointer: RegXSP,
 	FramePointer: RegX29,
 	LinkRegister: RegX30,
+
+	FrameRecordSize: 16,
 }
