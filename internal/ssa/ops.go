@@ -53,6 +53,14 @@ const (
 	OpX64SETLE    // compares Args[0] with Args[1], true when signed less or equal
 	OpX64SETG     // compares Args[0] with Args[1], true when signed greater
 	OpX64SETGE    // compares Args[0] with Args[1], true when signed greater or equal
+	OpX64MOVconst // the constant in Value
+	OpX64MOVload  // reads from Offset past the pointer in Args[0]
+	OpX64MOVstore // writes Args[0] to Offset past the pointer in Args[1]
+	OpX64LEAQslot // address at Offset into the frame slot in Value
+	OpX64LEAQ     // address at Offset from the pointer in Args[0]
+	OpX64LEAQrip  // address of the function in Value
+	OpX64CALLstatic
+	OpX64CALLclosure
 
 	// arm64 ops
 
@@ -68,9 +76,17 @@ const (
 	OpARM64CSETLE   // compares Args[0] with Args[1], true when signed less or equal
 	OpARM64CSETGT   // compares Args[0] with Args[1], true when signed greater
 	OpARM64CSETGE   // compares Args[0] with Args[1], true when signed greater or equal
+	OpARM64MOVconst // the constant in Value
+	OpARM64LDR      // reads from Offset past the pointer in Args[0]
+	OpARM64STR      // writes Args[0] to Offset past the pointer in Args[1]
+	OpARM64ADDslot  // address at Offset into the frame slot in Value
+	OpARM64ADDconst // address at Offset from the pointer in Args[0]
+	OpARM64ADRP     // address of the function in Value, an adrp of its page plus an add of the rest
+	OpARM64BL
+	OpARM64BLR
 )
 
-// opInfo is what the back end knows about an op
+// opInfo is a collection of properties of an operation
 type opInfo struct {
 	name string
 	reg  regInfo
@@ -139,14 +155,22 @@ var opcodeTable = [...]opInfo{
 		output:   rax,
 		clobbers: rdx,
 	}},
-	OpX64NEG:      {name: "X64NEG", reg: regInfo{twoAddress: true}},
-	OpX64XORconst: {name: "X64XORconst", reg: regInfo{twoAddress: true}},
-	OpX64SETE:     {name: "X64SETE"},
-	OpX64SETNE:    {name: "X64SETNE"},
-	OpX64SETL:     {name: "X64SETL"},
-	OpX64SETLE:    {name: "X64SETLE"},
-	OpX64SETG:     {name: "X64SETG"},
-	OpX64SETGE:    {name: "X64SETGE"},
+	OpX64NEG:         {name: "X64NEG", reg: regInfo{twoAddress: true}},
+	OpX64XORconst:    {name: "X64XORconst", reg: regInfo{twoAddress: true}},
+	OpX64SETE:        {name: "X64SETE"},
+	OpX64SETNE:       {name: "X64SETNE"},
+	OpX64SETL:        {name: "X64SETL"},
+	OpX64SETLE:       {name: "X64SETLE"},
+	OpX64SETG:        {name: "X64SETG"},
+	OpX64SETGE:       {name: "X64SETGE"},
+	OpX64MOVconst:    {name: "X64MOVconst", rematerializable: true, constant: true},
+	OpX64MOVload:     {name: "X64MOVload"},
+	OpX64MOVstore:    {name: "X64MOVstore", noResult: true},
+	OpX64LEAQslot:    {name: "X64LEAQslot", rematerializable: true},
+	OpX64LEAQ:        {name: "X64LEAQ"},
+	OpX64LEAQrip:     {name: "X64LEAQrip", rematerializable: true},
+	OpX64CALLstatic:  {name: "X64CALLstatic", call: true, noResult: true},
+	OpX64CALLclosure: {name: "X64CALLclosure", call: true, closureCall: true, noResult: true},
 
 	OpARM64ADD:      {name: "ARM64ADD"},
 	OpARM64SUB:      {name: "ARM64SUB"},
@@ -160,6 +184,14 @@ var opcodeTable = [...]opInfo{
 	OpARM64CSETLE:   {name: "ARM64CSETLE"},
 	OpARM64CSETGT:   {name: "ARM64CSETGT"},
 	OpARM64CSETGE:   {name: "ARM64CSETGE"},
+	OpARM64MOVconst: {name: "ARM64MOVconst", rematerializable: true, constant: true},
+	OpARM64LDR:      {name: "ARM64LDR"},
+	OpARM64STR:      {name: "ARM64STR", noResult: true},
+	OpARM64ADDslot:  {name: "ARM64ADDslot", rematerializable: true},
+	OpARM64ADDconst: {name: "ARM64ADDconst"},
+	OpARM64ADRP:     {name: "ARM64ADRP", rematerializable: true},
+	OpARM64BL:       {name: "ARM64BL", call: true, noResult: true},
+	OpARM64BLR:      {name: "ARM64BLR", call: true, closureCall: true, noResult: true},
 }
 
 func (o Op) info() *opInfo {

@@ -212,19 +212,19 @@ func generateValue(v *ssa.Value) ([]Inst, error) {
 	var insts []Inst
 
 	switch v.Op {
-	case ssa.OpLiteral:
+	case ssa.OpX64MOVconst:
 		insts = append(insts, generateLiteral(v))
 	case ssa.OpStaticLoad:
 		insts = append(insts, generateStaticLoad(v))
 	case ssa.OpStaticStore:
 		insts = append(insts, generateStaticStore(v))
-	case ssa.OpLocalAddr:
+	case ssa.OpX64LEAQslot:
 		insts = append(insts, generateLocalAddr(v))
-	case ssa.OpFieldAddr:
+	case ssa.OpX64LEAQ:
 		insts = append(insts, generateFieldAddr(v))
-	case ssa.OpStore:
+	case ssa.OpX64MOVstore:
 		insts = append(insts, generateStore(v))
-	case ssa.OpLoad:
+	case ssa.OpX64MOVload:
 		insts = append(insts, generateLoad(v))
 	case ssa.OpX64ADD:
 		insts = append(insts, generateBop(v, addOp(v.Type.Size()))...)
@@ -252,11 +252,11 @@ func generateValue(v *ssa.Value) ([]Inst, error) {
 		insts = append(insts, generateNot(v)...)
 	case ssa.OpCopy:
 		insts = append(insts, generateCopy(v))
-	case ssa.OpStaticCall:
+	case ssa.OpX64CALLstatic:
 		insts = append(insts, generateCall(v))
-	case ssa.OpClosureCall:
+	case ssa.OpX64CALLclosure:
 		insts = append(insts, generateClosureCall(v))
-	case ssa.OpLabelAddr:
+	case ssa.OpX64LEAQrip:
 		insts = append(insts, generateLabelAddr(v))
 	case ssa.OpParam, ssa.OpResult, ssa.OpCallResult, ssa.OpClosurePtr, ssa.OpUnit, ssa.OpPhi:
 		// placeholders values

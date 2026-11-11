@@ -99,7 +99,7 @@ func TestGenSsa_FoldsToLiteral(t *testing.T) {
 			assert.Equal(t, BlockRet, f.Entry.Kind)
 
 			ret := requireReturned(t, f.Entry)
-			assert.Equal(t, OpLiteral, ret.Op)
+			assert.Equal(t, OpX64MOVconst, ret.Op)
 			assert.Equal(t, types.Int(), ret.Type)
 			assert.Equal(t, tt.want, ret.Value)
 
@@ -191,7 +191,7 @@ func TestGenSsa_BoolFoldsToLiteral(t *testing.T) {
 			f := requireFunc(t, requireBuildSSA(t, tt.src), "f")
 
 			ret := requireReturned(t, f.Entry)
-			assert.Equal(t, OpLiteral, ret.Op)
+			assert.Equal(t, OpX64MOVconst, ret.Op)
 			assert.Equal(t, types.Bool(), ret.Type)
 			assert.Equal(t, tt.want, ret.Value)
 		})
@@ -302,6 +302,50 @@ func TestLower_ComparisonBecomesMachineOp(t *testing.T) {
 	}
 }
 
+// TestLower_MemoryAndCallsBecomeMachineOps covers the ops that touch memory or other functions reaching allocation as
+// their target's own op
+func TestLower_MemoryAndCallsBecomeMachineOps(t *testing.T) {
+	const (
+		literal = `fun main () -> int { return 7; }`
+		pointer = `fun main () -> int { let a = 10; let b = &a; *b = 20; return *b; }`
+		field   = `fun main () -> int { let t = (1, 2); let p = &t; let q = &(*p).1; return *q; }`
+		call    = `fun f () -> int { return 1; } fun main () -> int { return f(); }`
+		closure = `fun main () -> int { let x = 10; let f = fun (y int) -> int { return x + y; }; return f(2); }`
+	)
+
+	tests := []struct {
+		name   string
+		target *target.Target
+		src    string
+		want   Op
+	}{
+		{"x64 literal", target.X64SysV, literal, OpX64MOVconst},
+		{"x64 load", target.X64SysV, pointer, OpX64MOVload},
+		{"x64 store", target.X64SysV, pointer, OpX64MOVstore},
+		{"x64 local address", target.X64SysV, pointer, OpX64LEAQslot},
+		{"x64 field address", target.X64SysV, field, OpX64LEAQ},
+		{"x64 static call", target.X64SysV, call, OpX64CALLstatic},
+		{"x64 label address", target.X64SysV, closure, OpX64LEAQrip},
+		{"x64 closure call", target.X64SysV, closure, OpX64CALLclosure},
+		{"arm64 literal", target.ARM64AAPCS, literal, OpARM64MOVconst},
+		{"arm64 load", target.ARM64AAPCS, pointer, OpARM64LDR},
+		{"arm64 store", target.ARM64AAPCS, pointer, OpARM64STR},
+		{"arm64 local address", target.ARM64AAPCS, pointer, OpARM64ADDslot},
+		{"arm64 field address", target.ARM64AAPCS, field, OpARM64ADDconst},
+		{"arm64 static call", target.ARM64AAPCS, call, OpARM64BL},
+		{"arm64 label address", target.ARM64AAPCS, closure, OpARM64ADRP},
+		{"arm64 closure call", target.ARM64AAPCS, closure, OpARM64BLR},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := requireFunc(t, requireBuildSSAFor(t, tt.target, tt.src), "main")
+
+			assert.NotEmpty(t, findValues(slices.Collect(f.UnorderedValues()), tt.want))
+		})
+	}
+}
+
 // TestLower_NotFlipsTheLowBit covers a not lowering to an xor with 1, which negates a bool
 func TestLower_NotFlipsTheLowBit(t *testing.T) {
 	f := requireFunc(t, requireBuildSSA(t, `fun f (a bool) -> bool { return !a; }`), "f")
@@ -317,7 +361,7 @@ func TestUnaryFold_BranchConditionIsKept(t *testing.T) {
 
 	require.Equal(t, BlockIf, f.Entry.Kind)
 	require.Len(t, f.Entry.Control, 1, "the branch keeps its condition")
-	assert.Equal(t, OpLiteral, f.Entry.Control[0].Op)
+	assert.Equal(t, OpX64MOVconst, f.Entry.Control[0].Op)
 	assert.Equal(t, false, f.Entry.Control[0].Value)
 }
 
@@ -469,7 +513,7 @@ func TestGenSsa_Ref_KeepsAddressedSlotInFrame(t *testing.T) {
 	assert.Equal(t, target.RegBP, slot.Loc.Reg)
 
 	// the address names the slot it points at and lands in a register
-	addrs := findValues(f.Entry.Values, OpLocalAddr)
+	addrs := findValues(f.Entry.Values, OpX64LEAQslot)
 	require.Len(t, addrs, 1)
 	assert.Same(t, slot, addrs[0].Slot())
 	assert.True(t, types.Equal(types.Pointer(types.Int()), addrs[0].Type))
@@ -478,7 +522,7 @@ func TestGenSsa_Ref_KeepsAddressedSlotInFrame(t *testing.T) {
 
 	// an indirect load carries its address as an operand and names no slot
 	ret := requireReturned(t, f.Entry)
-	require.Equal(t, OpLoad, ret.Op)
+	require.Equal(t, OpX64MOVload, ret.Op)
 	assert.Nil(t, ret.Slot())
 	require.Len(t, ret.Args, 1)
 	assert.Same(t, addrs[0], ret.Args[0])
@@ -489,15 +533,15 @@ func TestGenSsa_Deref_AssignmentStoresThroughPointer(t *testing.T) {
 	funcs := requireBuildSSA(t, `fun main () -> int { let a = 10; let b = &a; *b = 20; return a; }`)
 
 	f := requireFunc(t, funcs, "main")
-	stores := findValues(f.Entry.Values, OpStore)
+	stores := findValues(f.Entry.Values, OpX64MOVstore)
 	require.Len(t, stores, 1)
 	store := stores[0]
 
 	assert.Nil(t, store.Slot())
 	require.Len(t, store.Args, 2)
-	assert.Equal(t, OpLiteral, store.Args[0].Op)
+	assert.Equal(t, OpX64MOVconst, store.Args[0].Op)
 	assert.Equal(t, int32(20), store.Args[0].Value)
-	assert.Equal(t, OpLocalAddr, store.Args[1].Op)
+	assert.Equal(t, OpX64LEAQslot, store.Args[1].Op)
 
 	// a store produces nothing, so it never claims a register
 	assert.False(t, store.NeedsRegister())
@@ -510,15 +554,15 @@ func TestGenSsa_DerefAssignOp_EvaluatesAddressOnce(t *testing.T) {
 	f := requireFunc(t, funcs, "main")
 
 	// *b += 5 computes the destination address once and both reads and writes through it
-	addrs := findValues(f.Entry.Values, OpLocalAddr)
+	addrs := findValues(f.Entry.Values, OpX64LEAQslot)
 	require.Len(t, addrs, 1)
 
-	loads := findValues(f.Entry.Values, OpLoad)
+	loads := findValues(f.Entry.Values, OpX64MOVload)
 	require.Len(t, loads, 1)
 	require.Len(t, loads[0].Args, 1)
 	assert.Same(t, addrs[0], loads[0].Args[0])
 
-	stores := findValues(f.Entry.Values, OpStore)
+	stores := findValues(f.Entry.Values, OpX64MOVstore)
 	require.Len(t, stores, 1)
 	require.Len(t, stores[0].Args, 2)
 	assert.Same(t, addrs[0], stores[0].Args[1])
@@ -530,7 +574,7 @@ func TestGenSsa_RefOfDeref_ReusesPointer(t *testing.T) {
 	f := requireFunc(t, funcs, "main")
 
 	// &*b is just b, so a's address is the only one ever computed
-	assert.Len(t, findValues(f.Entry.Values, OpLocalAddr), 1)
+	assert.Len(t, findValues(f.Entry.Values, OpX64LEAQslot), 1)
 	assert.Len(t, f.Slots, 1)
 }
 
@@ -625,7 +669,7 @@ func TestHeapify_RewritesAnEscapingLocal(t *testing.T) {
 		"expected *int, got %v", alloc.Type)
 
 	// nothing still takes the address of a frame slot, and the slot is gone
-	assert.Empty(t, findValues(slices.Collect(f.UnorderedValues()), OpLocalAddr))
+	assert.Empty(t, findValues(slices.Collect(f.UnorderedValues()), OpX64LEAQslot))
 	assert.Nil(t, slotNamed(f, "x"))
 }
 
@@ -691,7 +735,7 @@ func TestHeapify_NothingIsLeftOnTheFrame(t *testing.T) {
 
 			assert.Len(t, findAllocations(f), tt.allocs)
 			assert.Empty(t, f.Slots, "nothing is left on the frame to point at")
-			assert.Empty(t, findValues(slices.Collect(f.UnorderedValues()), OpLocalAddr))
+			assert.Empty(t, findValues(slices.Collect(f.UnorderedValues()), OpX64LEAQslot))
 		})
 	}
 }
@@ -820,7 +864,7 @@ func TestUnoptimized_Nil(t *testing.T) {
 	funcs := requireBuildSSA(t, `fun f () -> *int { return nil; } fun main () -> int { let x *int = f(); return 0; }`)
 
 	callee := requireFunc(t, funcs, "f")
-	literals := findValues(callee.Entry.Values, OpLiteral)
+	literals := findValues(callee.Entry.Values, OpX64MOVconst)
 	require.Len(t, literals, 1)
 
 	// nil is an ordinary zero literal, widened to fill a whole pointer
@@ -1073,11 +1117,11 @@ func requireFunc(t *testing.T, funcs []*Func, name string) *Func {
 	return nil
 }
 
-// requireCall returns the single OpCall value in the named function.
+// requireCall returns the single call in the named function, whatever its target's call op.
 func requireCall(t *testing.T, funcs []*Func, funcName string) *Value {
 	t.Helper()
 	f := requireFunc(t, funcs, funcName)
-	calls := findValues(f.Entry.Values, OpStaticCall)
+	calls := slices.DeleteFunc(slices.Clone(f.Entry.Values), func(v *Value) bool { return !v.IsCall() })
 	require.Len(t, calls, 1)
 	return calls[0]
 }
@@ -1094,7 +1138,7 @@ func requireAllocate(t *testing.T, f *Func) *Value {
 func findAllocations(f *Func) []*Value {
 	var result []*Value
 	for v := range f.UnorderedValues() {
-		if v.Op == OpStaticCall && v.Callee() == Alloc {
+		if v.Op == OpX64CALLstatic && v.Callee() == Alloc {
 			result = append(result, v)
 		}
 	}
@@ -1123,7 +1167,7 @@ func TestGenSsa_Closure_ImmutableCaptureIsCopied(t *testing.T) {
 
 	// nothing ever writes x, so the only field holds a copy of its value and x needs no storage of its own
 	capture := requireStoredAt(t, f, env, 0)
-	require.Equal(t, OpLiteral, capture.Op)
+	require.Equal(t, OpX64MOVconst, capture.Op)
 	assert.Equal(t, int32(10), capture.Value)
 	assert.Nil(t, slotNamed(f, "x"))
 
@@ -1156,7 +1200,7 @@ func TestGenSsa_Closure_MutatedCaptureIsBoxed(t *testing.T) {
 
 	// that pointer is x's address rather than its value, so both sides see the same storage
 	capture := requireStoredAt(t, f, env, 0)
-	require.Equal(t, OpLocalAddr, capture.Op)
+	require.Equal(t, OpX64LEAQslot, capture.Op)
 	assert.Same(t, slotNamed(f, "x"), capture.Slot())
 	assert.True(t, types.Equal(types.Pointer(types.Int()), capture.Type))
 
@@ -1257,7 +1301,7 @@ func TestGenSsa_Closure_CaptureOverLeafCapIsBoxed(t *testing.T) {
 
 	// that pointer is x's address, so x keeps its storage
 	capture := requireStoredAt(t, f, env, 0)
-	require.Equal(t, OpLocalAddr, capture.Op)
+	require.Equal(t, OpX64LEAQslot, capture.Op)
 	assert.Same(t, slotNamed(f, "x"), capture.Slot())
 }
 
@@ -1315,7 +1359,7 @@ func requireLoadFrom(t *testing.T, f *Func, ptr *Value) *Value {
 
 	var found []*Value
 	for v := range f.UnorderedValues() {
-		if v.Op == OpLoad && len(v.Args) > 0 && throughCopies(v.Args[0]) == ptr {
+		if v.Op == OpX64MOVload && len(v.Args) > 0 && throughCopies(v.Args[0]) == ptr {
 			found = append(found, v)
 		}
 	}
@@ -1343,7 +1387,7 @@ func TestGenSsa_ClosureCall_OperandOrder(t *testing.T) {
 
 	// the first operand names the lifted lambda directly
 	code := throughCopies(call.Args[0])
-	require.Equal(t, OpLabelAddr, code.Op)
+	require.Equal(t, OpX64LEAQrip, code.Op)
 	assert.Equal(t, "main.func0", code.Callee().Name())
 
 	// the callee reads its captures out of the context register, so the environment has to land there
@@ -1352,11 +1396,11 @@ func TestGenSsa_ClosureCall_OperandOrder(t *testing.T) {
 
 	// the second is the environment, which the unknown target can't leak, so it stays on the frame
 	env := throughCopies(call.Args[1])
-	require.Equal(t, OpLocalAddr, env.Op)
+	require.Equal(t, OpX64LEAQslot, env.Op)
 	assert.Same(t, requireEnvSlot(t, f), env.Slot())
 
 	// the code pointer travels in the closure itself, so nothing loads it out of the environment
-	assert.Empty(t, findValues(f.Entry.Values, OpLoad),
+	assert.Empty(t, findValues(f.Entry.Values, OpX64MOVload),
 		"the code pointer must not be read through memory")
 }
 
@@ -1364,7 +1408,7 @@ func TestGenSsa_ClosureCall_OperandOrder(t *testing.T) {
 func requireClosureCall(t *testing.T, funcs []*Func, funcName string) *Value {
 	t.Helper()
 
-	calls := findValues(requireFunc(t, funcs, funcName).Entry.Values, OpClosureCall)
+	calls := findValues(requireFunc(t, funcs, funcName).Entry.Values, OpX64CALLclosure)
 	require.Len(t, calls, 1)
 	return calls[0]
 }
@@ -1384,8 +1428,8 @@ func TestGenSsa_DirectCall_BuildsNoEnvironment(t *testing.T) {
 	// a direct call names its target, so Args holds the arguments alone
 	assert.Len(t, call.Args, 2)
 
-	assert.Empty(t, findValues(f.Entry.Values, OpClosureCall))
-	assert.Empty(t, findValues(f.Entry.Values, OpLabelAddr))
+	assert.Empty(t, findValues(f.Entry.Values, OpX64CALLclosure))
+	assert.Empty(t, findValues(f.Entry.Values, OpX64LEAQrip))
 	assert.Empty(t, f.Slots)
 }
 
@@ -1402,12 +1446,12 @@ func TestSpill_EvictedLiteralIsRebuiltAtItsUse(t *testing.T) {
 
 	// every field is built before the first store, so more literals are live at once than there are registers;
 	// the ones that lose theirs are rebuilt in among the stores that need them
-	firstStore := slices.IndexFunc(values, func(v *Value) bool { return v.Op == OpStore })
+	firstStore := slices.IndexFunc(values, func(v *Value) bool { return v.Op == OpX64MOVstore })
 	require.GreaterOrEqual(t, firstStore, 0)
 
 	lastLiteral := -1
 	for i, v := range values {
-		if v.Op == OpLiteral {
+		if v.Op == OpX64MOVconst {
 			lastLiteral = i
 		}
 	}
@@ -1416,12 +1460,12 @@ func TestSpill_EvictedLiteralIsRebuiltAtItsUse(t *testing.T) {
 	// rather than taking a round trip through a spill slot
 	for _, v := range values {
 		if v.Op == OpStaticStore && v.Slot().Sym == nil {
-			assert.NotEqual(t, OpLiteral, v.Args[0].Op, "a literal must never be spilled")
+			assert.NotEqual(t, OpX64MOVconst, v.Args[0].Op, "a literal must never be spilled")
 		}
 	}
 
 	// and a literal rebuilt at every use leaves nothing reading its first definition, so that definition goes too
-	assert.Empty(t, slices.DeleteFunc(findValues(values, OpLiteral), f.hasUses))
+	assert.Empty(t, slices.DeleteFunc(findValues(values, OpX64MOVconst), f.hasUses))
 }
 
 // TestPruneUnreachable_EveryPathReturns covers conditionals that strand their merge block behind returns
@@ -1482,10 +1526,10 @@ func TestGenSsa_Conditional_BuildsDiamond(t *testing.T) {
 
 	// each operand lines up with the predecessor it comes in from
 	assert.Same(t, then, phi.Args[0].Block)
-	assert.Equal(t, OpLiteral, phi.Args[0].Op)
+	assert.Equal(t, OpX64MOVconst, phi.Args[0].Op)
 	assert.Equal(t, int32(1), phi.Args[0].Value)
 	assert.Same(t, els, phi.Args[1].Block)
-	assert.Equal(t, OpLiteral, phi.Args[1].Op)
+	assert.Equal(t, OpX64MOVconst, phi.Args[1].Op)
 	assert.Equal(t, int32(2), phi.Args[1].Value)
 
 	assert.Empty(t, findValues(then.Values, OpStaticStore), "the slot is promoted out of memory")
@@ -1537,7 +1581,7 @@ func TestGenSsa_Loop_BodyValueIsEvaluated(t *testing.T) {
 		fun g () { }
 		fun f () { loop { g() }; }`), "f")
 
-	assert.Len(t, findValues(slices.Collect(f.OrderedValues()), OpStaticCall), 1)
+	assert.Len(t, findValues(slices.Collect(f.OrderedValues()), OpX64CALLstatic), 1)
 }
 
 func TestMem2Reg_VariableReadAcrossABranchIsPromoted(t *testing.T) {
@@ -1577,7 +1621,7 @@ func TestMem2Reg_ArmThatReturnsLeavesNothingToMerge(t *testing.T) {
 
 	merge := f.Entry.Successors[1].Successors[0]
 	ret := requireReturned(t, merge)
-	assert.Equal(t, OpLiteral, ret.Op)
+	assert.Equal(t, OpX64MOVconst, ret.Op)
 	assert.Equal(t, int32(2), ret.Value)
 }
 
@@ -1673,7 +1717,7 @@ func TestRegalloc_ValueOnlyOneArmNeedsIgnoresACallInTheOther(t *testing.T) {
 		fun f (c bool) -> *int { let x = 7; if c { return &x; } else { g(); return nil; } }`), "f")
 	require.Len(t, f.Entry.Successors, 2)
 	then, els := f.Entry.Successors[0], f.Entry.Successors[1]
-	require.NotEmpty(t, findValues(els.Values, OpStaticCall), "the else arm makes a call")
+	require.NotEmpty(t, findValues(els.Values, OpX64CALLstatic), "the else arm makes a call")
 
 	ptr := requireReturned(t, then)
 	require.Same(t, f.Entry, ptr.Block, "the pointer is made before the branch")
@@ -1741,18 +1785,18 @@ func TestSpill_PhisBeyondTheRegistersWaitInMemory(t *testing.T) {
 	// each arm leaves its value for r in that slot on the way out
 	thenStores := findStoresTo(then, last.Slot())
 	require.Len(t, thenStores, 1)
-	assert.Equal(t, OpLiteral, thenStores[0].Args[0].Op)
+	assert.Equal(t, OpX64MOVconst, thenStores[0].Args[0].Op)
 	assert.Equal(t, int32(16), thenStores[0].Args[0].Value)
 
 	elseStores := findStoresTo(els, last.Slot())
 	require.Len(t, elseStores, 1)
-	assert.Equal(t, OpLiteral, elseStores[0].Args[0].Op)
+	assert.Equal(t, OpX64MOVconst, elseStores[0].Args[0].Op)
 	assert.Equal(t, int32(32), elseStores[0].Args[0].Value)
 
 	// every arm's literals outnumber the registers, so some are rebuilt to be stored for a memory phi;
 	// once that phi is gone, nothing reads the literal it was handed, so that literal goes too
-	assert.Empty(t, slices.DeleteFunc(findValues(then.Values, OpLiteral), f.hasUses))
-	assert.Empty(t, slices.DeleteFunc(findValues(els.Values, OpLiteral), f.hasUses))
+	assert.Empty(t, slices.DeleteFunc(findValues(then.Values, OpX64MOVconst), f.hasUses))
+	assert.Empty(t, slices.DeleteFunc(findValues(els.Values, OpX64MOVconst), f.hasUses))
 }
 
 func TestRegalloc_PhiTakesTheRegisterItsOperandsShare(t *testing.T) {
@@ -1797,9 +1841,9 @@ func TestGenSsa_ShortCircuit_EvaluatesRightOperandOnOneArm(t *testing.T) {
 			require.Equal(t, BlockIf, branch.Kind)
 			require.Len(t, branch.Successors, 2)
 
-			assert.Empty(t, findValues(branch.Values, OpStaticCall))
-			assert.Len(t, findValues(branch.Successors[tt.right].Values, OpStaticCall), 1)
-			assert.Empty(t, findValues(branch.Successors[1-tt.right].Values, OpStaticCall))
+			assert.Empty(t, findValues(branch.Values, OpX64CALLstatic))
+			assert.Len(t, findValues(branch.Successors[tt.right].Values, OpX64CALLstatic), 1)
+			assert.Empty(t, findValues(branch.Successors[1-tt.right].Values, OpX64CALLstatic))
 		})
 	}
 }
@@ -1831,7 +1875,7 @@ func TestMem2Reg_ShortCircuit_JoinsRightOperandWithLiteral(t *testing.T) {
 
 			skipped := phi.Args[1-tt.right]
 			assert.Same(t, f.Entry.Successors[1-tt.right], skipped.Block)
-			assert.Equal(t, OpLiteral, skipped.Op)
+			assert.Equal(t, OpX64MOVconst, skipped.Op)
 			assert.Equal(t, tt.literal, skipped.Value)
 		})
 	}
@@ -1918,7 +1962,7 @@ func TestSpill_BackEdgeRebuildsLiteralEvictedInTheBody(t *testing.T) {
 	require.Len(t, restores, 1)
 	restore := restores[0]
 
-	assert.Equal(t, OpLiteral, restore.Op)
+	assert.Equal(t, OpX64MOVconst, restore.Op)
 	assert.Equal(t, int32(7), restore.Value)
 	assert.Equal(t, requireLiteral(t, f.Entry, int32(7)).Loc, restore.Loc)
 }
@@ -2079,7 +2123,7 @@ func requireLiteral(t *testing.T, b *Block, value any) *Value {
 	t.Helper()
 
 	var literals []*Value
-	for _, v := range findValues(b.Values, OpLiteral) {
+	for _, v := range findValues(b.Values, OpX64MOVconst) {
 		if v.Value == value {
 			literals = append(literals, v)
 		}

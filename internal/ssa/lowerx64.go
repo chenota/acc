@@ -27,6 +27,22 @@ func lowerValueX64(v *Value) bool {
 		v.Op = OpX64SETG
 	case OpGreaterEqual:
 		v.Op = OpX64SETGE
+	case OpLiteral:
+		v.Op = OpX64MOVconst
+	case OpLoad:
+		v.Op = OpX64MOVload
+	case OpStore:
+		v.Op = OpX64MOVstore
+	case OpLocalAddr:
+		v.Op = OpX64LEAQslot
+	case OpFieldAddr:
+		v.Op = OpX64LEAQ
+	case OpLabelAddr:
+		v.Op = OpX64LEAQrip
+	case OpStaticCall:
+		v.Op = OpX64CALLstatic
+	case OpClosureCall:
+		v.Op = OpX64CALLclosure
 	default:
 		return false
 	}

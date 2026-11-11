@@ -27,6 +27,22 @@ func lowerValueARM64(v *Value) bool {
 		v.Op = OpARM64CSETGT
 	case OpGreaterEqual:
 		v.Op = OpARM64CSETGE
+	case OpLiteral:
+		v.Op = OpARM64MOVconst
+	case OpLoad:
+		v.Op = OpARM64LDR
+	case OpStore:
+		v.Op = OpARM64STR
+	case OpLocalAddr:
+		v.Op = OpARM64ADDslot
+	case OpFieldAddr:
+		v.Op = OpARM64ADDconst
+	case OpLabelAddr:
+		v.Op = OpARM64ADRP
+	case OpStaticCall:
+		v.Op = OpARM64BL
+	case OpClosureCall:
+		v.Op = OpARM64BLR
 	default:
 		return false
 	}
