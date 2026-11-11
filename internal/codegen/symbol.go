@@ -1,9 +1,18 @@
 package codegen
 
-import "github.com/chenota/acc/internal/buildcfg"
+import (
+	"fmt"
 
-func symbolPrefix() string {
-	switch buildcfg.TargetOS() {
+	"github.com/chenota/acc/internal/buildcfg"
+	"github.com/chenota/acc/internal/ssa"
+)
+
+type symbols struct {
+	os buildcfg.OS
+}
+
+func (s symbols) symbolPrefix() string {
+	switch s.os {
 	case buildcfg.OSDarwin:
 		// The Mach-O ABI underscore-prefixes C symbols.
 		return "_"
@@ -13,8 +22,8 @@ func symbolPrefix() string {
 	}
 }
 
-func localPrefix() string {
-	switch buildcfg.TargetOS() {
+func (s symbols) localPrefix() string {
+	switch s.os {
 	case buildcfg.OSDarwin:
 		// Mach-O keeps L labels out of the symbol table
 		return "L"
@@ -22,4 +31,18 @@ func localPrefix() string {
 		// ELF keeps .L labels out of the symbol table
 		return ".L"
 	}
+}
+
+// funcLabel is the symbol a function is defined and called under
+func (s symbols) funcLabel(f *ssa.Func) string {
+	return s.symbolPrefix() + f.Name()
+}
+
+// blockLabel names a block, scoped to its function since block ids restart in each one
+func (s symbols) blockLabel(f *ssa.Func, b *ssa.Block) string {
+	return fmt.Sprintf("%s%s.%d", s.localPrefix(), f.Name(), b.Id)
+}
+
+func (s symbols) epilogueLabel(f *ssa.Func) string {
+	return fmt.Sprintf("%s%s.ret", s.localPrefix(), f.Name())
 }

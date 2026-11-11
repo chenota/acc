@@ -20,6 +20,18 @@ type move struct {
 	size int
 }
 
+// edgeMoves safely moves phis from pred to succ one at at time
+func edgeMoves(pred, succ *ssa.Block) []move {
+	var pending []move
+	for phi, arg := range succ.PhiArgsFrom(pred) {
+		if phi.Loc.Kind == ssa.LocNone || phi.Loc == arg.Loc {
+			continue
+		}
+		pending = append(pending, move{kind: moveCopy, dst: phi.Loc, src: arg.Loc, size: phi.Type.Size()})
+	}
+	return sequentialize(pending)
+}
+
 // sequentialize orders moves meant to happen all at once so they can run one at a time.
 func sequentialize(pending []move) []move {
 	var moves []move

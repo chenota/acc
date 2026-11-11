@@ -10,8 +10,8 @@ import (
 	"github.com/chenota/acc/internal/runtime"
 )
 
-// Assemble assembles and links a list of instructions into a binary using the host's C toolchain
-func Assemble(instructions []string, w io.Writer) error {
+// Assemble assembles and links assembly source into a binary using the host's C toolchain
+func Assemble(src string, w io.Writer) error {
 	tmpBinary, err := os.CreateTemp("", "acc_bin_*")
 	if err != nil {
 		return err
@@ -31,7 +31,7 @@ func Assemble(instructions []string, w io.Writer) error {
 	var stderr, stdout bytes.Buffer
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stdout
-	cmd.Stdin = bytes.NewBufferString(strings.Join(instructions, "\n") + "\n")
+	cmd.Stdin = strings.NewReader(src)
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s failed to assemble source: %w (stderr: %s)", cmd.Args[0], err, stderr.String())

@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -16,150 +17,160 @@ import (
 )
 
 func TestCodegen_PrologueEpilogue(t *testing.T) {
-	insts := requireGeneratesProgram(t, `fun main () -> int { return 0; }`)
+	asm := requireGeneratesAssembly(t, `fun main () -> int { return 0; }`)
 
-	assertContainsSeq(t, insts, "pushq", "movq", "popq", "ret")
+	assertContainsSeq(t, asm, "pushq %rbp", "movq %rsp, %rbp", "popq %rbp", "ret")
 }
 
 func TestCodegen_Labels_ELF(t *testing.T) {
-	insts := requireGeneratesProgramFor(t, "x64-linux", `fun main () -> int { return 0; }`)
+	asm := requireGeneratesAssembly(t, `fun main () -> int { return 0; }`)
 
-	assertContainsSeq(t, insts, ".globl", "main:", ".Lmain.0:", ".Lmain.ret:")
+	assert.Contains(t, asm, "\t.globl main\n")
+	assert.Equal(t, []string{"main", ".Lmain.0", ".Lmain.ret"}, labels(asm))
 }
 
 func TestCodegen_Labels_MachO(t *testing.T) {
-	insts := requireGeneratesProgramFor(t, "x64-darwin", `fun main () -> int { return 0; }`)
+	asm := requireGeneratesAssemblyFor(t, buildcfg.OSDarwin, `fun main () -> int { return 0; }`)
 
-	assertContainsSeq(t, insts, ".globl", "_main:", "Lmain.0:", "Lmain.ret:")
+	assert.Contains(t, asm, "\t.globl _main\n")
+	assert.Equal(t, []string{"_main", "Lmain.0", "Lmain.ret"}, labels(asm))
 }
 
 func TestCodegen_ImmediateValue(t *testing.T) {
-	insts := requireGeneratesProgram(t, `fun main () -> int { return 0; }`)
+	asm := requireGeneratesAssembly(t, `fun main () -> int { return 0; }`)
 
-	assertContainsOpWithArgs(t, insts, "movl", KImmediate, KUndefined, KRegister)
+	assert.Contains(t, instructions(asm), "movl $0, %eax")
 }
 
-func TestCodegen_Directives(t *testing.T) {
-	insts := requireGeneratesProgram(t, `fun main () -> int { return 0; }`)
+func TestGenerateAssembly_Directives(t *testing.T) {
+	asm := requireGeneratesAssembly(t, `fun main () -> int { return 0; }`)
 
-	assertContainsSeq(t, insts, ".text", ".globl")
+	assert.True(t, strings.HasPrefix(asm, "\t.text\n\t.globl main\nmain:\n"))
+}
+
+func TestGenerateAssembly_NoGeneratorForArch(t *testing.T) {
+	funcs := requireBuildSSAFor(t, target.ARM64AAPCS, `fun main () -> int { return 0; }`)
+
+	_, err := GenerateAssembly(funcs, WithTarget(buildcfg.ArchARM64, buildcfg.OSLinux))
+
+	assert.ErrorContains(t, err, "no code generator for arm64")
 }
 
 func TestCodegen_Call_ArgsInRegisters(t *testing.T) {
-	insts := requireGeneratesProgram(t, `
+	asm := requireGeneratesAssembly(t, `
 		fun target (a int, b int, c int) -> int { return 0; }
 		fun main () -> int { return target(1, 2, 3); }
 	`)
 
-	assertWritesRegBeforeCall(t, insts, target.RegDI)
-	assertWritesRegBeforeCall(t, insts, target.RegSI)
-	assertWritesRegBeforeCall(t, insts, target.RegD)
+	assertContainsSeq(t, asm, "movl $1, %edi", "call target")
+	assertContainsSeq(t, asm, "movl $2, %esi", "call target")
+	assertContainsSeq(t, asm, "movl $3, %edx", "call target")
 }
 
 func TestCodegen_RedundantMoves(t *testing.T) {
-	insts := requireGeneratesProgram(t, `
+	asm := requireGeneratesAssembly(t, `
 		fun double (x int) -> int { return x * 2; }
 		fun main () -> int { return double(4); }
 	`)
 
-	assertNoSelfMoves(t, insts)
+	assertNoSelfMoves(t, asm)
 }
 
 func TestCodegen_Divide_TrapIsLaidOutAfterTheDivide(t *testing.T) {
-	insts := requireGeneratesProgram(t, `
+	asm := requireGeneratesAssembly(t, `
 		fun div (a int, b int) -> int { return a / b; }
 		fun main () -> int { return div(7, 2); }
 	`)
 
-	stop := slices.IndexFunc(insts, func(i Inst) bool { return i.Op == "ud2" })
-	div := slices.IndexFunc(insts, func(i Inst) bool { return i.Op == "idivl" })
-	require.NotEqual(t, -1, stop, "a divisor that might be zero is checked")
-	require.NotEqual(t, -1, div)
+	stop := requireOnly(t, asm, "ud2")
+	div := requireOnly(t, asm, "idivl")
 
 	// a nonzero divisor runs straight on into the divide, and only a zero one jumps away to stop the program
-	assert.Less(t, div, stop)
+	assertContainsSeq(t, asm, div, stop)
 }
 
 func TestCodegen_CalleeSavedSavedBeforeStackAdjust(t *testing.T) {
 	// caller keeps `a` in a callee-saved register across a call that passes arguments on the stack.
-	insts := requireGeneratesProgram(t, `
+	asm := requireGeneratesAssembly(t, `
 		fun sink (x1 int, x2 int, x3 int, x4 int, x5 int, x6 int, x7 int, x8 int) -> int { return 0; }
 		fun caller (a int) -> int { return sink(1, 2, 3, 4, 5, 6, 7, 8) + a; }
 		fun main () -> int { return caller(0); }
 	`)
 
-	assertSavesCalleeBeforeStackAdjust(t, insts)
+	push := indexOfMatch(asm, `^pushq %(rbx|r12|r13|r14|r15)$`)
+	sub := indexOfMatch(asm, `^subq \$\d+, %rsp$`)
+
+	require.NotEqual(t, -1, push, "expected a callee-saved register to be pushed")
+	require.NotEqual(t, -1, sub, "expected a stack pointer adjustment")
+	assert.Less(t, push, sub, "callee-saved pushes must precede the stack adjustment")
 }
 
 func TestCodegen_LocalAddr_LeaqSlotIntoRegister(t *testing.T) {
-	insts := requireGeneratesProgram(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
+	asm := requireGeneratesAssembly(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
 
-	lea := requireOnlyOp(t, insts, "leaq")
+	lea := operands(requireOnly(t, asm, "leaq"))
+	require.Len(t, lea, 2)
 
 	// the frame slot is the source and a register receives the address it forms
-	assert.Equal(t, KMemory, lea.Src1.Kind)
-	assert.Equal(t, target.RegBP, lea.Src1.Reg)
-	assert.Equal(t, KRegister, lea.Dest.Kind)
+	assert.Regexp(t, `^-\d+\(%rbp\)$`, lea[0])
+	assert.Regexp(t, `^`+quadRegister+`$`, lea[1])
 }
 
 func TestCodegen_AddressedLocal_LivesInFrameSlot(t *testing.T) {
-	insts := requireGeneratesProgram(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
+	asm := requireGeneratesAssembly(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
 
 	// taking a's address keeps it in memory, so the initializer is written to its slot
-	assertContainsMemDest(t, insts, "movl", target.RegBP, -4)
+	assertContainsMatch(t, asm, `^movl \S+, -4\(%rbp\)$`)
 
 	// and the prologue reserves room for the slot
-	assertContainsOpWithArgs(t, insts, "subq", KImmediate, KUndefined, KRegister)
+	assertContainsMatch(t, asm, `^subq \$\d+, %rsp$`)
 }
 
 func TestCodegen_Deref_LoadsThroughAddressRegister(t *testing.T) {
-	insts := requireGeneratesProgram(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
+	asm := requireGeneratesAssembly(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
 
-	lea := requireOnlyOp(t, insts, "leaq")
-	require.Equal(t, KRegister, lea.Dest.Kind)
+	lea := operands(requireOnly(t, asm, "leaq"))
+	require.Len(t, lea, 2)
 
 	// the deref reads the memory the address register points at, not the register itself
-	assertContainsMemSrc(t, insts, "movl", lea.Dest.Reg, 0)
+	assertContainsMatch(t, asm, `^movl 0\(`+regexp.QuoteMeta(lea[1])+`\), \S+$`)
 }
 
 func TestCodegen_DerefAssignment_StoresThroughAddressRegister(t *testing.T) {
-	insts := requireGeneratesProgram(t, `fun main () -> int { let a = 10; let b = &a; *b = 20; return a; }`)
+	asm := requireGeneratesAssembly(t, `fun main () -> int { let a = 10; let b = &a; *b = 20; return a; }`)
 
-	lea := requireOnlyOp(t, insts, "leaq")
-	require.Equal(t, KRegister, lea.Dest.Kind)
+	lea := operands(requireOnly(t, asm, "leaq"))
+	require.Len(t, lea, 2)
 
-	assertContainsMemDest(t, insts, "movl", lea.Dest.Reg, 0)
+	assertContainsMatch(t, asm, `^movl \S+, 0\(`+regexp.QuoteMeta(lea[1])+`\)$`)
 }
 
 func TestCodegen_DerefAssignOp_FormsAddressOnce(t *testing.T) {
-	insts := requireGeneratesProgram(t, `fun main () -> int { let a = 10; let b = &a; *b += 5; return a; }`)
+	asm := requireGeneratesAssembly(t, `fun main () -> int { let a = 10; let b = &a; *b += 5; return a; }`)
 
 	// *b += 5 reads and writes through one address, so only one leaq is emitted
-	lea := requireOnlyOp(t, insts, "leaq")
-	require.Equal(t, KRegister, lea.Dest.Kind)
+	lea := operands(requireOnly(t, asm, "leaq"))
+	require.Len(t, lea, 2)
 
-	assertContainsMemSrc(t, insts, "movl", lea.Dest.Reg, 0)
-	assertContainsMemDest(t, insts, "movl", lea.Dest.Reg, 0)
+	assertContainsMatch(t, asm, `^movl 0\(`+regexp.QuoteMeta(lea[1])+`\), \S+$`)
+	assertContainsMatch(t, asm, `^movl \S+, 0\(`+regexp.QuoteMeta(lea[1])+`\)$`)
 }
 
 func TestCodegen_EscapingLocal_CallsRuntimeAllocator(t *testing.T) {
-	insts := requireGeneratesProgram(t, `
+	asm := requireGeneratesAssembly(t, `
 		fun escape () -> *int { let a = 10; return &a; }
 		fun main () -> int { let p = escape(); return *p; }
 	`)
 
 	// the allocator is an ordinary call to a symbol the C runtime defines
-	assertContainsCallTo(t, insts, symbol("acc_alloc"))
+	assert.Contains(t, instructions(asm), "call acc_alloc")
 }
 
 func TestCodegen_Nil_ZeroesFullWidth(t *testing.T) {
-	insts := requireGeneratesProgram(t, `fun main () -> int { let p *int = nil; let a = 10; p = &a; return *p; }`)
+	asm := requireGeneratesAssembly(t, `fun main () -> int { let p *int = nil; let a = 10; p = &a; return *p; }`)
 
 	// a pointer is 8 bytes wide whatever it points at, so nil is zeroed with the quadword move
-	mov := requireOnlyImmediateSrc(t, insts, "movq")
-
-	assert.Equal(t, int32(0), mov.Src1.Value)
-	assert.Equal(t, KRegister, mov.Dest.Kind)
+	assertContainsMatch(t, asm, `^movq \$0, `+quadRegister+`$`)
 }
 
 func TestCodegen_Comparison_ComparesAtOperandWidth(t *testing.T) {
@@ -179,72 +190,70 @@ func TestCodegen_Comparison_ComparesAtOperandWidth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			insts := requireGeneratesProgram(t, tt.src+` fun main () -> int { return 0; }`)
+			asm := requireGeneratesAssembly(t, tt.src+` fun main () -> int { return 0; }`)
 
-			assertContainsSeq(t, insts, tt.cmpOp, tt.setOp)
+			cmp := requireOnly(t, asm, tt.cmpOp)
+			set := requireOnly(t, asm, tt.setOp)
+			assertContainsSeq(t, asm, cmp, set)
 
 			// whatever the operands' width, the result is a single byte
-			set := requireOnlyOp(t, insts, tt.setOp)
-			assert.Equal(t, KRegister, set.Dest.Kind)
-			assert.Equal(t, 1, set.Dest.Value)
+			result := operands(set)
+			require.Len(t, result, 1)
+			assert.Regexp(t, `^`+byteRegister+`$`, result[0])
 		})
 	}
 }
 
 func TestCodegen_Comparison_LeftOperandIsDest(t *testing.T) {
-	insts := requireGeneratesProgram(t, `
+	asm := requireGeneratesAssembly(t, `
 		fun f (a int, b int) -> bool { return a < b; }
 		fun main () -> int { return 0; }
 	`)
 
 	// AT&T cmp computes dest - src, so setl reads a < b only when a is the destination; with nothing else live, each
-	// parameter is compared right where it arrived
-	cmp := requireOnlyOp(t, insts, "cmpl")
-	assert.Equal(t, target.RegDI, cmp.Dest.Reg, "left operand is compared as the destination")
-	assert.Equal(t, target.RegSI, cmp.Src1.Reg, "right operand is compared as the source")
+	// parameter is compared right where it arrived (a in edi, b in esi)
+	assert.Contains(t, instructions(asm), "cmpl %esi, %edi")
 }
 
 func TestCodegen_BoolLiteral_MovesByteImmediate(t *testing.T) {
-	insts := requireGeneratesProgram(t, `
+	asm := requireGeneratesAssembly(t, `
 		fun f () -> bool { return true; }
 		fun main () -> int { return 0; }
 	`)
 
-	mov := requireOnlyImmediateSrc(t, insts, "movb")
-	assert.Equal(t, int32(1), mov.Src1.Value)
+	assertContainsMatch(t, asm, `^movb \$1, `+byteRegister+`$`)
 }
 
 func TestCodegen_Not_FlipsLowBit(t *testing.T) {
-	insts := requireGeneratesProgram(t, `
+	asm := requireGeneratesAssembly(t, `
 		fun f (a bool) -> bool { return !a; }
 		fun main () -> int { return 0; }
 	`)
 
-	xor := requireOnlyOp(t, insts, "xorb")
-	assert.Equal(t, KImmediate, xor.Src1.Kind)
-	assert.Equal(t, int32(1), xor.Src1.Value)
-	assert.Equal(t, KRegister, xor.Dest.Kind)
+	assert.Regexp(t, `^xorb \$1, `+byteRegister+`$`, requireOnly(t, asm, "xorb"))
 }
 
 func TestCodegen_Conditional_TestsConditionByte(t *testing.T) {
-	insts := requireGeneratesProgram(t, `
+	asm := requireGeneratesAssembly(t, `
 		fun f (c bool) -> int { if c { 1 } else { 2 } }
 		fun main () -> int { return 0; }
 	`)
 
 	// a bool is a single byte, tested against itself to set the zero flag
-	test := requireOnlyOp(t, insts, "testb")
-	assert.Equal(t, KRegister, test.Dest.Kind)
-	assert.Equal(t, 1, test.Dest.Value)
-	assert.Equal(t, test.Src1, test.Dest)
+	test := requireOnly(t, asm, "testb")
+	ops := operands(test)
+	require.Len(t, ops, 2)
+	assert.Regexp(t, `^`+byteRegister+`$`, ops[0])
+	assert.Equal(t, ops[0], ops[1])
 
+	insts := instructions(asm)
 	i := slices.Index(insts, test)
 	require.Less(t, i+1, len(insts))
-	assert.Contains(t, []string{"je", "jne"}, insts[i+1].Op, "the test feeds a conditional jump")
+	assert.Contains(t, []string{"je", "jne"}, mnemonic(insts[i+1]), "the test feeds a conditional jump")
 }
 
 func TestCodegen_Jumps_TargetLabelsDefinedOnce(t *testing.T) {
-	insts := requireGeneratesProgram(t, `
+	asm := requireGeneratesAssembly(t, `
 		fun f (n int) -> int { if n < 0 { return 1; }; if n == 0 { 2 } elif n == 1 { 3 } else { 4 } }
 		fun g (c bool) -> int { if c { 4 } else { 5 } }
 		fun main () -> int { f(0) + g(true) }
@@ -252,192 +261,193 @@ func TestCodegen_Jumps_TargetLabelsDefinedOnce(t *testing.T) {
 
 	// block ids restart in every function, so this catches labels that aren't scoped to theirs
 	defined := make(map[string]int)
-	for _, inst := range insts {
-		if l, ok := strings.CutSuffix(inst.Op, ":"); ok {
-			defined[l] += 1
-		}
+	for _, l := range labels(asm) {
+		defined[l] += 1
 	}
 	for l, n := range defined {
 		assert.Equal(t, 1, n, "label %s is defined more than once", l)
 	}
 
-	for i, inst := range insts {
-		if !strings.HasPrefix(inst.Op, "j") {
+	lines := strings.Split(asm, "\n")
+	for i, line := range lines {
+		inst, ok := strings.CutPrefix(line, "\t")
+		if !ok || !slices.Contains([]string{"jmp", "je", "jne"}, mnemonic(inst)) {
 			continue
 		}
-		target, ok := inst.Dest.Value.(string)
-		require.True(t, ok, "%s has no label to jump to", inst.Op)
-		assert.Contains(t, defined, target, "%s jumps to an undefined label", inst.Op)
-		if i+1 < len(insts) {
-			assert.NotEqual(t, target+":", insts[i+1].Op, "%s jumps to the very next instruction", inst.Op)
-		}
+		ops := operands(inst)
+		require.Len(t, ops, 1, "%s has no label to jump to", inst)
+		assert.Contains(t, defined, ops[0], "%s jumps to an undefined label", inst)
+		// the text always ends in a newline, so a jump is never the last line
+		assert.NotEqual(t, ops[0]+":", lines[i+1], "%s jumps to the very next instruction", inst)
 	}
 }
 
 func TestCodegen_ReturnBlocks_ShareOneEpilogue(t *testing.T) {
-	insts := requireGeneratesProgram(t, `
+	asm := requireGeneratesAssembly(t, `
 		fun f (c bool) -> int { if c { return 1; } else { return 2; } }
 		fun main () -> int { return 0; }
 	`)
 
-	var rets, jmps []Inst
-	for _, inst := range insts {
-		switch inst.Op {
-		case "ret":
-			rets = append(rets, inst)
-		case "jmp":
-			jmps = append(jmps, inst)
-		}
-	}
-
 	// one ret per function, which the return block laid out last falls into and the other jumps to
-	assert.Len(t, rets, 2)
-	require.Len(t, jmps, 1)
-	assert.Equal(t, localPrefix()+"f.ret", jmps[0].Dest.Value)
+	assert.Len(t, withMnemonic(asm, "ret"), 2)
+	assert.Equal(t, "jmp .Lf.ret", requireOnly(t, asm, "jmp"))
 }
 
-func assertContainsSeq(t *testing.T, insts []Inst, seq ...string) {
-	t.Helper()
-
-	var seqIdx int
-	for _, inst := range insts {
-		if inst.Op == seq[seqIdx] {
-			seqIdx += 1
-		}
-		if seqIdx >= len(seq) {
-			return
-		}
+func TestX64Inst_String(t *testing.T) {
+	tests := []struct {
+		name string
+		inst X64Inst
+		want string
+	}{
+		{name: "no operands", inst: X64Inst{Op: X64RET}, want: "ret"},
+		{name: "dest only", inst: X64Inst{Op: X64NEG, Size: 4, Dst: x64Reg(target.RegA)}, want: "negl %eax"},
+		{name: "immediate to register", inst: X64Inst{Op: X64MOV, Size: 8, Src: x64Imm(10), Dst: x64Reg(target.Reg10)}, want: "movq $10, %r10"},
+		{name: "numbered register byte", inst: X64Inst{Op: X64MOV, Size: 1, Src: x64Imm(1), Dst: x64Reg(target.Reg9)}, want: "movb $1, %r9b"},
+		{name: "numbered register long", inst: X64Inst{Op: X64ADD, Size: 4, Src: x64Reg(target.Reg8), Dst: x64Reg(target.RegSI)}, want: "addl %r8d, %esi"},
+		{name: "memory base is full width", inst: X64Inst{Op: X64MOV, Size: 4, Src: x64Reg(target.RegA), Dst: X64Operand{Kind: X64Mem, Reg: target.RegSP, Offset: 16}}, want: "movl %eax, 16(%rsp)"},
+		{name: "setcc has no suffix", inst: X64Inst{Op: X64SETL, Size: 1, Dst: x64Reg(target.RegD)}, want: "setl %dl"},
+		{name: "sign extend long", inst: X64Inst{Op: X64SignExtendA, Size: 4}, want: "cdq"},
+		{name: "sign extend quad", inst: X64Inst{Op: X64SignExtendA, Size: 8}, want: "cqo"},
+		{name: "jump to label", inst: X64Inst{Op: X64JMP, Dst: x64Sym(".Lmain.ret")}, want: "jmp .Lmain.ret"},
+		{name: "indirect call", inst: X64Inst{Op: X64CALL, Dst: X64Operand{Kind: X64Indirect, Reg: target.Reg11}}, want: "call *%r11"},
+		{name: "rip relative", inst: X64Inst{Op: X64LEA, Size: 8, Src: X64Operand{Kind: X64RipRel, Sym: "f"}, Dst: x64Reg(target.RegC)}, want: "leaq f(%rip), %rcx"},
 	}
 
-	assert.Fail(t, "instructions list does not contain the specified sequence of operations", seq)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.inst.String())
+		})
+	}
 }
 
-func assertContainsOpWithArgs(t *testing.T, insts []Inst, op string, src1, src2, dest ArgKind) {
-	t.Helper()
-	for _, inst := range insts {
-		if inst.Op == op && inst.Src1.Kind == src1 && inst.Src2.Kind == src2 && inst.Dest.Kind == dest {
-			return
+func TestProgram_String(t *testing.T) {
+	p := &Program[X64Inst]{Funcs: []*Func[X64Inst]{{
+		Name:   "main",
+		Global: true,
+		Blocks: []*Block[X64Inst]{
+			{Insts: []X64Inst{{Op: X64PUSH, Size: 8, Dst: x64Reg(target.RegBP)}}},
+			{Label: ".Lmain.0", Insts: []X64Inst{{Op: X64RET}}},
+		},
+	}}}
+
+	// an unlabeled block runs straight on from the function's symbol
+	assert.Equal(t, "\t.text\n\t.globl main\nmain:\n\tpushq %rbp\n.Lmain.0:\n\tret\n", p.String())
+}
+
+// testTarget is the target unit tests generate code for, whatever buildcfg resolved
+var testTarget = target.X64SysV
+
+// byteRegister matches any one-byte x64 register
+const byteRegister = `%(?:[a-d]l|sil|dil|spl|bpl|r(?:8|9|1[0-5])b)`
+
+// quadRegister matches any eight-byte x64 register
+const quadRegister = `%(?:r[a-d]x|rsi|rdi|rsp|rbp|r(?:8|9|1[0-5]))`
+
+// instructions lists the program's instructions without their indentation, leaving out labels and directives.
+func instructions(asm string) []string {
+	var insts []string
+	for _, line := range strings.Split(asm, "\n") {
+		inst, ok := strings.CutPrefix(line, "\t")
+		if ok && !strings.HasPrefix(inst, ".") {
+			insts = append(insts, inst)
 		}
 	}
-	assert.Fail(t, "instructions list does not contain specified operation with arguments", op, src1, src2, dest)
+	return insts
 }
 
-// requireOnlyOp returns the sole instruction using the given mnemonic.
-func requireOnlyOp(t *testing.T, insts []Inst, op string) Inst {
-	t.Helper()
-	var found []Inst
-	for _, inst := range insts {
-		if inst.Op == op {
+// labels lists the labels the program defines, in layout order.
+func labels(asm string) []string {
+	var ls []string
+	for _, line := range strings.Split(asm, "\n") {
+		if l, ok := strings.CutSuffix(line, ":"); ok && !strings.HasPrefix(line, "\t") {
+			ls = append(ls, l)
+		}
+	}
+	return ls
+}
+
+// mnemonic is the operation an instruction performs.
+func mnemonic(inst string) string {
+	op, _, _ := strings.Cut(inst, " ")
+	return op
+}
+
+// operands lists an instruction's operands in AT&T order, sources before the destination.
+func operands(inst string) []string {
+	_, ops, ok := strings.Cut(inst, " ")
+	if !ok {
+		return nil
+	}
+	return strings.Split(ops, ", ")
+}
+
+// withMnemonic lists every instruction performing op.
+func withMnemonic(asm string, op string) []string {
+	var found []string
+	for _, inst := range instructions(asm) {
+		if mnemonic(inst) == op {
 			found = append(found, inst)
 		}
 	}
-	require.Len(t, found, 1, "expected exactly one %q instruction", op)
+	return found
+}
+
+// requireOnly returns the sole instruction performing op.
+func requireOnly(t *testing.T, asm string, op string) string {
+	t.Helper()
+	found := withMnemonic(asm, op)
+	require.Len(t, found, 1, "expected exactly one %q instruction in\n%s", op, asm)
 	return found[0]
 }
 
-// requireOnlyImmediateSrc returns the sole instruction using the given mnemonic on an immediate.
-func requireOnlyImmediateSrc(t *testing.T, insts []Inst, op string) Inst {
+// indexOfMatch is the position of the first instruction matching pattern, or -1.
+func indexOfMatch(asm string, pattern string) int {
+	return slices.IndexFunc(instructions(asm), regexp.MustCompile(pattern).MatchString)
+}
+
+func assertContainsMatch(t *testing.T, asm string, pattern string) {
 	t.Helper()
-	var found []Inst
-	for _, inst := range insts {
-		if inst.Op == op && inst.Src1.Kind == KImmediate {
-			found = append(found, inst)
+	assert.NotEqual(t, -1, indexOfMatch(asm, pattern), "no instruction matches %s in\n%s", pattern, asm)
+}
+
+// assertContainsSeq checks that the instructions appear in order, though not necessarily back to back.
+func assertContainsSeq(t *testing.T, asm string, seq ...string) {
+	t.Helper()
+	rest := seq
+	for _, inst := range instructions(asm) {
+		if len(rest) > 0 && inst == rest[0] {
+			rest = rest[1:]
 		}
 	}
-	require.Len(t, found, 1, "expected exactly one %q from an immediate", op)
-	return found[0]
+	assert.Empty(t, rest, "instructions end before the sequence %q finishes in\n%s", seq, asm)
 }
 
-// assertContainsMemSrc looks for an instruction reading memory at offset(reg).
-func assertContainsMemSrc(t *testing.T, insts []Inst, op string, reg target.Register, offset int) {
+func assertNoSelfMoves(t *testing.T, asm string) {
 	t.Helper()
-	for _, inst := range insts {
-		if inst.Op == op && isMem(inst.Src1, reg, offset) {
-			return
-		}
-	}
-	assert.Fail(t, "no instruction reads the specified memory operand", "%s %d(%v), _", op, offset, reg)
-}
-
-// assertContainsMemDest looks for an instruction writing memory at offset(reg).
-func assertContainsMemDest(t *testing.T, insts []Inst, op string, reg target.Register, offset int) {
-	t.Helper()
-	for _, inst := range insts {
-		if inst.Op == op && isMem(inst.Dest, reg, offset) {
-			return
-		}
-	}
-	assert.Fail(t, "no instruction writes the specified memory operand", "%s _, %d(%v)", op, offset, reg)
-}
-
-// assertContainsCallTo looks for a call to the named symbol.
-func assertContainsCallTo(t *testing.T, insts []Inst, sym string) {
-	t.Helper()
-	for _, inst := range insts {
-		if inst.Op == "call" && inst.Dest.Kind == KText && inst.Dest.Value == sym {
-			return
-		}
-	}
-	assert.Fail(t, "no instruction calls the specified symbol", sym)
-}
-
-// isMem reports whether arg addresses memory at offset(reg).
-func isMem(arg Arg, reg target.Register, offset int) bool {
-	return arg.Kind == KMemory && arg.Reg == reg && arg.Value == offset
-}
-
-func assertWritesRegBeforeCall(t *testing.T, insts []Inst, reg target.Register) {
-	t.Helper()
-	var written bool
-	for _, inst := range insts {
-		if strings.HasPrefix(inst.Op, "mov") && inst.Dest.Kind == KRegister && inst.Dest.Reg == reg {
-			written = true
-		}
-		if inst.Op == "call" && written {
-			return
-		}
-	}
-	assert.Fail(t, "no mov writes the register before a call", "reg=%d", reg)
-}
-
-func assertNoSelfMoves(t *testing.T, insts []Inst) {
-	t.Helper()
-	for _, inst := range insts {
-		if strings.HasPrefix(inst.Op, "mov") && inst.Src1.Kind != KUndefined && inst.Src1 == inst.Dest {
-			assert.Fail(t, "a mov onto its own location survived codegen", "%+v", inst)
+	for _, inst := range instructions(asm) {
+		ops := operands(inst)
+		if strings.HasPrefix(mnemonic(inst), "mov") && len(ops) == 2 && ops[0] == ops[1] {
+			assert.Fail(t, "a mov onto its own location survived codegen", inst)
 		}
 	}
 }
 
-func assertSavesCalleeBeforeStackAdjust(t *testing.T, insts []Inst) {
+func requireGeneratesAssembly(t *testing.T, src string) string {
 	t.Helper()
-	firstPush, firstSub := -1, -1
-	for i, inst := range insts {
-		if firstPush < 0 && inst.Op == "pushq" && inst.Dest.Kind == KRegister && target.X64SysV.CalleeSaved.Contains(inst.Dest.Reg) {
-			firstPush = i
-		}
-		if firstSub < 0 && inst.Op == "subq" && inst.Dest.Kind == KRegister && inst.Dest.Reg == target.RegSP {
-			firstSub = i
-		}
-	}
-	require.NotEqual(t, -1, firstPush, "expected a callee-saved register to be pushed")
-	require.NotEqual(t, -1, firstSub, "expected a stack pointer adjustment")
-	assert.Less(t, firstPush, firstSub, "callee-saved pushes must precede the stack adjustment")
+	return requireGeneratesAssemblyFor(t, buildcfg.OSLinux, src)
 }
 
-func requireGeneratesProgram(t *testing.T, src string) []Inst {
-	return requireGeneratesProgramFor(t, "x64-linux", src)
-}
-
-func requireGeneratesProgramFor(t *testing.T, target string, src string) []Inst {
-	p, err := GenerateProgram(requireBuildSSAFor(t, target, src))
+// requireGeneratesAssemblyFor generates testTarget's assembly for src, naming symbols the way os expects
+func requireGeneratesAssemblyFor(t *testing.T, os buildcfg.OS, src string) string {
+	t.Helper()
+	asm, err := GenerateAssembly(requireBuildSSAFor(t, testTarget, src), WithTarget(testTarget.Arch, os))
 	require.NoError(t, err)
-
-	return p
+	return asm
 }
 
-func requireBuildSSAFor(t *testing.T, target string, src string) []*ssa.Func {
-	require.NoError(t, buildcfg.Resolve(target))
+// requireBuildSSAFor builds and allocates src for tgt
+func requireBuildSSAFor(t *testing.T, tgt *target.Target, src string) []*ssa.Func {
+	t.Helper()
 
 	tokens, err := lexer.Tokenize(strings.NewReader(src))
 	require.NoError(t, err)
@@ -448,7 +458,7 @@ func requireBuildSSAFor(t *testing.T, target string, src string) []*ssa.Func {
 	allFuncs, err := semantic.Analyze(funcs)
 	require.NoError(t, err)
 
-	ssaFuncs, err := ssa.BuildAndAllocate(allFuncs)
+	ssaFuncs, err := ssa.BuildAndAllocate(allFuncs, ssa.WithTarget(tgt))
 	require.NoError(t, err)
 
 	return ssaFuncs

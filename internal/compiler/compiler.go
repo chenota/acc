@@ -1,10 +1,8 @@
 package compiler
 
 import (
-	"fmt"
 	"io"
 
-	"github.com/chenota/acc/internal/asmtxt"
 	"github.com/chenota/acc/internal/assemble"
 	"github.com/chenota/acc/internal/buildcfg"
 	"github.com/chenota/acc/internal/codegen"
@@ -47,28 +45,17 @@ func Compile(r FileDetail, w io.Writer, opts ...Option) error {
 		return err
 	}
 
-	instructions, err := codegen.GenerateProgram(ssaValues)
-	if err != nil {
-		return err
-	}
-
-	stringInstructions, err := asmtxt.Stringify(instructions)
+	src, err := codegen.GenerateAssembly(ssaValues)
 	if err != nil {
 		return err
 	}
 
 	if config.isAssembly {
-		for _, inst := range stringInstructions {
-			_, err := fmt.Fprintln(w, inst)
-			if err != nil {
-				return err
-			}
-		}
-
-		return nil
+		_, err := io.WriteString(w, src)
+		return err
 	}
 
-	if err := assemble.Assemble(stringInstructions, w); err != nil {
+	if err := assemble.Assemble(src, w); err != nil {
 		return err
 	}
 
