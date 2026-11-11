@@ -1,28 +1,55 @@
 package test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/chenota/acc/internal/buildcfg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // testConfig is the contents of a test directory's test.json file.
 type testConfig struct {
-	Name   string   `json:"name"`
-	Tags   []string `json:"tags"`
-	Status *int     `json:"status"`
-	Signal string   `json:"signal"` // the signal the program must die by, like SIGFPE
+	Name   string        `json:"name"`
+	Tags   []string      `json:"tags"`
+	Status oneOf[int]    `json:"status"`
+	Signal oneOf[string] `json:"signal"`
+}
+
+// oneOf is every value a test accepts, which test.json gives as either a lone value or a list of them
+type oneOf[T any] []T
+
+func (o *oneOf[T]) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if bytes.Equal(data, []byte("null")) {
+		return nil
+	}
+
+	// a lone value is a list of just that one
+	if data[0] != '[' {
+		data = slices.Concat([]byte("["), data, []byte("]"))
+	}
+
+	var vs []T
+	if err := json.Unmarshal(data, &vs); err != nil {
+		return err
+	}
+	if len(vs) == 0 {
+		return errors.New("expected at least one value, not an empty list")
+	}
+	*o = vs
+	return nil
 }
 
 // signals are the ones a test may expect a program to die by
@@ -87,8 +114,8 @@ func readTestConfig(t *testing.T, dirPath string) testConfig {
 	require.NoError(t, json.Unmarshal(configBytes, &config), "failed to parse test.json")
 	require.NotEmpty(t, config.Name, "test.json must contain a name field")
 
-	if config.Signal != "" {
-		require.Contains(t, signals, config.Signal, "unknown signal in test.json")
+	for _, s := range config.Signal {
+		require.Contains(t, signals, s, "unknown signal in test.json")
 	}
 
 	for _, testTag := range config.Tags {
@@ -160,30 +187,33 @@ func verifyStatus(t *testing.T, config testConfig, actualStatus int) {
 		return
 	}
 
-	assert.Equal(t, *config.Status, actualStatus, "actual status does not match expected status")
+	assert.Contains(t, config.Status, actualStatus, "actual status is not one the test expects")
 }
 
 func verifySignal(t *testing.T, config testConfig, state *os.ProcessState) {
 	t.Helper()
 
 	// skip this check if the test does not expect the program to die by a signal
-	if config.Signal == "" {
+	if config.Signal == nil {
 		return
 	}
+	expected := strings.Join(config.Signal, " or ")
 
 	status, ok := state.Sys().(syscall.WaitStatus)
 	require.True(t, ok, "no wait status to read a signal from")
-	require.True(t, status.Signaled(), "program exited with status %d instead of dying by %s", state.ExitCode(), config.Signal)
-	assert.Equal(t, signals[config.Signal], status.Signal(), "program died by the wrong signal")
+	require.True(t, status.Signaled(), "program exited with status %d instead of dying by %s", state.ExitCode(), expected)
+
+	actual := status.Signal()
+	died := slices.ContainsFunc(config.Signal, func(name string) bool { return signals[name] == actual })
+	assert.True(t, died, "program died by %q instead of %s", actual, expected)
 }
 
-// target returns the target to compile test programs for
+// target returns the target to compile test programs for, which is the host's unless TARGET names another
 func target() string {
 	if v := os.Getenv("TARGET"); v != "" {
 		return v
 	}
-	// TODO: expand for arm64 when that's more mature
-	return "x64-" + runtime.GOOS
+	return buildcfg.Host()
 }
 
 func verboseFail() bool {

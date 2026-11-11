@@ -55,7 +55,7 @@ func TargetOS() OS { return targetOS }
 
 func Resolve(target string) error {
 	if target == "" {
-		target = host()
+		target = Host()
 	}
 
 	switch target {
@@ -75,7 +75,7 @@ func Resolve(target string) error {
 	return nil
 }
 
-func host() string {
+func Host() string {
 	arch := runtime.GOARCH
 	// Go calls this one amd64
 	if arch == "amd64" {

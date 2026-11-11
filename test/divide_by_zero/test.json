@@ -1,5 +1,5 @@
 {
   "name": "Divide By Zero",
   "tags": ["vs11"],
-  "signal": "SIGILL"
+  "signal": ["SIGILL", "SIGTRAP"]
 }

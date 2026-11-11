@@ -42,7 +42,7 @@ The program tests are a little more interesting; they actually use `acc` to comp
 make testp
 ```
 
-The program tests compile for x64 on the current OS unless you pick a target to test with `TARGET`:
+The program tests compile for the machine running them unless you pick a target to test with `TARGET`:
 ```shell
 make testp TARGET=x64-linux
 ```
