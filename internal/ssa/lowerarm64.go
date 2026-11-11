@@ -15,6 +15,18 @@ func lowerValueARM64(v *Value) bool {
 	case OpNot:
 		v.Op = OpARM64EORconst
 		v.Value = int32(1)
+	case OpEqual:
+		v.Op = OpARM64CSETEQ
+	case OpNotEqual:
+		v.Op = OpARM64CSETNE
+	case OpLess:
+		v.Op = OpARM64CSETLT
+	case OpLessEqual:
+		v.Op = OpARM64CSETLE
+	case OpGreater:
+		v.Op = OpARM64CSETGT
+	case OpGreaterEqual:
+		v.Op = OpARM64CSETGE
 	default:
 		return false
 	}

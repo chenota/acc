@@ -45,6 +45,12 @@ const (
 	OpX64IDIV // signed divide of Args[0] by Args[1]
 	OpX64NEG
 	OpX64XORconst // xor of Args[0] with the int32 in Value
+	OpX64SETE     // compares Args[0] with Args[1], true when equal
+	OpX64SETNE    // compares Args[0] with Args[1], true when not equal
+	OpX64SETL     // compares Args[0] with Args[1], true when signed less
+	OpX64SETLE    // compares Args[0] with Args[1], true when signed less or equal
+	OpX64SETG     // compares Args[0] with Args[1], true when signed greater
+	OpX64SETGE    // compares Args[0] with Args[1], true when signed greater or equal
 
 	OpARM64ADD
 	OpARM64SUB
@@ -52,6 +58,12 @@ const (
 	OpARM64SDIV // signed divide of Args[0] by Args[1]
 	OpARM64NEG
 	OpARM64EORconst // xor of Args[0] with the int32 in Value
+	OpARM64CSETEQ   // compares Args[0] with Args[1], true when equal
+	OpARM64CSETNE   // compares Args[0] with Args[1], true when not equal
+	OpARM64CSETLT   // compares Args[0] with Args[1], true when signed less
+	OpARM64CSETLE   // compares Args[0] with Args[1], true when signed less or equal
+	OpARM64CSETGT   // compares Args[0] with Args[1], true when signed greater
+	OpARM64CSETGE   // compares Args[0] with Args[1], true when signed greater or equal
 )
 
 // opInfo is what the back end knows about an op
@@ -114,6 +126,12 @@ var opcodeTable = [...]opInfo{
 	}},
 	OpX64NEG:      {name: "X64NEG", reg: regInfo{twoAddress: true}},
 	OpX64XORconst: {name: "X64XORconst", reg: regInfo{twoAddress: true}},
+	OpX64SETE:     {name: "X64SETE"},
+	OpX64SETNE:    {name: "X64SETNE"},
+	OpX64SETL:     {name: "X64SETL"},
+	OpX64SETLE:    {name: "X64SETLE"},
+	OpX64SETG:     {name: "X64SETG"},
+	OpX64SETGE:    {name: "X64SETGE"},
 
 	OpARM64ADD:      {name: "ARM64ADD"},
 	OpARM64SUB:      {name: "ARM64SUB"},
@@ -121,6 +139,12 @@ var opcodeTable = [...]opInfo{
 	OpARM64SDIV:     {name: "ARM64SDIV"},
 	OpARM64NEG:      {name: "ARM64NEG"},
 	OpARM64EORconst: {name: "ARM64EORconst"},
+	OpARM64CSETEQ:   {name: "ARM64CSETEQ"},
+	OpARM64CSETNE:   {name: "ARM64CSETNE"},
+	OpARM64CSETLT:   {name: "ARM64CSETLT"},
+	OpARM64CSETLE:   {name: "ARM64CSETLE"},
+	OpARM64CSETGT:   {name: "ARM64CSETGT"},
+	OpARM64CSETGE:   {name: "ARM64CSETGE"},
 }
 
 func (o Op) info() *opInfo {

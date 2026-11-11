@@ -234,17 +234,17 @@ func generateValue(v *ssa.Value) ([]Inst, error) {
 		insts = append(insts, generateBop(v, mulOp(v.Type.Size()))...)
 	case ssa.OpX64IDIV:
 		insts = append(insts, generateDiv(v)...)
-	case ssa.OpEqual:
+	case ssa.OpX64SETE:
 		insts = append(insts, generateCompare(v, "sete")...)
-	case ssa.OpNotEqual:
+	case ssa.OpX64SETNE:
 		insts = append(insts, generateCompare(v, "setne")...)
-	case ssa.OpLess:
+	case ssa.OpX64SETL:
 		insts = append(insts, generateCompare(v, "setl")...)
-	case ssa.OpLessEqual:
+	case ssa.OpX64SETLE:
 		insts = append(insts, generateCompare(v, "setle")...)
-	case ssa.OpGreater:
+	case ssa.OpX64SETG:
 		insts = append(insts, generateCompare(v, "setg")...)
-	case ssa.OpGreaterEqual:
+	case ssa.OpX64SETGE:
 		insts = append(insts, generateCompare(v, "setge")...)
 	case ssa.OpX64NEG:
 		insts = append(insts, generateNegate(v)...)
@@ -367,6 +367,7 @@ func generateNot(v *ssa.Value) []Inst {
 }
 
 // generateCompare compares v's operands and writes the flag setOp reads
+// TODO: Split this into separate cmp and setcc operations for more efficient branching
 func generateCompare(v *ssa.Value, setOp string) []Inst {
 	return []Inst{
 		{

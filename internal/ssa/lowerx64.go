@@ -15,6 +15,18 @@ func lowerValueX64(v *Value) bool {
 	case OpNot:
 		v.Op = OpX64XORconst
 		v.Value = int32(1)
+	case OpEqual:
+		v.Op = OpX64SETE
+	case OpNotEqual:
+		v.Op = OpX64SETNE
+	case OpLess:
+		v.Op = OpX64SETL
+	case OpLessEqual:
+		v.Op = OpX64SETLE
+	case OpGreater:
+		v.Op = OpX64SETG
+	case OpGreaterEqual:
+		v.Op = OpX64SETGE
 	default:
 		return false
 	}

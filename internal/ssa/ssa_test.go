@@ -204,12 +204,12 @@ func TestGenSsa_Comparison_ProducesBoolFromOperands(t *testing.T) {
 		src  string
 		op   Op
 	}{
-		{name: "equal", src: `fun f (a int, b int) -> bool { return a == b; }`, op: OpEqual},
-		{name: "not equal", src: `fun f (a int, b int) -> bool { return a != b; }`, op: OpNotEqual},
-		{name: "less", src: `fun f (a int, b int) -> bool { return a < b; }`, op: OpLess},
-		{name: "less equal", src: `fun f (a int, b int) -> bool { return a <= b; }`, op: OpLessEqual},
-		{name: "greater", src: `fun f (a int, b int) -> bool { return a > b; }`, op: OpGreater},
-		{name: "greater equal", src: `fun f (a int, b int) -> bool { return a >= b; }`, op: OpGreaterEqual},
+		{name: "equal", src: `fun f (a int, b int) -> bool { return a == b; }`, op: OpX64SETE},
+		{name: "not equal", src: `fun f (a int, b int) -> bool { return a != b; }`, op: OpX64SETNE},
+		{name: "less", src: `fun f (a int, b int) -> bool { return a < b; }`, op: OpX64SETL},
+		{name: "less equal", src: `fun f (a int, b int) -> bool { return a <= b; }`, op: OpX64SETLE},
+		{name: "greater", src: `fun f (a int, b int) -> bool { return a > b; }`, op: OpX64SETG},
+		{name: "greater equal", src: `fun f (a int, b int) -> bool { return a >= b; }`, op: OpX64SETGE},
 	}
 
 	for _, tt := range tests {
@@ -258,6 +258,38 @@ func TestLower_ArithmeticBecomesMachineOp(t *testing.T) {
 		{"arm64 divide", target.ARM64AAPCS, `fun f (a int, b int) -> int { return a / b; }`, OpARM64SDIV},
 		{"arm64 negate", target.ARM64AAPCS, `fun f (a int) -> int { return -a; }`, OpARM64NEG},
 		{"arm64 not", target.ARM64AAPCS, `fun f (a bool) -> bool { return !a; }`, OpARM64EORconst},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := requireFunc(t, requireBuildSSAFor(t, tt.target, tt.src), "f")
+
+			// a pinned result reaches the return through the copy that frees its register
+			assert.Equal(t, tt.want, throughCopies(requireReturned(t, f.Entry)).Op)
+		})
+	}
+}
+
+// TestLower_ComparisonBecomesMachineOp covers each generic comparison reaching allocation as its target's own op
+func TestLower_ComparisonBecomesMachineOp(t *testing.T) {
+	tests := []struct {
+		name   string
+		target *target.Target
+		src    string
+		want   Op
+	}{
+		{"x64 equal", target.X64SysV, `fun f (a int, b int) -> bool { return a == b; }`, OpX64SETE},
+		{"x64 not equal", target.X64SysV, `fun f (a int, b int) -> bool { return a != b; }`, OpX64SETNE},
+		{"x64 less", target.X64SysV, `fun f (a int, b int) -> bool { return a < b; }`, OpX64SETL},
+		{"x64 less equal", target.X64SysV, `fun f (a int, b int) -> bool { return a <= b; }`, OpX64SETLE},
+		{"x64 greater", target.X64SysV, `fun f (a int, b int) -> bool { return a > b; }`, OpX64SETG},
+		{"x64 greater equal", target.X64SysV, `fun f (a int, b int) -> bool { return a >= b; }`, OpX64SETGE},
+		{"arm64 equal", target.ARM64AAPCS, `fun f (a int, b int) -> bool { return a == b; }`, OpARM64CSETEQ},
+		{"arm64 not equal", target.ARM64AAPCS, `fun f (a int, b int) -> bool { return a != b; }`, OpARM64CSETNE},
+		{"arm64 less", target.ARM64AAPCS, `fun f (a int, b int) -> bool { return a < b; }`, OpARM64CSETLT},
+		{"arm64 less equal", target.ARM64AAPCS, `fun f (a int, b int) -> bool { return a <= b; }`, OpARM64CSETLE},
+		{"arm64 greater", target.ARM64AAPCS, `fun f (a int, b int) -> bool { return a > b; }`, OpARM64CSETGT},
+		{"arm64 greater equal", target.ARM64AAPCS, `fun f (a int, b int) -> bool { return a >= b; }`, OpARM64CSETGE},
 	}
 
 	for _, tt := range tests {
