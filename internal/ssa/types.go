@@ -41,28 +41,23 @@ func (v *Value) CallArgs() []*Value {
 }
 
 func (v *Value) IsUnaryOp() bool {
-	return v.Op == OpNegate || v.Op == OpNot
+	return v.Op.info().unary
 }
 
 func (v *Value) IsBinaryOp() bool {
-	return v.Op == OpAdd || v.Op == OpSubtract || v.Op == OpMultiply || v.Op == OpDivide
+	return v.Op.info().binary
 }
 
-// IsComparison reports whether v compares its two operands into a bool
 func (v *Value) IsComparison() bool {
-	switch v.Op {
-	case OpEqual, OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual:
-		return true
-	}
-	return false
+	return v.Op.info().comparison
 }
 
 func (v *Value) IsConstant() bool {
-	return v.Op == OpLiteral
+	return v.Op.info().constant
 }
 
 func (v *Value) IsAssociativeOp() bool {
-	return v.Op == OpAdd || v.Op == OpMultiply
+	return v.Op.info().associative
 }
 
 // NeedsRegister reports whether a value produces a result that occupies a physical register.

@@ -79,6 +79,12 @@ type opInfo struct {
 	closureCall      bool // code pointer and environment come before its arguments
 	rematerializable bool // can be recomputed rather than being spilled
 	noResult         bool
+
+	constant    bool
+	unary       bool
+	binary      bool
+	comparison  bool
+	associative bool
 }
 
 var (
@@ -89,23 +95,23 @@ var (
 var opcodeTable = [...]opInfo{
 	OpUnknown: {name: "Unknown"},
 
-	OpLiteral:      {name: "Literal", rematerializable: true},
+	OpLiteral:      {name: "Literal", rematerializable: true, constant: true},
 	OpLoad:         {name: "Load"},
 	OpStaticLoad:   {name: "StaticLoad"},
 	OpStore:        {name: "Store", noResult: true},
 	OpStaticStore:  {name: "StaticStore", noResult: true},
-	OpAdd:          {name: "Add"},
-	OpSubtract:     {name: "Subtract"},
-	OpMultiply:     {name: "Multiply"},
-	OpDivide:       {name: "Divide"},
-	OpEqual:        {name: "Equal"},
-	OpNotEqual:     {name: "NotEqual"},
-	OpLess:         {name: "Less"},
-	OpLessEqual:    {name: "LessEqual"},
-	OpGreater:      {name: "Greater"},
-	OpGreaterEqual: {name: "GreaterEqual"},
-	OpNegate:       {name: "Negate"},
-	OpNot:          {name: "Not"},
+	OpAdd:          {name: "Add", binary: true, associative: true},
+	OpSubtract:     {name: "Subtract", binary: true},
+	OpMultiply:     {name: "Multiply", binary: true, associative: true},
+	OpDivide:       {name: "Divide", binary: true},
+	OpEqual:        {name: "Equal", comparison: true},
+	OpNotEqual:     {name: "NotEqual", comparison: true},
+	OpLess:         {name: "Less", comparison: true},
+	OpLessEqual:    {name: "LessEqual", comparison: true},
+	OpGreater:      {name: "Greater", comparison: true},
+	OpGreaterEqual: {name: "GreaterEqual", comparison: true},
+	OpNegate:       {name: "Negate", unary: true},
+	OpNot:          {name: "Not", unary: true},
 	OpCopy:         {name: "Copy"},
 	OpStaticCall:   {name: "StaticCall", call: true, noResult: true},
 	OpParam:        {name: "Param"},
