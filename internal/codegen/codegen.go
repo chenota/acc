@@ -157,6 +157,9 @@ func generateTerminator(f *ssa.Func, b *ssa.Block, next *ssa.Block) []Inst {
 		insts = append(insts, Inst{Op: "jne", Dest: text(blockLabel(f, then))})
 		// otherwise, fall through and jump to else (unless it's directly next)
 		return append(insts, jumpUnlessNext(f, els, next)...)
+	case ssa.BlockTerminate:
+		// the block's trap already stopped the program
+		return nil
 	case ssa.BlockRet:
 		// the last block falls straight into the epilogue
 		if next == nil {
@@ -255,6 +258,8 @@ func generateValue(v *ssa.Value) ([]Inst, error) {
 		insts = append(insts, generateCall(v))
 	case ssa.OpX64CALLclosure:
 		insts = append(insts, generateClosureCall(v))
+	case ssa.OpX64UD2:
+		insts = append(insts, Inst{Op: "ud2"})
 	case ssa.OpX64LEAQrip:
 		insts = append(insts, generateLabelAddr(v))
 	case ssa.OpParam, ssa.OpResult, ssa.OpCallResult, ssa.OpClosurePtr, ssa.OpUnit, ssa.OpPhi:

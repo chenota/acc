@@ -169,7 +169,12 @@ func (b *builder) genAssignOp(n *ir.Node) error {
 		return err
 	}
 
-	arithOp := b.targetFunc.appendValue(bopFrom(n), target.Type, b.currentBlock)
+	op := bopFrom(n)
+	if op == OpDivide {
+		b.genDivideCheck(exprVal)
+	}
+
+	arithOp := b.targetFunc.appendValue(op, target.Type, b.currentBlock)
 	arithOp.setArgs(loadOp, exprVal)
 
 	b.genStoreTo(dest, arithOp)
@@ -998,9 +1003,39 @@ func (b *builder) genBop(expr *ir.Node) (*Value, error) {
 		return nil, err
 	}
 
-	v := b.targetFunc.appendValue(bopFrom(expr), expr.Type, b.currentBlock)
+	op := bopFrom(expr)
+	if op == OpDivide {
+		b.genDivideCheck(rightVal)
+	}
+
+	v := b.targetFunc.appendValue(op, expr.Type, b.currentBlock)
 	v.setArgs(leftVal, rightVal)
 	return v, nil
+}
+
+// genDivideCheck branches off to stop the program when divisor is zero
+func (b *builder) genDivideCheck(divisor *Value) {
+	zero := b.targetFunc.appendValue(OpLiteral, divisor.Type, b.currentBlock)
+	zero.Value = int32(0)
+
+	isZero := b.targetFunc.appendValue(OpEqual, types.Bool(), b.currentBlock)
+	isZero.setArgs(divisor, zero)
+
+	check := b.currentBlock
+	check.Kind = BlockIf
+	check.setControl(isZero)
+
+	// the failing arm comes first so that block order puts it after everything the passing arm leads to
+	fail := b.targetFunc.newBlock()
+	addEdge(check, fail)
+	pass := b.targetFunc.newBlock()
+	addEdge(check, pass)
+
+	// TODO: make everything die on SIGFPE
+	b.targetFunc.appendValue(OpTermiante, types.Unit(), fail)
+	fail.Kind = BlockTerminate
+
+	b.currentBlock = pass
 }
 
 func bopFrom(n *ir.Node) Op {

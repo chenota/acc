@@ -88,6 +88,7 @@ const (
 	BlockPlain
 	BlockIf
 	BlockRet
+	BlockTerminate // the program stops inside this block, and nothing runs after it
 )
 
 type Block struct {

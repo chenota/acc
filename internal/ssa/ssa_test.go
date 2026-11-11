@@ -57,8 +57,8 @@ func TestGenSsa_FoldsToLiteral(t *testing.T) {
 		{
 			// both operands promote to constants, so the divide folds away
 			name: "promoted variables fold",
-			src:  `fun main () -> int { let x = 10; let y = 2; return x / y; }`,
-			want: 5,
+			src:  `fun main () -> int { let x = 10; let y = 2; return x - y; }`,
+			want: 8,
 		},
 		{
 			name: "assignment overwrites the earlier definition",
@@ -238,6 +238,41 @@ func TestGenSsa_Not_KeepsOperand(t *testing.T) {
 	assert.Equal(t, OpParam, throughCopies(not.Args[0]).Op)
 }
 
+func TestGenSsa_Divide_StopsOnZeroDivisor(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+	}{
+		{"divide", `fun f (a int, b int) -> int { return a / b; }`},
+		{"divide assign", `fun f (a int, b int) -> int { a /= b; return a; }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := requireFunc(t, requireBuildSSA(t, tt.src), "f")
+
+			// the entry block asks whether the divisor is zero before anything divides
+			require.Equal(t, BlockIf, f.Entry.Kind)
+			isZero := f.Entry.Control[0]
+			require.Equal(t, OpX64SETE, isZero.Op)
+			require.Len(t, isZero.Args, 2)
+			assert.Equal(t, 1, throughCopies(isZero.Args[0]).Value, "the divisor is the second parameter")
+			zero := throughCopies(isZero.Args[1])
+			assert.Equal(t, OpX64MOVconst, zero.Op)
+			assert.Equal(t, int32(0), zero.Value)
+
+			// a zero divisor reaches a trap that stops the program, and nothing after it
+			fail := f.Entry.Successors[0]
+			assert.Equal(t, BlockTerminate, fail.Kind)
+			assert.Empty(t, fail.Successors)
+			assert.Len(t, findValues(fail.Values, OpX64UD2), 1)
+
+			// any other divisor goes on to the divide
+			assert.Len(t, findValues(f.Entry.Successors[1].Values, OpX64IDIV), 1)
+		})
+	}
+}
+
 // TestLower_ArithmeticBecomesMachineOp covers each generic arithmetic op reaching allocation as its target's own op
 func TestLower_ArithmeticBecomesMachineOp(t *testing.T) {
 	tests := []struct {
@@ -264,8 +299,8 @@ func TestLower_ArithmeticBecomesMachineOp(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := requireFunc(t, requireBuildSSAFor(t, tt.target, tt.src), "f")
 
-			// a pinned result reaches the return through the copy that frees its register
-			assert.Equal(t, tt.want, throughCopies(requireReturned(t, f.Entry)).Op)
+			// a pinned result reaches the return through the copy that frees its register, past any divide check
+			assert.Equal(t, tt.want, throughCopies(requireReturned(t, requireReturnBlock(t, f))).Op)
 		})
 	}
 }
@@ -342,6 +377,27 @@ func TestLower_MemoryAndCallsBecomeMachineOps(t *testing.T) {
 			f := requireFunc(t, requireBuildSSAFor(t, tt.target, tt.src), "main")
 
 			assert.NotEmpty(t, findValues(slices.Collect(f.UnorderedValues()), tt.want))
+		})
+	}
+}
+
+// TestLower_TrapBecomesMachineOp covers the trap stopping a zero divide reaching allocation as its target's own op
+func TestLower_TrapBecomesMachineOp(t *testing.T) {
+	tests := []struct {
+		name   string
+		target *target.Target
+		want   Op
+	}{
+		{"x64", target.X64SysV, OpX64UD2},
+		{"arm64", target.ARM64AAPCS, OpARM64BRK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := requireFunc(t, requireBuildSSAFor(t, tt.target, `fun f (a int, b int) -> int { return a / b; }`), "f")
+
+			require.Len(t, f.Entry.Successors, 2)
+			assert.Len(t, findValues(f.Entry.Successors[0].Values, tt.want), 1)
 		})
 	}
 }
@@ -2230,7 +2286,7 @@ func TestRegs_X64Divide(t *testing.T) {
 		fun main () -> int { return div(7, 2); }
 	`)
 
-	divs := findValues(requireFunc(t, funcs, "div").Entry.Values, OpX64IDIV)
+	divs := findValues(requirePassedDivideCheck(t, requireFunc(t, funcs, "div").Entry).Values, OpX64IDIV)
 	require.Len(t, divs, 1)
 	regs := divs[0].regs()
 
@@ -2272,13 +2328,31 @@ func TestBlockedAt_DivideClobbersRdxAsItRuns(t *testing.T) {
 	`)
 
 	f := requireFunc(t, funcs, "div")
-	divs := findValues(f.Entry.Values, OpX64IDIV)
+	pass := requirePassedDivideCheck(t, f.Entry)
+	divs := findValues(pass.Values, OpX64IDIV)
 	require.Len(t, divs, 1)
-	p := f.Entry.indexOf(divs[0])
+	p := pass.indexOf(divs[0])
 
 	// the dividend's halves stop being live as idiv reads them, so only the clobber keeps rdx off limits there
 	ranges := computeLiveRanges(f, computeNextUses(f))
-	assert.True(t, ranges.blockedAt(f.Entry, p).Contains(target.RegD))
+	assert.True(t, ranges.blockedAt(pass, p).Contains(target.RegD))
+}
+
+// requirePassedDivideCheck returns the block control reaches when b's divide check finds a nonzero divisor
+func requirePassedDivideCheck(t *testing.T, b *Block) *Block {
+	t.Helper()
+	require.Equal(t, BlockIf, b.Kind)
+	require.Len(t, b.Successors, 2)
+	require.Equal(t, BlockTerminate, b.Successors[0].Kind, "a zero divisor goes to the block that stops the program")
+	return b.Successors[1]
+}
+
+// requireDivide returns the single divide op in f, which sits past the check guarding f's entry block
+func requireDivide(t *testing.T, f *Func, op Op) *Value {
+	t.Helper()
+	divs := findValues(requirePassedDivideCheck(t, f.Entry).Values, op)
+	require.Len(t, divs, 1)
+	return divs[0]
 }
 
 // requireOnly returns the single value with op in the named function's entry block
@@ -2361,7 +2435,7 @@ func TestLowerRegs_PinsSingleRegisterResult(t *testing.T) {
 }
 
 func TestLowerRegs_X64DividePinsDividendAndQuotientToRax(t *testing.T) {
-	div := requireOnly(t, requireBuildSSA(t, divideSrc), "div", OpX64IDIV)
+	div := requireDivide(t, requireFunc(t, requireBuildSSA(t, divideSrc), "div"), OpX64IDIV)
 	require.Len(t, div.Args, 2)
 
 	// the dividend is copied into rax right before the divide
@@ -2376,7 +2450,7 @@ func TestLowerRegs_X64DividePinsDividendAndQuotientToRax(t *testing.T) {
 
 func TestLowerRegs_ARM64DivideIsUnpinned(t *testing.T) {
 	f := requireFunc(t, requireBuildSSAFor(t, target.ARM64AAPCS, divideSrc), "div")
-	div := requireOnly(t, []*Func{f}, "div", OpARM64SDIV)
+	div := requireDivide(t, f, OpARM64SDIV)
 
 	// sdiv reads and writes any register, so it reads the parameters' copies without another copy in between
 	require.Len(t, div.Args, 2)

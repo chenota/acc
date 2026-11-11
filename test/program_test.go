@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -21,6 +22,16 @@ type testConfig struct {
 	Name   string   `json:"name"`
 	Tags   []string `json:"tags"`
 	Status *int     `json:"status"`
+	Signal string   `json:"signal"` // the signal the program must die by, like SIGFPE
+}
+
+// signals are the ones a test may expect a program to die by
+var signals = map[string]syscall.Signal{
+	"SIGABRT": syscall.SIGABRT,
+	"SIGFPE":  syscall.SIGFPE,
+	"SIGILL":  syscall.SIGILL,
+	"SIGSEGV": syscall.SIGSEGV,
+	"SIGTRAP": syscall.SIGTRAP,
 }
 
 func TestProgram(t *testing.T) {
@@ -57,8 +68,9 @@ func TestProgram(t *testing.T) {
 				}()
 
 				binaryPath := compileProgram(t, accPath, mainFile)
-				actualStatus := runProgram(t, binaryPath)
-				verifyStatus(t, config, actualStatus)
+				state := runProgram(t, binaryPath)
+				verifyStatus(t, config, state.ExitCode())
+				verifySignal(t, config, state)
 			}
 		})
 	}
@@ -74,6 +86,10 @@ func readTestConfig(t *testing.T, dirPath string) testConfig {
 	var config testConfig
 	require.NoError(t, json.Unmarshal(configBytes, &config), "failed to parse test.json")
 	require.NotEmpty(t, config.Name, "test.json must contain a name field")
+
+	if config.Signal != "" {
+		require.Contains(t, signals, config.Signal, "unknown signal in test.json")
+	}
 
 	for _, testTag := range config.Tags {
 		require.NotContains(t, testTag, "~", "illegal character in test tags: ~")
@@ -102,8 +118,8 @@ const (
 	reapGrace      = 1 * time.Second
 )
 
-// runProgram runs the binary at binaryPath and returns its exit status.
-func runProgram(t *testing.T, binaryPath string) int {
+// runProgram runs the binary at binaryPath and returns how it ended.
+func runProgram(t *testing.T, binaryPath string) *os.ProcessState {
 	t.Helper()
 
 	ctx, cancel := context.WithTimeout(t.Context(), runTimeout)
@@ -133,7 +149,7 @@ func runProgram(t *testing.T, binaryPath string) int {
 		require.ErrorAs(t, err, &exitErr, "unexpected runtime error", err.Error())
 	}
 
-	return cmd.ProcessState.ExitCode()
+	return cmd.ProcessState
 }
 
 func verifyStatus(t *testing.T, config testConfig, actualStatus int) {
@@ -145,6 +161,20 @@ func verifyStatus(t *testing.T, config testConfig, actualStatus int) {
 	}
 
 	assert.Equal(t, *config.Status, actualStatus, "actual status does not match expected status")
+}
+
+func verifySignal(t *testing.T, config testConfig, state *os.ProcessState) {
+	t.Helper()
+
+	// skip this check if the test does not expect the program to die by a signal
+	if config.Signal == "" {
+		return
+	}
+
+	status, ok := state.Sys().(syscall.WaitStatus)
+	require.True(t, ok, "no wait status to read a signal from")
+	require.True(t, status.Signaled(), "program exited with status %d instead of dying by %s", state.ExitCode(), config.Signal)
+	assert.Equal(t, signals[config.Signal], status.Signal(), "program died by the wrong signal")
 }
 
 // target returns the target to compile test programs for

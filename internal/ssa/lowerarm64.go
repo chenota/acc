@@ -43,6 +43,8 @@ func lowerValueARM64(v *Value) bool {
 		v.Op = OpARM64BL
 	case OpClosureCall:
 		v.Op = OpARM64BLR
+	case OpTermiante:
+		v.Op = OpARM64BRK
 	default:
 		return false
 	}

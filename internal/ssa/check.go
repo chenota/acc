@@ -125,6 +125,10 @@ func verifyTerminator(b *Block) error {
 		if c := b.Control[0]; c != nil && !types.Equal(types.Bool(), c.Type) {
 			return fmt.Errorf("if block %d branches on v%d, which is not a bool", b.Id, c.Id)
 		}
+	case BlockTerminate:
+		if len(b.Successors) != 0 || len(b.Control) != 0 {
+			return fmt.Errorf("terminate block %d has %d successors and %d control values", b.Id, len(b.Successors), len(b.Control))
+		}
 	case BlockRet:
 		if len(b.Successors) != 0 {
 			return fmt.Errorf("return block %d has %d successors", b.Id, len(b.Successors))

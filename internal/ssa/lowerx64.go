@@ -43,6 +43,8 @@ func lowerValueX64(v *Value) bool {
 		v.Op = OpX64CALLstatic
 	case OpClosureCall:
 		v.Op = OpX64CALLclosure
+	case OpTermiante:
+		v.Op = OpX64UD2
 	default:
 		return false
 	}

@@ -38,6 +38,7 @@ const (
 	OpUnit
 	OpLabelAddr // address bound to a label
 	OpPhi
+	OpTermiante // immediately terminates the program
 
 	// x64 ops
 
@@ -61,6 +62,7 @@ const (
 	OpX64LEAQrip  // address of the function in Value
 	OpX64CALLstatic
 	OpX64CALLclosure
+	OpX64UD2
 
 	// arm64 ops
 
@@ -84,6 +86,7 @@ const (
 	OpARM64ADRP     // address of the function in Value, an adrp of its page plus an add of the rest
 	OpARM64BL
 	OpARM64BLR
+	OpARM64BRK
 )
 
 // opInfo is a collection of properties of an operation
@@ -140,6 +143,7 @@ var opcodeTable = [...]opInfo{
 	OpUnit:         {name: "Unit"},
 	OpLabelAddr:    {name: "LabelAddr", rematerializable: true},
 	OpPhi:          {name: "Phi"},
+	OpTermiante:    {name: "Terminate", noResult: true},
 
 	OpX64ADD:  {name: "X64ADD", reg: regInfo{twoAddress: true}},
 	OpX64SUB:  {name: "X64SUB", reg: regInfo{twoAddress: true}},
@@ -171,6 +175,7 @@ var opcodeTable = [...]opInfo{
 	OpX64LEAQrip:     {name: "X64LEAQrip", rematerializable: true},
 	OpX64CALLstatic:  {name: "X64CALLstatic", call: true, noResult: true},
 	OpX64CALLclosure: {name: "X64CALLclosure", call: true, closureCall: true, noResult: true},
+	OpX64UD2:         {name: "X64UD2", noResult: true},
 
 	OpARM64ADD:      {name: "ARM64ADD"},
 	OpARM64SUB:      {name: "ARM64SUB"},
@@ -192,6 +197,7 @@ var opcodeTable = [...]opInfo{
 	OpARM64ADRP:     {name: "ARM64ADRP", rematerializable: true},
 	OpARM64BL:       {name: "ARM64BL", call: true, noResult: true},
 	OpARM64BLR:      {name: "ARM64BLR", call: true, closureCall: true, noResult: true},
+	OpARM64BRK:      {name: "ARM64BRK", noResult: true},
 }
 
 func (o Op) info() *opInfo {

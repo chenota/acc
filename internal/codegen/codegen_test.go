@@ -65,6 +65,21 @@ func TestCodegen_RedundantMoves(t *testing.T) {
 	assertNoSelfMoves(t, insts)
 }
 
+func TestCodegen_Divide_TrapIsLaidOutAfterTheDivide(t *testing.T) {
+	insts := requireGeneratesProgram(t, `
+		fun div (a int, b int) -> int { return a / b; }
+		fun main () -> int { return div(7, 2); }
+	`)
+
+	stop := slices.IndexFunc(insts, func(i Inst) bool { return i.Op == "ud2" })
+	div := slices.IndexFunc(insts, func(i Inst) bool { return i.Op == "idivl" })
+	require.NotEqual(t, -1, stop, "a divisor that might be zero is checked")
+	require.NotEqual(t, -1, div)
+
+	// a nonzero divisor runs straight on into the divide, and only a zero one jumps away to stop the program
+	assert.Less(t, div, stop)
+}
+
 func TestCodegen_CalleeSavedSavedBeforeStackAdjust(t *testing.T) {
 	// caller keeps `a` in a callee-saved register across a call that passes arguments on the stack.
 	insts := requireGeneratesProgram(t, `
