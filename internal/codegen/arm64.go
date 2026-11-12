@@ -221,7 +221,7 @@ func (arm64) prologue(e *emitter[ARM64Inst], f *ssa.Func) {
 		ARM64Inst{Op: ARM64MOV, Size: 8, Args: [3]ARM64Operand{arm64FP, arm64SP}},
 	)
 
-	arm64AdjustSP(e, ARM64SUB, f.FrameSize())
+	arm64AddConst(e, target.RegXSP, target.RegXSP, -f.FrameSize())
 
 	// the frame record anchors the saved registers, so they can go in once the frame exists
 	for _, s := range f.SavedRegisters() {
@@ -242,17 +242,24 @@ func (arm64) epilogue(e *emitter[ARM64Inst], f *ssa.Func) {
 	)
 }
 
-// arm64AdjustSP moves the stack pointer by n bytes with op, going through a scratch register when n won't fit an immediate
-func arm64AdjustSP(e *emitter[ARM64Inst], op ARM64Op, n int) {
-	if n == 0 {
+// arm64AddConst puts the address n bytes past src in dst
+func arm64AddConst(e *emitter[ARM64Inst], dst, src target.Register, n int) {
+	if n == 0 && dst == src {
 		return
 	}
+
+	// immediates are unsigned, so stepping backwards takes a sub
+	op := ARM64ADD
+	if n < 0 {
+		op, n = ARM64SUB, -n
+	}
+
 	if arm64AddImmFits(n) {
-		e.emit(ARM64Inst{Op: op, Size: 8, Args: [3]ARM64Operand{arm64SP, arm64SP, arm64Imm(int64(n))}})
+		e.emit(ARM64Inst{Op: op, Size: 8, Args: [3]ARM64Operand{arm64Reg(dst), arm64Reg(src), arm64Imm(int64(n))}})
 		return
 	}
 	arm64MoveConst(e, 8, arm64AddrScratch(e), int64(n))
-	e.emit(ARM64Inst{Op: op, Size: 8, Args: [3]ARM64Operand{arm64SP, arm64SP, arm64Reg(arm64AddrScratch(e))}})
+	e.emit(ARM64Inst{Op: op, Size: 8, Args: [3]ARM64Operand{arm64Reg(dst), arm64Reg(src), arm64Reg(arm64AddrScratch(e))}})
 }
 
 // arm64AddImmFits reports whether add and sub can take n as an unshifted 12-bit immediate
@@ -333,6 +340,15 @@ func (arm64) value(e *emitter[ARM64Inst], v *ssa.Value) error {
 	case ssa.OpStaticStore:
 		s := v.Slot()
 		arm64Copy(e, size, ssa.NewMem(s.Loc.Reg, s.Loc.Offset+v.Offset), v.Args[0].Loc)
+	case ssa.OpARM64LDR:
+		arm64Copy(e, size, v.Loc, ssa.NewMem(v.Args[0].Loc.Reg, v.Offset))
+	case ssa.OpARM64STR:
+		arm64Copy(e, size, ssa.NewMem(v.Args[1].Loc.Reg, v.Offset), v.Args[0].Loc)
+	case ssa.OpARM64ADDslot:
+		s := v.Slot()
+		arm64AddConst(e, v.Loc.Reg, s.Loc.Reg, s.Loc.Offset+v.Offset)
+	case ssa.OpARM64ADDconst:
+		arm64AddConst(e, v.Loc.Reg, v.Args[0].Loc.Reg, v.Offset)
 	case ssa.OpARM64ADD, ssa.OpARM64SUB, ssa.OpARM64MUL, ssa.OpARM64SDIV:
 		e.emit(ARM64Inst{Op: arm64BinaryOps[v.Op], Size: arm64RegSize(size), Args: [3]ARM64Operand{arm64Reg(v.Loc.Reg), arm64Reg(v.Args[0].Loc.Reg), arm64Reg(v.Args[1].Loc.Reg)}})
 	case ssa.OpARM64NEG:

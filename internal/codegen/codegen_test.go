@@ -399,6 +399,69 @@ func TestCodegen_ARM64_Comparison_ComparesAtOperandWidth(t *testing.T) {
 	}
 }
 
+func TestCodegen_ARM64_LocalAddr_StepsBackFromFramePointer(t *testing.T) {
+	asm := requireGeneratesARM64(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
+
+	// slots sit below the frame record, so their addresses are the frame pointer minus an offset
+	assertContainsMatch(t, asm, `^sub x\d+, x29, #\d+$`)
+}
+
+func TestCodegen_ARM64_Deref_LoadsThroughAddressRegister(t *testing.T) {
+	asm := requireGeneratesARM64(t, `fun main () -> int { let a = 10; let b = &a; return *b; }`)
+
+	addr := requireLocalAddrRegister(t, asm)
+
+	assertContainsMatch(t, asm, `^ldr w\d+, \[`+addr+`\]$`)
+}
+
+func TestCodegen_ARM64_DerefAssignment_StoresThroughAddressRegister(t *testing.T) {
+	asm := requireGeneratesARM64(t, `fun main () -> int { let a = 10; let b = &a; *b = 20; return a; }`)
+
+	addr := requireLocalAddrRegister(t, asm)
+
+	assertContainsMatch(t, asm, `^str w\d+, \[`+addr+`\]$`)
+}
+
+func TestCodegen_ARM64_Field_ReachedAtOffsetFromPointer(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{name: "load", src: `fun f (p *(int, int, int)) -> int { return (*p).2; }`, want: "ldr w0, [x0, #8]"},
+		{name: "store", src: `fun f (p *(int, int, int), v int) -> int { (*p).2 = v; return 0; }`, want: "str w1, [x0, #8]"},
+		{name: "address", src: `fun f (p *(int, int, int)) -> *int { return &(*p).2; }`, want: "add x0, x0, #8"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			asm := requireGeneratesARM64(t, tt.src+` fun main () -> int { return 0; }`)
+
+			// the third int is 8 bytes past the pointer, which arrives in x0
+			assert.Contains(t, instructions(asm), tt.want)
+		})
+	}
+}
+
+func TestCodegen_ARM64_WideFrame_AdjustsThroughRegister(t *testing.T) {
+	// 1100 ints take up more of the frame than an add or sub immediate can reach
+	asm := requireGeneratesARM64(t, `
+		fun main () -> int { let t = (`+strings.Repeat("0, ", 1099)+`0); let p = &t; return (*p).0; }
+	`)
+
+	assertContainsMatch(t, asm, `^sub sp, sp, x\d+$`)
+}
+
+func TestCodegen_ARM64_WideFieldOffset_AddsThroughRegister(t *testing.T) {
+	// the last of 1100 ints is further from the pointer than an add immediate can reach
+	asm := requireGeneratesARM64(t, `
+		fun f (p *(`+strings.Repeat("int, ", 1099)+`int)) -> *int { return &(*p).1099; }
+		fun main () -> int { return 0; }
+	`)
+
+	assertContainsMatch(t, asm, `^add x0, x0, x\d+$`)
+}
+
 func TestX64Inst_String(t *testing.T) {
 	tests := []struct {
 		name string
@@ -537,6 +600,14 @@ func requireOnly(t *testing.T, asm string, op string) string {
 // indexOfMatch is the position of the first instruction matching pattern, or -1.
 func indexOfMatch(asm string, pattern string) int {
 	return slices.IndexFunc(instructions(asm), regexp.MustCompile(pattern).MatchString)
+}
+
+// requireLocalAddrRegister is the register an arm64 program forms its one local's address in
+func requireLocalAddrRegister(t *testing.T, asm string) string {
+	t.Helper()
+	i := indexOfMatch(asm, `^sub x\d+, x29, #\d+$`)
+	require.NotEqual(t, -1, i, "no local address formed in\n%s", asm)
+	return operands(instructions(asm)[i])[0]
 }
 
 func assertContainsMatch(t *testing.T, asm string, pattern string) {
