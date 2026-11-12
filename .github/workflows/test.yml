@@ -28,12 +28,20 @@ jobs:
         run: go test -count=1 -tags ssacheck ./internal/... ./cmd/...
 
   program-tests:
-    name: Program Tests (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Program Tests (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - target: x64-linux
+            runner: ubuntu-latest
+          - target: arm64-linux
+            runner: ubuntu-24.04-arm
+          - target: x64-darwin
+            runner: macos-latest
+          - target: arm64-darwin
+            runner: macos-latest
     steps:
       - uses: actions/checkout@v5
 
@@ -43,10 +51,11 @@ jobs:
           cache: true
 
       - name: Ensure Rosetta 2
-        if: runner.os == 'macOS'
+        if: matrix.target == 'x64-darwin'
         run: sudo softwareupdate --install-rosetta --agree-to-license
 
       - name: Run program tests
         env:
           TAG: ~wip
+          TARGET: ${{ matrix.target }}
         run: go test -count=1 ./test/...
