@@ -462,6 +462,52 @@ func TestCodegen_ARM64_WideFieldOffset_AddsThroughRegister(t *testing.T) {
 	assertContainsMatch(t, asm, `^add x0, x0, x\d+$`)
 }
 
+func TestCodegen_ARM64_FuncAddr_PageThenOffset(t *testing.T) {
+	tests := []struct {
+		name string
+		os   buildcfg.OS
+		page string
+		off  string
+	}{
+		{name: "ELF", os: buildcfg.OSLinux, page: "adrp x0, g", off: "add x0, x0, :lo12:g"},
+		{name: "Mach-O", os: buildcfg.OSDarwin, page: "adrp x0, _g@PAGE", off: "add x0, x0, _g@PAGEOFF"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			asm := requireGeneratesARM64For(t, tt.os, `
+				fun g () -> int { return 1; }
+				fun f () -> fun () -> int { return g; }
+				fun main () -> int { return 0; }
+			`)
+
+			// the page and the offset into it are each a relocation, which each object format spells its own way
+			assertContainsSeq(t, asm, tt.page, tt.off)
+		})
+	}
+}
+
+func TestCodegen_ARM64_ClosureCall_BranchesThroughCodePointer(t *testing.T) {
+	asm := requireGeneratesARM64(t, `
+		fun g () -> int { return 1; }
+		fun main () -> int { let h = g; return h(); }
+	`)
+
+	ptr := operands(requireOnly(t, asm, "adrp"))
+	require.NotEmpty(t, ptr)
+
+	assert.Contains(t, instructions(asm), "blr "+ptr[0])
+}
+
+func TestCodegen_ARM64_Not_FlipsLowBit(t *testing.T) {
+	asm := requireGeneratesARM64(t, `
+		fun f (a bool) -> bool { return !a; }
+		fun main () -> int { return 0; }
+	`)
+
+	assert.Contains(t, instructions(asm), "eor w0, w0, #1")
+}
+
 func TestX64Inst_String(t *testing.T) {
 	tests := []struct {
 		name string
@@ -508,6 +554,11 @@ func TestARM64Inst_String(t *testing.T) {
 		{name: "trap", inst: ARM64Inst{Op: ARM64BRK, Args: [3]ARM64Operand{arm64Imm(0)}}, want: "brk #0"},
 		{name: "condition", inst: ARM64Inst{Op: ARM64CSET, Size: 4, Args: [3]ARM64Operand{arm64Reg(target.RegX5), arm64Cond(ARM64GE)}}, want: "cset w5, ge"},
 		{name: "branch with link", inst: ARM64Inst{Op: ARM64BL, Args: [3]ARM64Operand{arm64Sym("f")}}, want: "bl f"},
+		{name: "indirect branch with link", inst: ARM64Inst{Op: ARM64BLR, Size: 8, Args: [3]ARM64Operand{arm64Reg(target.RegX9)}}, want: "blr x9"},
+		{name: "ELF page", inst: ARM64Inst{Op: ARM64ADRP, Size: 8, Args: [3]ARM64Operand{arm64Reg(target.RegX1), arm64Reloc("f", ARM64RelocELFPage)}}, want: "adrp x1, f"},
+		{name: "ELF page offset", inst: ARM64Inst{Op: ARM64ADD, Size: 8, Args: [3]ARM64Operand{arm64Reg(target.RegX1), arm64Reg(target.RegX1), arm64Reloc("f", ARM64RelocELFPageOff)}}, want: "add x1, x1, :lo12:f"},
+		{name: "Mach-O page", inst: ARM64Inst{Op: ARM64ADRP, Size: 8, Args: [3]ARM64Operand{arm64Reg(target.RegX1), arm64Reloc("_f", ARM64RelocMachOPage)}}, want: "adrp x1, _f@PAGE"},
+		{name: "Mach-O page offset", inst: ARM64Inst{Op: ARM64ADD, Size: 8, Args: [3]ARM64Operand{arm64Reg(target.RegX1), arm64Reg(target.RegX1), arm64Reloc("_f", ARM64RelocMachOPageOff)}}, want: "add x1, x1, _f@PAGEOFF"},
 	}
 
 	for _, tt := range tests {
@@ -645,7 +696,15 @@ func requireGeneratesAssembly(t *testing.T, src string) string {
 // requireGeneratesARM64 generates arm64 Linux assembly for src
 func requireGeneratesARM64(t *testing.T, src string) string {
 	t.Helper()
-	asm, err := GenerateAssembly(requireBuildSSAFor(t, target.ARM64AAPCS, src), WithTarget(buildcfg.ArchARM64, buildcfg.OSLinux))
+	return requireGeneratesARM64For(t, buildcfg.OSLinux, src)
+}
+
+// requireGeneratesARM64For generates arm64 assembly for src under os's calling convention and symbol syntax
+func requireGeneratesARM64For(t *testing.T, os buildcfg.OS, src string) string {
+	t.Helper()
+	tgt, err := target.For(buildcfg.ArchARM64, os)
+	require.NoError(t, err)
+	asm, err := GenerateAssembly(requireBuildSSAFor(t, tgt, src), WithTarget(buildcfg.ArchARM64, os))
 	require.NoError(t, err)
 	return asm
 }

@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/chenota/acc/internal/buildcfg"
 	"github.com/chenota/acc/internal/ssa"
 	"github.com/chenota/acc/internal/target"
 )
 
-// ARM64Op is an arm64 operation, independent of its operand size.
 type ARM64Op int
 
 const (
@@ -23,6 +23,8 @@ const (
 	ARM64MUL
 	ARM64SDIV
 	ARM64NEG
+	ARM64EOR
+	ARM64ADRP // the 4KB page an address lies in
 	ARM64CMP
 	ARM64CSET // 1 when the condition holds and 0 otherwise
 	ARM64LDR
@@ -33,6 +35,7 @@ const (
 	ARM64CBZ
 	ARM64CBNZ
 	ARM64BL
+	ARM64BLR
 	ARM64RET
 	ARM64BRK
 )
@@ -47,6 +50,8 @@ var arm64Mnemonics = map[ARM64Op]string{
 	ARM64MUL:  "mul",
 	ARM64SDIV: "sdiv",
 	ARM64NEG:  "neg",
+	ARM64EOR:  "eor",
+	ARM64ADRP: "adrp",
 	ARM64CMP:  "cmp",
 	ARM64CSET: "cset",
 	ARM64LDR:  "ldr",
@@ -57,6 +62,7 @@ var arm64Mnemonics = map[ARM64Op]string{
 	ARM64CBZ:  "cbz",
 	ARM64CBNZ: "cbnz",
 	ARM64BL:   "bl",
+	ARM64BLR:  "blr",
 	ARM64RET:  "ret",
 	ARM64BRK:  "brk",
 }
@@ -81,6 +87,17 @@ var arm64CondNames = map[ARM64CondCode]string{
 	ARM64GT: "gt",
 	ARM64GE: "ge",
 }
+
+// ARM64Reloc is how the linker fills in a symbol operand, when it takes more than the symbol's plain address
+type ARM64Reloc int
+
+const (
+	ARM64RelocNone         ARM64Reloc = iota
+	ARM64RelocELFPage                 // R_AARCH64_ADR_PREL_PG_HI21, the 4KB page holding the symbol
+	ARM64RelocELFPageOff              // R_AARCH64_ADD_ABS_LO12_NC, the symbol's offset into its page
+	ARM64RelocMachOPage               // ARM64_RELOC_PAGE21, the 4KB page holding the symbol
+	ARM64RelocMachOPageOff            // ARM64_RELOC_PAGEOFF12, the symbol's offset into its page
+)
 
 type ARM64Inst struct {
 	Op   ARM64Op
@@ -108,6 +125,7 @@ type ARM64Operand struct {
 	Shift  int
 	Offset int
 	Sym    string
+	Reloc  ARM64Reloc
 	Cond   ARM64CondCode
 }
 
@@ -154,6 +172,15 @@ func (o ARM64Operand) text(size int) string {
 	case ARM64PostIdx:
 		return fmt.Sprintf("[%s], #%d", arm64RegName(o.Reg, 8), o.Offset)
 	case ARM64Sym:
+		switch o.Reloc {
+		case ARM64RelocELFPageOff:
+			return ":lo12:" + o.Sym
+		case ARM64RelocMachOPage:
+			return o.Sym + "@PAGE"
+		case ARM64RelocMachOPageOff:
+			return o.Sym + "@PAGEOFF"
+		}
+		// ELF's adrp takes the bare symbol
 		return o.Sym
 	case ARM64Cond:
 		return arm64CondNames[o.Cond]
@@ -262,6 +289,18 @@ func arm64AddConst(e *emitter[ARM64Inst], dst, src target.Register, n int) {
 	e.emit(ARM64Inst{Op: op, Size: 8, Args: [3]ARM64Operand{arm64Reg(dst), arm64Reg(src), arm64Reg(arm64AddrScratch(e))}})
 }
 
+// arm64SymAddr puts sym's address in dst
+func arm64SymAddr(e *emitter[ARM64Inst], dst target.Register, sym string) {
+	page, off := ARM64RelocELFPage, ARM64RelocELFPageOff
+	if e.os == buildcfg.OSDarwin {
+		page, off = ARM64RelocMachOPage, ARM64RelocMachOPageOff
+	}
+	e.emit(
+		ARM64Inst{Op: ARM64ADRP, Size: 8, Args: [3]ARM64Operand{arm64Reg(dst), arm64Reloc(sym, page)}},
+		ARM64Inst{Op: ARM64ADD, Size: 8, Args: [3]ARM64Operand{arm64Reg(dst), arm64Reg(dst), arm64Reloc(sym, off)}},
+	)
+}
+
 // arm64AddImmFits reports whether add and sub can take n as an unshifted 12-bit immediate
 func arm64AddImmFits(n int) bool {
 	return n >= 0 && n < 1<<12
@@ -359,8 +398,16 @@ func (arm64) value(e *emitter[ARM64Inst], v *ssa.Value) error {
 			ARM64Inst{Op: ARM64CMP, Size: arm64RegSize(v.Args[0].Type.Size()), Args: [3]ARM64Operand{arm64Reg(v.Args[0].Loc.Reg), arm64Reg(v.Args[1].Loc.Reg)}},
 			ARM64Inst{Op: ARM64CSET, Size: arm64RegSize(size), Args: [3]ARM64Operand{arm64Reg(v.Loc.Reg), arm64Cond(arm64SetConds[v.Op])}},
 		)
+	case ssa.OpARM64EORconst:
+		// xors its operand with the constant lowering left in v
+		e.emit(ARM64Inst{Op: ARM64EOR, Size: arm64RegSize(size), Args: [3]ARM64Operand{arm64Reg(v.Loc.Reg), arm64Reg(v.Args[0].Loc.Reg), arm64Imm(int64(v.Value.(int32)))}})
+	case ssa.OpARM64ADRP:
+		arm64SymAddr(e, v.Loc.Reg, e.funcLabel(v.Callee()))
 	case ssa.OpARM64BL:
 		e.emit(ARM64Inst{Op: ARM64BL, Args: [3]ARM64Operand{arm64Sym(e.funcLabel(v.Callee()))}})
+	case ssa.OpARM64BLR:
+		// jumps to the code pointer the closure carries alongside its environment
+		e.emit(ARM64Inst{Op: ARM64BLR, Size: 8, Args: [3]ARM64Operand{arm64Reg(v.Args[0].Loc.Reg)}})
 	case ssa.OpARM64BRK:
 		e.emit(ARM64Inst{Op: ARM64BRK, Args: [3]ARM64Operand{arm64Imm(0)}})
 	case ssa.OpCopy:
@@ -506,6 +553,10 @@ func arm64ShiftedImm(v int64, shift int) ARM64Operand {
 
 func arm64Sym(name string) ARM64Operand {
 	return ARM64Operand{Kind: ARM64Sym, Sym: name}
+}
+
+func arm64Reloc(sym string, r ARM64Reloc) ARM64Operand {
+	return ARM64Operand{Kind: ARM64Sym, Sym: sym, Reloc: r}
 }
 
 func arm64Cond(c ARM64CondCode) ARM64Operand {
